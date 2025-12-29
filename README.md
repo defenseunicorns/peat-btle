@@ -136,8 +136,6 @@ hive-btle is designed for **dual use**:
 
 **Why two modes?** Automerge is too resource-intensive for embedded targets (requires ~10MB+ RAM, `std` library). hive-btle's lightweight CRDTs (GCounter, Peripheral) provide the same semantics in <256KB RAM. Full HIVE nodes translate between formats.
 
-See [ADR-041](docs/adr/041-multi-transport-embedded-integration.md) for the full architectural rationale.
-
 ### Component Architecture
 
 ```
@@ -386,18 +384,12 @@ cargo test --features linux
 cargo test sync::
 ```
 
-## Related Documentation
-
-- [ADR-039: HIVE-BTLE Mesh Transport](https://github.com/revolveteam/hive/blob/main/docs/adr/039-hive-btle-mesh-transport.md) - Full architecture design
-- [ADR-041: Multi-Transport Integration](https://github.com/revolveteam/hive/blob/main/docs/adr/041-multi-transport-embedded-integration.md) - HIVE integration architecture
-- [ADR-035: HIVE-Lite Embedded Nodes](https://github.com/revolveteam/hive/blob/main/docs/adr/035-hive-lite-embedded-nodes.md) - Embedded node design
-
 ## Contributing
 
 Contributions are welcome! Priority areas:
 
-1. **Android Implementation** (#410) - JNI bindings to Android Bluetooth API
-2. **Windows Implementation** (#412) - WinRT Bluetooth APIs
+1. **Android Implementation** - JNI bindings to Android Bluetooth API
+2. **Windows Implementation** - WinRT Bluetooth APIs
 3. **Hardware Testing** - Real-world validation on various devices
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
