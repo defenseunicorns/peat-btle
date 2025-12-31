@@ -1039,6 +1039,16 @@ impl HiveMesh {
         self.document_sync.update_health(battery_percent);
     }
 
+    /// Update activity level (0=still, 1=walking, 2=running, 3=fall)
+    pub fn update_activity(&self, activity: u8) {
+        self.document_sync.update_activity(activity);
+    }
+
+    /// Update full health status (battery and activity)
+    pub fn update_health_full(&self, battery_percent: u8, activity: u8) {
+        self.document_sync.update_health_full(battery_percent, activity);
+    }
+
     /// Build current document for transmission
     ///
     /// If encryption is enabled, the document is encrypted.

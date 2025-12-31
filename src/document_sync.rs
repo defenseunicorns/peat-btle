@@ -197,6 +197,21 @@ impl DocumentSync {
         self.bump_version();
     }
 
+    /// Update activity level (0=still, 1=walking, 2=running, 3=fall)
+    pub fn update_activity(&self, activity: u8) {
+        let mut peripheral = self.peripheral.write().unwrap();
+        peripheral.health.activity = activity;
+        self.bump_version();
+    }
+
+    /// Update full health status (battery and activity)
+    pub fn update_health_full(&self, battery_percent: u8, activity: u8) {
+        let mut peripheral = self.peripheral.write().unwrap();
+        peripheral.health.battery_percent = battery_percent;
+        peripheral.health.activity = activity;
+        self.bump_version();
+    }
+
     // ==================== Emergency Management ====================
 
     /// Start a new emergency event
