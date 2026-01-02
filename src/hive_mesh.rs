@@ -45,7 +45,7 @@ use std::sync::Arc;
 
 use crate::document::{ENCRYPTED_MARKER, KEY_EXCHANGE_MARKER, PEER_E2EE_MARKER};
 use crate::document_sync::DocumentSync;
-use crate::observer::{DisconnectReason, HiveEvent, HiveObserver};
+use crate::observer::{DisconnectReason, HiveEvent, HiveObserver, SecurityViolationKind};
 use crate::peer::{HivePeer, PeerManagerConfig};
 use crate::peer_manager::PeerManager;
 use crate::security::{
@@ -87,6 +87,15 @@ pub struct HiveMeshConfig {
     /// transmission and decrypted upon receipt. All nodes in the mesh must
     /// share the same secret to communicate.
     pub encryption_secret: Option<[u8; 32]>,
+
+    /// Strict encryption mode - reject unencrypted documents when encryption is enabled
+    ///
+    /// When true and encryption is enabled, any unencrypted documents received
+    /// will be rejected and trigger a SecurityViolation event. This prevents
+    /// downgrade attacks where an adversary sends unencrypted malicious documents.
+    ///
+    /// Default: false (backward compatible - accepts unencrypted for gradual rollout)
+    pub strict_encryption: bool,
 }
 
 impl HiveMeshConfig {
@@ -101,6 +110,7 @@ impl HiveMeshConfig {
             sync_interval_ms: 5000,
             auto_broadcast_events: true,
             encryption_secret: None,
+            strict_encryption: false,
         }
     }
 
@@ -134,6 +144,18 @@ impl HiveMeshConfig {
     /// Set max peers (for embedded systems)
     pub fn with_max_peers(mut self, max: usize) -> Self {
         self.peer_config.max_peers = max;
+        self
+    }
+
+    /// Enable strict encryption mode
+    ///
+    /// When enabled (and encryption is also enabled), any unencrypted documents
+    /// received will be rejected and trigger a `SecurityViolation` event.
+    /// This prevents downgrade attacks.
+    ///
+    /// Note: This only has effect when encryption is enabled via `with_encryption()`.
+    pub fn with_strict_encryption(mut self) -> Self {
+        self.strict_encryption = true;
         self
     }
 }
@@ -204,6 +226,13 @@ impl HiveMesh {
         self.encryption_key.is_some()
     }
 
+    /// Check if strict encryption mode is enabled
+    ///
+    /// Returns true only if both encryption and strict_encryption are enabled.
+    pub fn is_strict_encryption_enabled(&self) -> bool {
+        self.config.strict_encryption && self.encryption_key.is_some()
+    }
+
     /// Enable mesh-wide encryption with a shared secret
     ///
     /// Derives a ChaCha20-Poly1305 key from the secret using HKDF-SHA256.
@@ -251,7 +280,14 @@ impl HiveMesh {
     ///
     /// Returns the decrypted bytes if encrypted and valid, or the original
     /// bytes if not encrypted. Returns None if decryption fails.
-    fn decrypt_document<'a>(&self, data: &'a [u8]) -> Option<std::borrow::Cow<'a, [u8]>> {
+    ///
+    /// In strict encryption mode (when both encryption and strict_encryption are enabled),
+    /// unencrypted documents are rejected and trigger a SecurityViolation event.
+    fn decrypt_document<'a>(
+        &self,
+        data: &'a [u8],
+        source_hint: Option<&str>,
+    ) -> Option<std::borrow::Cow<'a, [u8]>> {
         // Check for encrypted marker
         if data.len() >= 2 && data[0] == ENCRYPTED_MARKER {
             // Encrypted document
@@ -263,6 +299,10 @@ impl HiveMesh {
                     Ok(plaintext) => Some(std::borrow::Cow::Owned(plaintext)),
                     Err(e) => {
                         log::warn!("Decryption failed (wrong key or corrupted): {}", e);
+                        self.notify(HiveEvent::SecurityViolation {
+                            kind: SecurityViolationKind::DecryptionFailed,
+                            source: source_hint.map(String::from),
+                        });
                         None
                     }
                 },
@@ -272,10 +312,22 @@ impl HiveMesh {
                 }
             }
         } else {
-            // Unencrypted document - pass through
-            // If we have encryption enabled, we could optionally reject unencrypted
-            // documents for stricter security. For now, accept for backward compat.
-            Some(std::borrow::Cow::Borrowed(data))
+            // Unencrypted document
+            // Check strict encryption mode
+            if self.config.strict_encryption && self.encryption_key.is_some() {
+                log::warn!(
+                    "Rejected unencrypted document in strict encryption mode (source: {:?})",
+                    source_hint
+                );
+                self.notify(HiveEvent::SecurityViolation {
+                    kind: SecurityViolationKind::UnencryptedInStrictMode,
+                    source: source_hint.map(String::from),
+                });
+                None
+            } else {
+                // Permissive mode: accept unencrypted for backward compatibility
+                Some(std::borrow::Cow::Borrowed(data))
+            }
         }
     }
 
@@ -772,7 +824,7 @@ impl HiveMesh {
         }
 
         // Decrypt if encrypted (mesh-wide encryption)
-        let decrypted = self.decrypt_document(data)?;
+        let decrypted = self.decrypt_document(data, Some(identifier))?;
 
         // Merge the document
         let result = self.document_sync.merge_document(&decrypted)?;
@@ -836,7 +888,8 @@ impl HiveMesh {
         }
 
         // Decrypt if encrypted (mesh-wide encryption)
-        let decrypted = self.decrypt_document(data)?;
+        let source_hint = format!("node:{:08X}", node_id.as_u32());
+        let decrypted = self.decrypt_document(data, Some(&source_hint))?;
 
         // Merge the document
         let result = self.document_sync.merge_document(&decrypted)?;
@@ -902,7 +955,7 @@ impl HiveMesh {
         }
 
         // Decrypt if encrypted (mesh-wide encryption)
-        let decrypted = self.decrypt_document(data)?;
+        let decrypted = self.decrypt_document(data, Some(identifier))?;
 
         // Merge the document (extracts node_id internally)
         let result = self.document_sync.merge_document(&decrypted)?;
@@ -1747,5 +1800,185 @@ mod tests {
         // Total: 46 bytes overhead
         let overhead = encrypted.len() - plaintext.len();
         assert_eq!(overhead, 46);
+    }
+
+    // ==================== Strict Encryption Mode Tests ====================
+
+    fn create_strict_encrypted_mesh(node_id: u32, callsign: &str, secret: [u8; 32]) -> HiveMesh {
+        let config = HiveMeshConfig::new(NodeId::new(node_id), callsign, "TEST")
+            .with_encryption(secret)
+            .with_strict_encryption();
+        HiveMesh::new(config)
+    }
+
+    #[test]
+    fn test_strict_encryption_enabled() {
+        let secret = [0x42u8; 32];
+        let mesh = create_strict_encrypted_mesh(0x11111111, "ALPHA-1", secret);
+
+        assert!(mesh.is_encryption_enabled());
+        assert!(mesh.is_strict_encryption_enabled());
+    }
+
+    #[test]
+    fn test_strict_encryption_disabled_by_default() {
+        let secret = [0x42u8; 32];
+        let mesh = create_encrypted_mesh(0x11111111, "ALPHA-1", secret);
+
+        assert!(mesh.is_encryption_enabled());
+        assert!(!mesh.is_strict_encryption_enabled());
+    }
+
+    #[test]
+    fn test_strict_encryption_requires_encryption_enabled() {
+        // strict_encryption without encryption should have no effect
+        let config = HiveMeshConfig::new(NodeId::new(0x11111111), "ALPHA-1", "TEST")
+            .with_strict_encryption(); // No encryption!
+        let mesh = HiveMesh::new(config);
+
+        assert!(!mesh.is_encryption_enabled());
+        assert!(!mesh.is_strict_encryption_enabled());
+    }
+
+    #[test]
+    fn test_strict_mode_accepts_encrypted_documents() {
+        let secret = [0x42u8; 32];
+        let mesh1 = create_encrypted_mesh(0x11111111, "ALPHA-1", secret);
+        let mesh2 = create_strict_encrypted_mesh(0x22222222, "BRAVO-1", secret);
+
+        // mesh1 sends encrypted document
+        let doc = mesh1.build_document();
+        assert_eq!(doc[0], crate::document::ENCRYPTED_MARKER);
+
+        // mesh2 (strict mode) should accept encrypted documents
+        let result = mesh2.on_ble_data_received_from_node(NodeId::new(0x11111111), &doc, 1000);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_strict_mode_rejects_unencrypted_documents() {
+        let secret = [0x42u8; 32];
+        let mesh1 = create_mesh(0x11111111, "ALPHA-1"); // Unencrypted sender
+        let mesh2 = create_strict_encrypted_mesh(0x22222222, "BRAVO-1", secret); // Strict receiver
+
+        let observer = Arc::new(CollectingObserver::new());
+        mesh2.add_observer(observer.clone());
+
+        // mesh1 sends unencrypted document
+        let doc = mesh1.build_document();
+        assert_ne!(doc[0], crate::document::ENCRYPTED_MARKER);
+
+        // mesh2 (strict mode) should reject unencrypted documents
+        let result = mesh2.on_ble_data_received_from_node(NodeId::new(0x11111111), &doc, 1000);
+        assert!(result.is_none());
+
+        // Should have SecurityViolation event
+        let events = observer.events();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            HiveEvent::SecurityViolation {
+                kind: crate::observer::SecurityViolationKind::UnencryptedInStrictMode,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn test_non_strict_mode_accepts_unencrypted_documents() {
+        let secret = [0x42u8; 32];
+        let mesh1 = create_mesh(0x11111111, "ALPHA-1"); // Unencrypted sender
+        let mesh2 = create_encrypted_mesh(0x22222222, "BRAVO-1", secret); // Non-strict receiver
+
+        // mesh1 sends unencrypted document
+        let doc = mesh1.build_document();
+
+        // mesh2 (non-strict) should accept unencrypted documents (backward compat)
+        let result = mesh2.on_ble_data_received_from_node(NodeId::new(0x11111111), &doc, 1000);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_strict_mode_security_violation_event_includes_source() {
+        let secret = [0x42u8; 32];
+        let mesh1 = create_mesh(0x11111111, "ALPHA-1");
+        let mesh2 = create_strict_encrypted_mesh(0x22222222, "BRAVO-1", secret);
+
+        let observer = Arc::new(CollectingObserver::new());
+        mesh2.add_observer(observer.clone());
+
+        let doc = mesh1.build_document();
+
+        // Use on_ble_data_received with identifier to test source is captured
+        mesh2.on_ble_discovered(
+            "test-device-uuid",
+            Some("HIVE_TEST-11111111"),
+            -65,
+            Some("TEST"),
+            500,
+        );
+        mesh2.on_ble_connected("test-device-uuid", 600);
+
+        let _result = mesh2.on_ble_data_received("test-device-uuid", &doc, 1000);
+
+        // Check SecurityViolation event has source
+        let events = observer.events();
+        let violation = events.iter().find(|e| {
+            matches!(
+                e,
+                HiveEvent::SecurityViolation {
+                    kind: crate::observer::SecurityViolationKind::UnencryptedInStrictMode,
+                    ..
+                }
+            )
+        });
+        assert!(violation.is_some());
+
+        if let Some(HiveEvent::SecurityViolation { source, .. }) = violation {
+            assert!(source.is_some());
+            assert_eq!(source.as_ref().unwrap(), "test-device-uuid");
+        }
+    }
+
+    #[test]
+    fn test_decryption_failure_emits_security_violation() {
+        let secret1 = [0x42u8; 32];
+        let secret2 = [0x43u8; 32]; // Different key
+        let mesh1 = create_encrypted_mesh(0x11111111, "ALPHA-1", secret1);
+        let mesh2 = create_encrypted_mesh(0x22222222, "BRAVO-1", secret2);
+
+        let observer = Arc::new(CollectingObserver::new());
+        mesh2.add_observer(observer.clone());
+
+        // mesh1 sends encrypted document
+        let doc = mesh1.build_document();
+
+        // mesh2 cannot decrypt (wrong key)
+        let result = mesh2.on_ble_data_received_from_node(NodeId::new(0x11111111), &doc, 1000);
+        assert!(result.is_none());
+
+        // Should have SecurityViolation event for decryption failure
+        let events = observer.events();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            HiveEvent::SecurityViolation {
+                kind: crate::observer::SecurityViolationKind::DecryptionFailed,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn test_strict_mode_builder_chain() {
+        let secret = [0x42u8; 32];
+        let config = HiveMeshConfig::new(NodeId::new(0x11111111), "ALPHA-1", "TEST")
+            .with_encryption(secret)
+            .with_strict_encryption()
+            .with_sync_interval(10_000)
+            .with_peer_timeout(60_000);
+
+        let mesh = HiveMesh::new(config);
+
+        assert!(mesh.is_encryption_enabled());
+        assert!(mesh.is_strict_encryption_enabled());
     }
 }

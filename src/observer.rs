@@ -147,6 +147,15 @@ pub enum HiveEvent {
         /// Error description
         error: String,
     },
+
+    // ==================== Security Events ====================
+    /// A security violation was detected
+    SecurityViolation {
+        /// Type of violation
+        kind: SecurityViolationKind,
+        /// Optional source identifier (node_id, BLE identifier, etc.)
+        source: Option<String>,
+    },
 }
 
 impl HiveEvent {
@@ -218,6 +227,11 @@ impl HiveEvent {
             error,
         }
     }
+
+    /// Create a security violation event
+    pub fn security_violation(kind: SecurityViolationKind, source: Option<String>) -> Self {
+        Self::SecurityViolation { kind, source }
+    }
 }
 
 /// Reason for peer disconnection
@@ -236,6 +250,19 @@ pub enum DisconnectReason {
     /// Unknown reason
     #[default]
     Unknown,
+}
+
+/// Types of security violations that can be detected
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityViolationKind {
+    /// Received unencrypted document when strict encryption mode is enabled
+    UnencryptedInStrictMode,
+    /// Decryption failed (wrong key or corrupted data)
+    DecryptionFailed,
+    /// Replay attack detected (duplicate message counter)
+    ReplayDetected,
+    /// Message from unknown/unauthorized node
+    UnauthorizedNode,
 }
 
 /// Observer trait for receiving HIVE mesh events
