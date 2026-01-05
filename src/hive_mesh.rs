@@ -1099,7 +1099,8 @@ impl HiveMesh {
 
     /// Update full health status (battery and activity)
     pub fn update_health_full(&self, battery_percent: u8, activity: u8) {
-        self.document_sync.update_health_full(battery_percent, activity);
+        self.document_sync
+            .update_health_full(battery_percent, activity);
     }
 
     /// Build current document for transmission
