@@ -149,7 +149,7 @@ pub fn fragment_payload(
         return vec![SyncMessage::new(msg_type, seq, payload.to_vec())];
     }
 
-    let total_fragments = (payload.len() + max_fragment_size - 1) / max_fragment_size;
+    let total_fragments = payload.len().div_ceil(max_fragment_size);
     let total_fragments = total_fragments.min(255) as u8;
 
     payload

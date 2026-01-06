@@ -67,7 +67,7 @@ impl AdvertisingPacket {
             && self
                 .scan_rsp
                 .as_ref()
-                .map_or(true, |sr| sr.len() <= LEGACY_ADV_MAX)
+                .is_none_or(|sr| sr.len() <= LEGACY_ADV_MAX)
     }
 
     /// Total advertising data size

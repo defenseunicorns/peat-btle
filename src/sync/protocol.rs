@@ -205,7 +205,7 @@ pub fn chunk_data(data: &[u8], mtu: usize, message_id: u32) -> Vec<SyncChunk> {
         return Vec::new();
     }
 
-    let total_chunks = (data.len() + payload_size - 1) / payload_size;
+    let total_chunks = data.len().div_ceil(payload_size);
     let total_chunks = total_chunks.max(1) as u16;
 
     let mut chunks = Vec::with_capacity(total_chunks as usize);
