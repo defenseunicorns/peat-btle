@@ -69,7 +69,10 @@ mod scanner {
 
         println!("Adapter address: {:?}", adapter.address());
         println!("Coded PHY support: {}", adapter.supports_coded_phy());
-        println!("Extended advertising: {}", adapter.supports_extended_advertising());
+        println!(
+            "Extended advertising: {}",
+            adapter.supports_extended_advertising()
+        );
         println!("Max MTU: {}", adapter.max_mtu());
         println!();
 
@@ -124,7 +127,11 @@ mod scanner {
 
             // Progress indicator
             if (i + 1) % 5 == 0 {
-                println!("... {} seconds elapsed, {} peers found", i + 1, mesh.peer_count());
+                println!(
+                    "... {} seconds elapsed, {} peers found",
+                    i + 1,
+                    mesh.peer_count()
+                );
             }
         }
 
@@ -136,10 +143,12 @@ mod scanner {
         println!("\n=== Scan Summary ===");
         println!("Total peers discovered: {}", mesh.peer_count());
         for peer in mesh.get_peers() {
-            println!("  - {} ({:08X}) RSSI: {} dBm",
-                     peer.display_name(),
-                     peer.node_id.as_u32(),
-                     peer.rssi);
+            println!(
+                "  - {} ({:08X}) RSSI: {} dBm",
+                peer.display_name(),
+                peer.node_id.as_u32(),
+                peer.rssi
+            );
         }
 
         Ok(())

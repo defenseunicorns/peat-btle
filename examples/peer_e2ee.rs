@@ -77,7 +77,10 @@ fn main() {
     println!("Bob E2EE enabled: {}", mesh_bob.is_peer_e2ee_enabled());
 
     if let Some(pk) = mesh_alice.peer_e2ee_public_key() {
-        println!("Alice public key: {:02X}{:02X}{:02X}...", pk[0], pk[1], pk[2]);
+        println!(
+            "Alice public key: {:02X}{:02X}{:02X}...",
+            pk[0], pk[1], pk[2]
+        );
     }
     if let Some(pk) = mesh_bob.peer_e2ee_public_key() {
         println!("Bob public key: {:02X}{:02X}{:02X}...", pk[0], pk[1], pk[2]);
@@ -128,7 +131,10 @@ fn demonstrate_low_level_e2ee() {
     let alice_msg = alice.initiate_session(NodeId::new(0xBBBB2222), now_ms);
     println!("  Alice -> Bob: KeyExchangeMessage");
     println!("    sender: {:08X}", alice_msg.sender_node_id.as_u32());
-    println!("    public_key: {:02X}{:02X}...", alice_msg.public_key[0], alice_msg.public_key[1]);
+    println!(
+        "    public_key: {:02X}{:02X}...",
+        alice_msg.public_key[0], alice_msg.public_key[1]
+    );
     println!("    ephemeral: {}", alice_msg.is_ephemeral);
     println!();
 
@@ -151,8 +157,14 @@ fn demonstrate_low_level_e2ee() {
 
     // Verify sessions
     println!("Session verification:");
-    println!("  Alice has session with Bob: {}", alice.has_session(NodeId::new(0xBBBB2222)));
-    println!("  Bob has session with Alice: {}", bob.has_session(NodeId::new(0xAAAA1111)));
+    println!(
+        "  Alice has session with Bob: {}",
+        alice.has_session(NodeId::new(0xBBBB2222))
+    );
+    println!(
+        "  Bob has session with Alice: {}",
+        bob.has_session(NodeId::new(0xAAAA1111))
+    );
     println!();
 
     // Step 4: Send encrypted messages
@@ -165,7 +177,10 @@ fn demonstrate_low_level_e2ee() {
     println!("  Plaintext: \"{}\"", String::from_utf8_lossy(plaintext));
     println!("  Encrypted: {} bytes", encrypted.encode().len());
     println!("    sender: {:08X}", encrypted.sender_node_id.as_u32());
-    println!("    recipient: {:08X}", encrypted.recipient_node_id.as_u32());
+    println!(
+        "    recipient: {:08X}",
+        encrypted.recipient_node_id.as_u32()
+    );
     println!("    counter: {}", encrypted.counter);
     println!();
 
@@ -188,7 +203,10 @@ fn demonstrate_low_level_e2ee() {
     let decrypted_response = alice
         .decrypt_from_peer(&encrypted_response, now_ms + 600)
         .expect("Alice should decrypt");
-    println!("  Alice received: \"{}\"", String::from_utf8_lossy(&decrypted_response));
+    println!(
+        "  Alice received: \"{}\"",
+        String::from_utf8_lossy(&decrypted_response)
+    );
     println!();
 
     // Overhead calculation

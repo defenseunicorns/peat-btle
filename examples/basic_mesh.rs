@@ -89,8 +89,16 @@ fn main() {
     mesh_bravo.add_observer(Arc::new(PrintObserver::new("BRAVO")));
 
     println!("Created mesh nodes:");
-    println!("  - {} (Node ID: {:08X})", mesh_alpha.callsign(), mesh_alpha.node_id().as_u32());
-    println!("  - {} (Node ID: {:08X})", mesh_bravo.callsign(), mesh_bravo.node_id().as_u32());
+    println!(
+        "  - {} (Node ID: {:08X})",
+        mesh_alpha.callsign(),
+        mesh_alpha.node_id().as_u32()
+    );
+    println!(
+        "  - {} (Node ID: {:08X})",
+        mesh_bravo.callsign(),
+        mesh_bravo.node_id().as_u32()
+    );
     println!();
 
     // Simulate discovery and connection
@@ -132,11 +140,9 @@ fn main() {
     println!("Alpha document: {} bytes", alpha_doc.len());
 
     // Bravo receives Alpha's document
-    if let Some(result) = mesh_bravo.on_ble_data_received_from_node(
-        NodeId::new(0x11111111),
-        &alpha_doc,
-        now_ms + 200,
-    ) {
+    if let Some(result) =
+        mesh_bravo.on_ble_data_received_from_node(NodeId::new(0x11111111), &alpha_doc, now_ms + 200)
+    {
         println!(
             "Bravo received doc from {:08X}, total_count: {}",
             result.source_node.as_u32(),
@@ -162,21 +168,25 @@ fn main() {
     let ack_doc = mesh_bravo.send_ack(now_ms + 500);
     println!("Bravo sent ACK ({} bytes)", ack_doc.len());
 
-    if let Some(result) = mesh_alpha.on_ble_data_received_from_node(
-        NodeId::new(0x22222222),
-        &ack_doc,
-        now_ms + 600,
-    ) {
+    if let Some(result) =
+        mesh_alpha.on_ble_data_received_from_node(NodeId::new(0x22222222), &ack_doc, now_ms + 600)
+    {
         println!("Alpha received ACK: {}", result.is_ack);
     }
     println!();
 
     // Show final state
     println!("--- Final State ---");
-    println!("Alpha: emergency_active={}, ack_active={}",
-             mesh_alpha.is_emergency_active(), mesh_alpha.is_ack_active());
-    println!("Bravo: emergency_active={}, ack_active={}",
-             mesh_bravo.is_emergency_active(), mesh_bravo.is_ack_active());
+    println!(
+        "Alpha: emergency_active={}, ack_active={}",
+        mesh_alpha.is_emergency_active(),
+        mesh_alpha.is_ack_active()
+    );
+    println!(
+        "Bravo: emergency_active={}, ack_active={}",
+        mesh_bravo.is_emergency_active(),
+        mesh_bravo.is_ack_active()
+    );
     println!("Alpha total_count: {}", mesh_alpha.total_count());
     println!("Bravo total_count: {}", mesh_bravo.total_count());
 

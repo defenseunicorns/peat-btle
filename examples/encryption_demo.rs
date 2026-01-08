@@ -59,10 +59,9 @@ fn main() {
 
     // Shared secret for the mesh (in practice, distribute securely)
     let mesh_secret: [u8; 32] = [
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-        0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e,
+        0x1f, 0x20,
     ];
 
     // Different secret for an outsider
@@ -82,8 +81,14 @@ fn main() {
     mesh_alpha.add_observer(Arc::new(SecurityObserver::new("ALPHA")));
     mesh_bravo.add_observer(Arc::new(SecurityObserver::new("BRAVO")));
 
-    println!("Alpha encryption enabled: {}", mesh_alpha.is_encryption_enabled());
-    println!("Bravo encryption enabled: {}", mesh_bravo.is_encryption_enabled());
+    println!(
+        "Alpha encryption enabled: {}",
+        mesh_alpha.is_encryption_enabled()
+    );
+    println!(
+        "Bravo encryption enabled: {}",
+        mesh_bravo.is_encryption_enabled()
+    );
     println!();
 
     // Create an outsider with wrong key
@@ -102,7 +107,10 @@ fn main() {
 
     // Alpha sends encrypted emergency
     let encrypted_doc = mesh_alpha.send_emergency(now_ms);
-    println!("Alpha sent encrypted document: {} bytes", encrypted_doc.len());
+    println!(
+        "Alpha sent encrypted document: {} bytes",
+        encrypted_doc.len()
+    );
     println!("First byte (marker): 0x{:02X}", encrypted_doc[0]);
 
     // Bravo (same key) can decrypt
@@ -111,10 +119,7 @@ fn main() {
         &encrypted_doc,
         now_ms + 100,
     );
-    println!(
-        "Bravo can decrypt: {}",
-        result.is_some()
-    );
+    println!("Bravo can decrypt: {}", result.is_some());
     println!();
 
     println!("--- Scenario 2: Wrong Key Rejection ---");
@@ -156,7 +161,10 @@ fn main() {
     let mesh_strict = HiveMesh::new(config_strict);
     mesh_strict.add_observer(Arc::new(SecurityObserver::new("STRICT")));
 
-    println!("Strict mode enabled: {}", mesh_strict.is_strict_encryption_enabled());
+    println!(
+        "Strict mode enabled: {}",
+        mesh_strict.is_strict_encryption_enabled()
+    );
 
     // Strict mode rejects unencrypted documents
     let result = mesh_strict.on_ble_data_received_from_node(
@@ -164,23 +172,25 @@ fn main() {
         &plain_doc,
         now_ms + 400,
     );
-    println!(
-        "Strict node accepts unencrypted: {}",
-        result.is_some()
-    );
+    println!("Strict node accepts unencrypted: {}", result.is_some());
     println!();
 
     println!("--- Encryption Overhead ---");
     // Create unencrypted version of Alpha's state for comparison
-    let mesh_alpha_unencrypted = HiveMesh::new(
-        HiveMeshConfig::new(NodeId::new(0x11111111), "ALPHA-1", "SECURE")
-    );
+    let mesh_alpha_unencrypted = HiveMesh::new(HiveMeshConfig::new(
+        NodeId::new(0x11111111),
+        "ALPHA-1",
+        "SECURE",
+    ));
     mesh_alpha_unencrypted.send_emergency(now_ms + 500); // Match state
     let unencrypted_doc = mesh_alpha_unencrypted.build_document();
     let encrypted_doc_sample = mesh_alpha.build_document();
     let overhead = encrypted_doc_sample.len() - unencrypted_doc.len();
     println!("Same content unencrypted: {} bytes", unencrypted_doc.len());
-    println!("Same content encrypted: {} bytes", encrypted_doc_sample.len());
+    println!(
+        "Same content encrypted: {} bytes",
+        encrypted_doc_sample.len()
+    );
     println!("Encryption overhead: {} bytes", overhead);
     println!("  (2 bytes marker + 12 bytes nonce + 16 bytes auth tag = 30 bytes)");
 
