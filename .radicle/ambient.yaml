@@ -1,0 +1,7 @@
+pipelines:
+  - name: check
+    steps:
+      - run: cargo fmt --check
+      - run: cargo clippy -- -D warnings
+      - run: cargo test
+      - run: cargo check --examples
