@@ -1,0 +1,8 @@
+# Radicle native CI configuration
+# Runs on patch updates and default branch pushes
+shell: |
+  set -e
+  cargo fmt --check
+  cargo clippy -- -D warnings
+  cargo test
+  cargo check --examples
