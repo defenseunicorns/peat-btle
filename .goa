@@ -1,0 +1,32 @@
+#!/bin/bash
+# Goa CI script for hive-btle
+# Triggered when changes are detected on the Radicle repo
+
+set -e
+
+echo "=== Goa CI triggered at $(date) ==="
+echo "Commit: ${GOA_COMMIT_OID:-unknown}"
+echo "Patch: ${GOA_PATCH_ID:-none}"
+
+# Pull latest changes for the patch/branch being tested
+git fetch rad
+
+# Run CI checks
+echo ""
+echo "--- Format Check ---"
+cargo fmt --check
+
+echo ""
+echo "--- Clippy ---"
+cargo clippy -- -D warnings
+
+echo ""
+echo "--- Tests ---"
+cargo test
+
+echo ""
+echo "--- Examples ---"
+cargo check --examples
+
+echo ""
+echo "=== CI completed successfully ==="
