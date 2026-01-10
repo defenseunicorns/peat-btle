@@ -401,3 +401,4 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for detai
 ## Acknowledgments
 
 Developed by [(r)evolve - Revolve Team LLC](https://revolveteam.com) as part of the HIVE Protocol project.
+
