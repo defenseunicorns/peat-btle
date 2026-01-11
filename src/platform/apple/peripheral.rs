@@ -457,23 +457,32 @@ impl PeripheralManager {
 
             // Create the service UUID
             let service_uuid_str = NSString::from_str(&HIVE_SERVICE_UUID.to_string());
-            let service_uuid = CBUUID::UUIDWithString(&service_uuid_str);
+            let _service_uuid = CBUUID::UUIDWithString(&service_uuid_str);
 
-            // Create array of service UUIDs (cast CBUUID to AnyObject via pointer)
-            let uuid_ptr: *const AnyObject = Retained::as_ptr(&service_uuid).cast();
-            let service_uuids: Retained<NSArray<AnyObject>> =
-                NSArray::from_vec(vec![Retained::from_raw(uuid_ptr as *mut AnyObject).unwrap()]);
+            // NOTE: We previously had incorrect Retained pointer handling here that caused
+            // use-after-free (double-free). The problematic pattern was:
+            //   let ptr = Retained::as_ptr(&obj).cast();
+            //   Retained::from_raw(ptr)  // Creates second owner of same memory!
+            //
+            // For now, we rely on CoreBluetooth automatically including the service UUID
+            // in advertisements since it was registered via addService(). The local name
+            // is handled separately below.
+            //
+            // TODO: If explicit advertisement data is needed, use proper retain semantics:
+            //   let retained_ptr: *mut AnyObject = msg_send![Retained::as_ptr(&obj), retain];
+            //   Retained::from_raw(retained_ptr)  // Now properly retained
 
-            // Build the advertisement dictionary using raw msg_send
-            // Create keys and values arrays
+            // Build the advertisement dictionary with just the local name
+            // Create keys and values arrays with proper retain semantics
             let keys: Retained<NSArray<NSString>> = {
-                // Use msg_send to retain the static key since .retain() isn't available
+                // Properly retain the static key before creating a new Retained
                 let key_ptr: *mut NSString = msg_send![CBAdvertisementDataLocalNameKey, retain];
                 NSArray::from_vec(vec![Retained::from_raw(key_ptr).unwrap()])
             };
             let values: Retained<NSArray<AnyObject>> = {
-                let name_ptr: *const AnyObject = Retained::as_ptr(&name_str).cast();
-                NSArray::from_vec(vec![Retained::from_raw(name_ptr as *mut AnyObject).unwrap()])
+                // Properly retain the name string before creating a new Retained
+                let name_ptr: *mut AnyObject = msg_send![Retained::as_ptr(&name_str), retain];
+                NSArray::from_vec(vec![Retained::from_raw(name_ptr).unwrap()])
             };
 
             // Use dictionaryWithObjects:forKeys: class method
@@ -482,12 +491,10 @@ impl PeripheralManager {
                 dictionaryWithObjects: Retained::as_ptr(&values),
                 forKeys: Retained::as_ptr(&keys)
             ];
-            let _ad_data = Retained::from_raw(dict_ptr);
+            let ad_data = Retained::from_raw(dict_ptr);
 
-            // For now, just start advertising without the dictionary to verify the approach
-            // The service UUID is already registered via addService, which CoreBluetooth
-            // will automatically include in the advertisement
-            self.manager.startAdvertising(None);
+            // Start advertising with the advertisement data
+            self.manager.startAdvertising(ad_data.as_deref());
         }
 
         log::info!("Started advertising as {}", local_name);
