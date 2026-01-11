@@ -6,10 +6,9 @@ use bluer::{
     Adapter, Address, Session,
 };
 use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 
-use crate::config::{BleConfig, BlePhy, DiscoveryConfig};
+use crate::config::{BleConfig, DiscoveryConfig};
 use crate::error::{BleError, Result};
 use crate::platform::{
     BleAdapter, ConnectionCallback, ConnectionEvent, DisconnectReason, DiscoveredDevice,
@@ -29,6 +28,8 @@ struct AdapterState {
     /// Node ID to device address mapping
     node_to_address: HashMap<NodeId, Address>,
     /// Discovered devices (address -> device info)
+    /// TODO: Wire up device tracking for connection management
+    #[allow(dead_code)]
     discovered: HashMap<Address, DiscoveredDevice>,
 }
 
@@ -48,10 +49,15 @@ impl Default for AdapterState {
 /// Implements the `BleAdapter` trait using the `bluer` crate for
 /// BlueZ D-Bus communication.
 pub struct BluerAdapter {
-    /// BlueZ session
+    /// BlueZ session (kept alive for adapter lifetime)
+    #[allow(dead_code)]
     session: Session,
     /// BlueZ adapter
     adapter: Adapter,
+    /// Cached adapter address (queried once at creation)
+    cached_address: Option<String>,
+    /// Cached power state (updated on power changes)
+    cached_powered: std::sync::atomic::AtomicBool,
     /// Configuration
     config: RwLock<Option<BleConfig>>,
     /// Internal state
@@ -78,7 +84,7 @@ impl BluerAdapter {
         let adapter = session
             .default_adapter()
             .await
-            .map_err(|e| BleError::AdapterNotAvailable)?;
+            .map_err(|_| BleError::AdapterNotAvailable)?;
 
         // Check if adapter is powered
         let powered = adapter.is_powered().await.map_err(|e| {
@@ -92,11 +98,16 @@ impl BluerAdapter {
             })?;
         }
 
+        // Cache the adapter address
+        let cached_address = adapter.address().await.ok().map(|a| a.to_string());
+
         let (shutdown_tx, _) = broadcast::channel(1);
 
         Ok(Self {
             session,
             adapter,
+            cached_address,
+            cached_powered: std::sync::atomic::AtomicBool::new(true), // We ensured it's powered above
             config: RwLock::new(None),
             state: RwLock::new(AdapterState::default()),
             adv_handle: RwLock::new(None),
@@ -126,11 +137,16 @@ impl BluerAdapter {
             })?;
         }
 
+        // Cache the adapter address
+        let cached_address = adapter.address().await.ok().map(|a| a.to_string());
+
         let (shutdown_tx, _) = broadcast::channel(1);
 
         Ok(Self {
             session,
             adapter,
+            cached_address,
+            cached_powered: std::sync::atomic::AtomicBool::new(true),
             config: RwLock::new(None),
             state: RwLock::new(AdapterState::default()),
             adv_handle: RwLock::new(None),
@@ -162,13 +178,15 @@ impl BluerAdapter {
     }
 
     /// Parse HIVE beacon from advertising data
+    /// TODO: Use this method instead of inline parsing in discovery loop
+    #[allow(dead_code)]
     fn parse_hive_beacon(
         &self,
         address: Address,
         name: Option<String>,
         rssi: i16,
         service_data: &HashMap<bluer::Uuid, Vec<u8>>,
-        manufacturer_data: &HashMap<u16, Vec<u8>>,
+        _manufacturer_data: &HashMap<u16, Vec<u8>>,
     ) -> Option<DiscoveredDevice> {
         // Check if this is a HIVE node by looking for our service UUID
         let is_hive = service_data.contains_key(&HIVE_SERVICE_UUID);
@@ -248,14 +266,12 @@ impl BleAdapter for BluerAdapter {
     }
 
     fn is_powered(&self) -> bool {
-        // Use cached value or check synchronously
-        // Note: bluer's is_powered() is async, so we'd need to poll it
-        true // Assume powered since we check in new()
+        self.cached_powered
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn address(&self) -> Option<String> {
-        // Would need async to get this from bluer
-        None
+        self.cached_address.clone()
     }
 
     async fn start_scan(&self, config: &DiscoveryConfig) -> Result<()> {
@@ -283,7 +299,6 @@ impl BleAdapter for BluerAdapter {
 
         // Spawn task to handle discovered devices
         let callback = self.discovery_callback.read().await.clone();
-        let state = Arc::new(self.state.read().await);
         let adapter = self.adapter.clone();
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
@@ -304,8 +319,6 @@ impl BleAdapter for BluerAdapter {
                                     // Get device properties
                                     let name = device.name().await.ok().flatten();
                                     let rssi = device.rssi().await.ok().flatten().unwrap_or(0);
-                                    let service_data = device.service_data().await.ok().flatten().unwrap_or_default();
-                                    let manufacturer_data = device.manufacturer_data().await.ok().flatten().unwrap_or_default();
 
                                     let discovered = DiscoveredDevice {
                                         address: addr.to_string(),
@@ -352,7 +365,7 @@ impl BleAdapter for BluerAdapter {
         Ok(())
     }
 
-    async fn start_advertising(&self, config: &DiscoveryConfig) -> Result<()> {
+    async fn start_advertising(&self, _config: &DiscoveryConfig) -> Result<()> {
         let ble_config = self.config.read().await;
         let ble_config = ble_config
             .as_ref()
