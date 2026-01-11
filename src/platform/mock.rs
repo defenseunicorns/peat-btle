@@ -827,7 +827,7 @@ mod tests {
         let received = Arc::new(Mutex::new(Vec::new()));
         let received_clone = received.clone();
 
-        adapter.set_connection_callback(Some(Box::new(move |node_id, event| {
+        adapter.set_connection_callback(Some(Arc::new(move |node_id, event| {
             if let ConnectionEvent::DataReceived { data } = event {
                 received_clone.lock().unwrap().push((node_id, data));
             }
