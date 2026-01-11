@@ -47,12 +47,15 @@ pub struct PeripheralManager {
     event_rx: Arc<RwLock<mpsc::Receiver<PeripheralManagerEvent>>>,
     /// Whether advertising is active
     advertising: Arc<RwLock<bool>>,
-    /// Registered services
+    /// Registered services (metadata)
     services: Arc<RwLock<HashMap<String, ServiceInfo>>>,
     /// Subscribed centrals by characteristic UUID
     subscribers: Arc<RwLock<HashMap<String, Vec<String>>>>,
     /// Stored characteristics for notifications (uses std RwLock since Retained is not Send)
     characteristics: Arc<StdRwLock<HashMap<String, Retained<CBMutableCharacteristic>>>>,
+    /// Stored CB services - MUST be kept alive while registered with CoreBluetooth
+    /// CoreBluetooth does not retain services, so we must hold them here
+    cb_services: Arc<StdRwLock<Vec<Retained<CBMutableService>>>>,
 }
 
 // SAFETY: PeripheralManager uses interior mutability via Arc<RwLock<_>> for all
@@ -183,6 +186,7 @@ impl PeripheralManager {
             services: Arc::new(RwLock::new(HashMap::new())),
             subscribers: Arc::new(RwLock::new(HashMap::new())),
             characteristics: Arc::new(StdRwLock::new(HashMap::new())),
+            cb_services: Arc::new(StdRwLock::new(Vec::new())),
         })
     }
 
@@ -239,7 +243,7 @@ impl PeripheralManager {
             }
 
             // Create and configure service
-            unsafe {
+            let service = unsafe {
                 // Create service UUID
                 let service_uuid = {
                     let uuid_str = NSString::from_str(&HIVE_SERVICE_UUID.to_string());
@@ -268,6 +272,17 @@ impl PeripheralManager {
 
                 // Add service to manager
                 self.manager.addService(&service);
+
+                service
+            };
+
+            // IMPORTANT: Store the service to keep it alive!
+            // CoreBluetooth does NOT retain services passed to addService, so if we don't
+            // hold a reference, the service gets deallocated and causes a segfault when
+            // CoreBluetooth tries to access it later.
+            {
+                let mut cb_services = self.cb_services.write().unwrap();
+                cb_services.push(service);
             }
 
             log::info!(
@@ -433,6 +448,7 @@ impl PeripheralManager {
 
         self.services.write().await.clear();
         self.characteristics.write().unwrap().clear();
+        self.cb_services.write().unwrap().clear();
         log::info!("Removed all GATT services");
         Ok(())
     }
