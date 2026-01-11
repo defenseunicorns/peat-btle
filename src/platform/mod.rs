@@ -70,10 +70,10 @@ pub struct DiscoveredDevice {
 }
 
 /// Callback for discovered devices
-pub type DiscoveryCallback = Box<dyn Fn(DiscoveredDevice) + Send + Sync>;
+pub type DiscoveryCallback = std::sync::Arc<dyn Fn(DiscoveredDevice) + Send + Sync>;
 
 /// Callback for connection events
-pub type ConnectionCallback = Box<dyn Fn(NodeId, ConnectionEvent) + Send + Sync>;
+pub type ConnectionCallback = std::sync::Arc<dyn Fn(NodeId, ConnectionEvent) + Send + Sync>;
 
 /// Connection event types
 #[derive(Debug, Clone)]

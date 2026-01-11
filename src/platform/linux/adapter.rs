@@ -279,8 +279,8 @@ impl BleAdapter for BluerAdapter {
         use bluer::DiscoveryTransport;
 
         let filter = DiscoveryFilter {
-            transport: Some(DiscoveryTransport::Le),
-            duplicate_data: Some(!config.filter_duplicates),
+            transport: DiscoveryTransport::Le,
+            duplicate_data: !config.filter_duplicates,
             ..Default::default()
         };
 
