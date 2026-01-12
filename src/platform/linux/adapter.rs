@@ -320,23 +320,33 @@ impl BleAdapter for BluerAdapter {
                                     let name = device.name().await.ok().flatten();
                                     let rssi = device.rssi().await.ok().flatten().unwrap_or(0);
 
+                                    // Get service UUIDs from the device
+                                    let service_uuids = device.uuids().await.ok().flatten().unwrap_or_default();
+
+                                    // Check if HIVE service UUID is present
+                                    let has_hive_service = service_uuids.contains(&HIVE_SERVICE_UUID);
+
+                                    // Check if name indicates HIVE node (fallback)
+                                    let name_indicates_hive = name.as_ref().map(|n| n.starts_with("HIVE-")).unwrap_or(false);
+
+                                    // HIVE node detection: prefer service UUID, fallback to name
+                                    let is_hive_node = has_hive_service || name_indicates_hive;
+
                                     let discovered = DiscoveredDevice {
                                         address: addr.to_string(),
                                         name: name.clone(),
                                         rssi: rssi as i8,
-                                        is_hive_node: name.as_ref().map(|n| n.starts_with("HIVE-")).unwrap_or(false),
+                                        is_hive_node,
                                         node_id: name.and_then(|n| {
-                                            if n.starts_with("HIVE-") {
-                                                NodeId::parse(&n[5..])
-                                            } else {
-                                                None
-                                            }
+                                            n.strip_prefix("HIVE-").and_then(NodeId::parse)
                                         }),
                                         adv_data: Vec::new(),
                                     };
 
-                                    log::debug!("Discovered device: {} (HIVE: {})",
-                                        discovered.address, discovered.is_hive_node);
+                                    log::debug!(
+                                        "Discovered device: {} (HIVE: {}, service_uuid: {}, name: {})",
+                                        discovered.address, is_hive_node, has_hive_service, name_indicates_hive
+                                    );
 
                                     if let Some(ref cb) = callback {
                                         cb(discovered);

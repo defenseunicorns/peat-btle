@@ -466,39 +466,43 @@ impl PeripheralManager {
         let local_name = format!("HIVE-{:08X}", node_id.as_u32());
 
         // Build advertisement data dictionary with local name and service UUIDs
-        // This is required for Android devices to discover this iOS peripheral
+        // This is required for other platforms (Linux, Android) to discover this device
         unsafe {
             // Create the local name string
             let name_str = NSString::from_str(&local_name);
 
-            // Create the service UUID
+            // Create the service UUID - CRITICAL for cross-platform discovery
             let service_uuid_str = NSString::from_str(&HIVE_SERVICE_UUID.to_string());
-            let _service_uuid = CBUUID::UUIDWithString(&service_uuid_str);
+            let service_uuid = CBUUID::UUIDWithString(&service_uuid_str);
 
-            // NOTE: We previously had incorrect Retained pointer handling here that caused
-            // use-after-free (double-free). The problematic pattern was:
-            //   let ptr = Retained::as_ptr(&obj).cast();
-            //   Retained::from_raw(ptr)  // Creates second owner of same memory!
-            //
-            // For now, we rely on CoreBluetooth automatically including the service UUID
-            // in advertisements since it was registered via addService(). The local name
-            // is handled separately below.
-            //
-            // TODO: If explicit advertisement data is needed, use proper retain semantics:
-            //   let retained_ptr: *mut AnyObject = msg_send![Retained::as_ptr(&obj), retain];
-            //   Retained::from_raw(retained_ptr)  // Now properly retained
+            // Create an array containing the service UUID for advertisement
+            // Use proper retain semantics to avoid use-after-free
+            let uuid_array: Retained<NSArray<CBUUID>> = {
+                let uuid_ptr: *mut CBUUID = msg_send![Retained::as_ptr(&service_uuid), retain];
+                NSArray::from_vec(vec![Retained::from_raw(uuid_ptr).unwrap()])
+            };
 
-            // Build the advertisement dictionary with just the local name
-            // Create keys and values arrays with proper retain semantics
+            // Build the advertisement dictionary with local name AND service UUIDs
+            // Keys: CBAdvertisementDataLocalNameKey, CBAdvertisementDataServiceUUIDsKey
+            // Values: name_str, uuid_array
             let keys: Retained<NSArray<NSString>> = {
-                // Properly retain the static key before creating a new Retained
-                let key_ptr: *mut NSString = msg_send![CBAdvertisementDataLocalNameKey, retain];
-                NSArray::from_vec(vec![Retained::from_raw(key_ptr).unwrap()])
+                let name_key_ptr: *mut NSString =
+                    msg_send![CBAdvertisementDataLocalNameKey, retain];
+                let uuid_key_ptr: *mut NSString =
+                    msg_send![CBAdvertisementDataServiceUUIDsKey, retain];
+                NSArray::from_vec(vec![
+                    Retained::from_raw(name_key_ptr).unwrap(),
+                    Retained::from_raw(uuid_key_ptr).unwrap(),
+                ])
             };
             let values: Retained<NSArray<AnyObject>> = {
-                // Properly retain the name string before creating a new Retained
                 let name_ptr: *mut AnyObject = msg_send![Retained::as_ptr(&name_str), retain];
-                NSArray::from_vec(vec![Retained::from_raw(name_ptr).unwrap()])
+                let uuid_array_ptr: *mut AnyObject =
+                    msg_send![Retained::as_ptr(&uuid_array), retain];
+                NSArray::from_vec(vec![
+                    Retained::from_raw(name_ptr).unwrap(),
+                    Retained::from_raw(uuid_array_ptr).unwrap(),
+                ])
             };
 
             // Use dictionaryWithObjects:forKeys: class method

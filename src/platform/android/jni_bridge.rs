@@ -404,7 +404,7 @@ impl JniBridge {
 ///
 /// JNI Signature: (Landroid/content/Context;J)J
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveBtle_nativeInit<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveBtle_nativeInit<'local>(
     _env: JNIEnv<'local>,
     _this: JObject<'local>,
     _context: JObject<'local>,
@@ -435,7 +435,7 @@ pub extern "system" fn Java_com_hive_btle_HiveBtle_nativeInit<'local>(
 ///
 /// JNI Signature: (J)V
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveBtle_nativeShutdown<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveBtle_nativeShutdown<'local>(
     _env: JNIEnv<'local>,
     _this: JObject<'local>,
     handle: jlong,
@@ -450,7 +450,7 @@ pub extern "system" fn Java_com_hive_btle_HiveBtle_nativeShutdown<'local>(
 ///
 /// JNI Signature: (Ljava/lang/String;)J
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveBtle_nativeDeriveNodeId<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveBtle_nativeDeriveNodeId<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     mac_address: JString<'local>,
@@ -489,7 +489,7 @@ pub extern "system" fn Java_com_hive_btle_HiveBtle_nativeDeriveNodeId<'local>(
 ///
 /// JNI Signature: (ILjava/lang/String;Ljava/lang/String;I[Ljava/lang/String;[BJ)V
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_ScanCallbackProxy_nativeOnScanResult<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_ScanCallbackProxy_nativeOnScanResult<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     _callback_type: jint,
@@ -590,7 +590,7 @@ pub extern "system" fn Java_com_hive_btle_ScanCallbackProxy_nativeOnScanResult<'
 ///
 /// Called from Kotlin ScanCallbackProxy.nativeOnScanFailed()
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_ScanCallbackProxy_nativeOnScanFailed<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_ScanCallbackProxy_nativeOnScanFailed<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     error_code: jint,
@@ -612,7 +612,7 @@ pub extern "system" fn Java_com_hive_btle_ScanCallbackProxy_nativeOnScanFailed<'
 ///
 /// Called from Kotlin GattCallbackProxy.nativeOnConnectionStateChange()
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnConnectionStateChange<
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnConnectionStateChange<
     'local,
 >(
     mut env: JNIEnv<'local>,
@@ -699,7 +699,7 @@ pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnConnectionSt
 
 /// Native callback for services discovered
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnServicesDiscovered<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnServicesDiscovered<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     connection_id: jlong,
@@ -753,7 +753,7 @@ pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnServicesDisc
 
 /// Native callback for characteristic read
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnCharacteristicRead<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnCharacteristicRead<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     connection_id: jlong,
@@ -798,7 +798,7 @@ pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnCharacterist
 
 /// Native callback for characteristic write
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnCharacteristicWrite<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnCharacteristicWrite<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     connection_id: jlong,
@@ -826,7 +826,7 @@ pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnCharacterist
 
 /// Native callback for characteristic changed (notifications)
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnCharacteristicChanged<
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnCharacteristicChanged<
     'local,
 >(
     mut env: JNIEnv<'local>,
@@ -871,7 +871,7 @@ pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnCharacterist
 
 /// Native callback for descriptor write
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnDescriptorWrite<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnDescriptorWrite<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     connection_id: jlong,
@@ -905,7 +905,7 @@ pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnDescriptorWr
 
 /// Native callback for MTU changed
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnMtuChanged(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnMtuChanged(
     _env: JNIEnv,
     _class: JClass,
     connection_id: jlong,
@@ -935,7 +935,7 @@ pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnMtuChanged(
 
 /// Native callback for PHY update
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnPhyUpdate(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnPhyUpdate(
     _env: JNIEnv,
     _class: JClass,
     connection_id: jlong,
@@ -977,7 +977,7 @@ pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnPhyUpdate(
 
 /// Native callback for RSSI read
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnReadRemoteRssi(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnReadRemoteRssi(
     _env: JNIEnv,
     _class: JClass,
     connection_id: jlong,
@@ -1011,7 +1011,7 @@ pub extern "system" fn Java_com_hive_btle_GattCallbackProxy_nativeOnReadRemoteRs
 
 /// Native callback for advertising start success
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_AdvertiseCallbackProxy_nativeOnStartSuccess(
+pub extern "system" fn Java_com_revolveteam_hive_AdvertiseCallbackProxy_nativeOnStartSuccess(
     _env: JNIEnv,
     _class: JClass,
     mode: jint,
@@ -1030,7 +1030,7 @@ pub extern "system" fn Java_com_hive_btle_AdvertiseCallbackProxy_nativeOnStartSu
 
 /// Native callback for advertising start failure
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_AdvertiseCallbackProxy_nativeOnStartFailure<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_AdvertiseCallbackProxy_nativeOnStartFailure<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     error_code: jint,
@@ -1048,9 +1048,8 @@ pub extern "system" fn Java_com_hive_btle_AdvertiseCallbackProxy_nativeOnStartFa
 // JNI Native Method Exports - HiveMesh (Centralized Peer/Document Management)
 // ============================================================================
 
-use crate::hive_mesh::{DataReceivedResult, HiveMesh, HiveMeshConfig};
-use crate::observer::{DisconnectReason, HiveEvent, HiveObserver, ObserverManager};
-use crate::peer::HivePeer;
+use crate::hive_mesh::{HiveMesh, HiveMeshConfig};
+use crate::observer::DisconnectReason as ObserverDisconnectReason;
 use crate::sync::crdt::PeripheralType;
 use std::sync::Arc;
 
@@ -1066,7 +1065,7 @@ fn get_mesh_storage() -> &'static Mutex<HashMap<i64, Arc<HiveMesh>>> {
 ///
 /// JNI Signature: (JLjava/lang/String;Ljava/lang/String;I)J
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeCreate<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeCreate<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     node_id: jlong,
@@ -1115,7 +1114,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeCreate<'local>(
 ///
 /// JNI Signature: (J)V
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeDestroy<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeDestroy<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1130,7 +1129,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeDestroy<'local>(
 ///
 /// JNI Signature: (J)Ljava/lang/String;
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeGetDeviceName<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetDeviceName<'local>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1150,7 +1149,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeGetDeviceName<'local>(
 ///
 /// JNI Signature: (JJ)[B
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeSendEmergency<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendEmergency<'local>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1176,7 +1175,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeSendEmergency<'local>(
 ///
 /// JNI Signature: (JJ)[B
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeSendAck<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendAck<'local>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1200,7 +1199,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeSendAck<'local>(
 ///
 /// JNI Signature: (J)[B
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeBuildDocument<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeBuildDocument<'local>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1223,7 +1222,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeBuildDocument<'local>(
 ///
 /// JNI Signature: (JLjava/lang/String;Ljava/lang/String;ILjava/lang/String;J)Z
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeOnBleDiscovered<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeOnBleDiscovered<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1275,7 +1274,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeOnBleDiscovered<'local>
 ///
 /// JNI Signature: (JLjava/lang/String;J)J
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeOnBleConnected<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeOnBleConnected<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1302,7 +1301,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeOnBleConnected<'local>(
 ///
 /// JNI Signature: (JLjava/lang/String;I)J
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeOnBleDisconnected<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeOnBleDisconnected<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1315,12 +1314,12 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeOnBleDisconnected<'loca
         .unwrap_or_default();
 
     let disconnect_reason = match reason {
-        0 => DisconnectReason::LocalRequest,
-        1 => DisconnectReason::RemoteRequest,
-        2 => DisconnectReason::Timeout,
-        3 => DisconnectReason::LinkLoss,
-        4 => DisconnectReason::ConnectionFailed,
-        _ => DisconnectReason::Unknown,
+        0 => ObserverDisconnectReason::LocalRequest,
+        1 => ObserverDisconnectReason::RemoteRequest,
+        2 => ObserverDisconnectReason::Timeout,
+        3 => ObserverDisconnectReason::LinkLoss,
+        4 => ObserverDisconnectReason::ConnectionFailed,
+        _ => ObserverDisconnectReason::Unknown,
     };
 
     let result = if let Ok(storage) = get_mesh_storage().lock() {
@@ -1340,7 +1339,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeOnBleDisconnected<'loca
 ///
 /// JNI Signature: (JLjava/lang/String;[BJ)[B
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeOnBleDataReceived<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeOnBleDataReceived<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1384,7 +1383,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeOnBleDataReceived<'loca
 ///
 /// JNI Signature: (JJ)[B
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeTick<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeTick<'local>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1408,7 +1407,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeTick<'local>(
 ///
 /// JNI Signature: (J)I
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeGetPeerCount<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetPeerCount<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1427,7 +1426,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeGetPeerCount<'local>(
 ///
 /// JNI Signature: (J)I
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeGetConnectedCount<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetConnectedCount<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1446,7 +1445,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeGetConnectedCount<'loca
 ///
 /// JNI Signature: (J)J
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeGetTotalCount<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetTotalCount<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1465,7 +1464,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeGetTotalCount<'local>(
 ///
 /// JNI Signature: (J)Z
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeIsEmergencyActive<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeIsEmergencyActive<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1484,7 +1483,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeIsEmergencyActive<'loca
 ///
 /// JNI Signature: (J)Z
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeIsAckActive<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeIsAckActive<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1503,7 +1502,7 @@ pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeIsAckActive<'local>(
 ///
 /// JNI Signature: (JLjava/lang/String;)Z
 #[no_mangle]
-pub extern "system" fn Java_com_hive_btle_HiveMesh_nativeMatchesMesh<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeMatchesMesh<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,

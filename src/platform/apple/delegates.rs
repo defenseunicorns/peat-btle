@@ -17,16 +17,16 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{declare_class, msg_send_id, mutability, ClassType, DeclaredClass};
 use objc2_core_bluetooth::{
-    CBATTError, CBATTRequest, CBCentralManager, CBCentralManagerDelegate, CBCharacteristic,
-    CBPeripheral, CBPeripheralDelegate, CBPeripheralManager, CBPeripheralManagerDelegate,
-    CBService,
+    CBATTError, CBATTRequest, CBAdvertisementDataServiceUUIDsKey, CBCentralManager,
+    CBCentralManagerDelegate, CBCharacteristic, CBPeripheral, CBPeripheralDelegate,
+    CBPeripheralManager, CBPeripheralManagerDelegate, CBService, CBUUID,
 };
 use objc2_foundation::{
     NSArray, NSData, NSDictionary, NSError, NSNumber, NSObject, NSObjectProtocol, NSString,
 };
 use tokio::sync::mpsc;
 
-use crate::NodeId;
+use crate::{NodeId, HIVE_SERVICE_UUID};
 
 // ============================================================================
 // Event Types
@@ -45,8 +45,10 @@ pub enum CentralEvent {
         name: Option<String>,
         /// RSSI in dBm
         rssi: i8,
-        /// Advertisement data
+        /// Advertisement data (raw bytes, if any)
         advertisement_data: Vec<u8>,
+        /// Service UUIDs advertised by the peripheral
+        service_uuids: Vec<String>,
         /// Is this a HIVE node?
         is_hive_node: bool,
         /// Parsed node ID if HIVE node
@@ -262,8 +264,24 @@ declare_class!(
             let name = unsafe { peripheral.name().map(|s| s.to_string()) };
             let rssi_val = rssi.as_i8();
 
-            // Check if this is a HIVE node by looking at the name
-            let is_hive_node = name.as_ref().map(|n| n.starts_with("HIVE-")).unwrap_or(false);
+            // Parse service UUIDs from advertisement data
+            let service_uuids = unsafe {
+                Self::parse_service_uuids(advertisement_data)
+            };
+
+            // Check if HIVE service UUID is present in the advertisement
+            let hive_uuid_str = HIVE_SERVICE_UUID.to_string().to_uppercase();
+            let has_hive_service = service_uuids.iter().any(|uuid| {
+                uuid.to_uppercase() == hive_uuid_str
+            });
+
+            // Check if this is a HIVE node by:
+            // 1. Presence of HIVE service UUID (preferred, reliable)
+            // 2. Name starting with "HIVE-" (fallback for legacy/compatibility)
+            let name_indicates_hive = name.as_ref().map(|n| n.starts_with("HIVE-")).unwrap_or(false);
+            let is_hive_node = has_hive_service || name_indicates_hive;
+
+            // Parse node ID from name if present
             let node_id = name.as_ref().and_then(|n| {
                 if n.starts_with("HIVE-") {
                     NodeId::parse(&n[5..])
@@ -273,8 +291,8 @@ declare_class!(
             });
 
             log::debug!(
-                "Discovered peripheral: {} ({:?}) RSSI: {} HIVE: {}",
-                identifier, name, rssi_val, is_hive_node
+                "Discovered peripheral: {} ({:?}) RSSI: {} HIVE: {} (service_uuid: {}, name: {})",
+                identifier, name, rssi_val, is_hive_node, has_hive_service, name_indicates_hive
             );
 
             // Store the peripheral for later connection
@@ -288,7 +306,8 @@ declare_class!(
                         identifier,
                         name,
                         rssi: rssi_val,
-                        advertisement_data: Vec::new(), // TODO: Parse advertisement data
+                        advertisement_data: Vec::new(),
+                        service_uuids,
                         is_hive_node,
                         node_id,
                     });
@@ -396,6 +415,35 @@ impl RustCentralManagerDelegate {
             .lock()
             .ok()
             .and_then(|mut guard| guard.remove(identifier))
+    }
+
+    /// Parse service UUIDs from CoreBluetooth advertisement data dictionary
+    ///
+    /// # Safety
+    /// Caller must ensure advertisement_data is a valid NSDictionary pointer
+    unsafe fn parse_service_uuids(
+        advertisement_data: &NSDictionary<NSString, objc2::runtime::AnyObject>,
+    ) -> Vec<String> {
+        let mut service_uuids = Vec::new();
+
+        // Get the service UUIDs array from the advertisement dictionary
+        // Key: kCBAdvDataServiceUUIDs (CBAdvertisementDataServiceUUIDsKey)
+        let uuids_obj = advertisement_data.objectForKey(CBAdvertisementDataServiceUUIDsKey);
+
+        if let Some(uuids_any) = uuids_obj {
+            // The value should be an NSArray of CBUUID objects
+            // We need to cast the AnyObject to NSArray<CBUUID>
+            let uuids_ptr = uuids_any as *const objc2::runtime::AnyObject;
+            let uuids_array: &NSArray<CBUUID> = &*(uuids_ptr as *const NSArray<CBUUID>);
+
+            for i in 0..uuids_array.len() {
+                let uuid = &uuids_array[i];
+                let uuid_string = uuid.UUIDString().to_string();
+                service_uuids.push(uuid_string);
+            }
+        }
+
+        service_uuids
     }
 }
 

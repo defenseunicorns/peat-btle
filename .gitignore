@@ -14,3 +14,10 @@ Thumbs.db
 
 # Local scripts
 /scripts/
+
+# Android build artifacts
+android/.gradle/
+android/build/
+android/local.properties
+android/src/main/jniLibs/
+
