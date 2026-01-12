@@ -1,4 +1,4 @@
-package com.hive.btle
+package com.revolveteam.hive
 
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
@@ -34,6 +34,13 @@ interface HiveDocumentListener {
  * events to the hive-btle Rust implementation. It handles connection state
  * changes, service discovery, characteristic reads/writes, and notifications.
  *
+ * ## MTU Negotiation
+ *
+ * BLE has a default ATT MTU of 23 bytes (~20 byte payload). HiveDocument
+ * structures can exceed this limit, so MTU negotiation is required.
+ * This callback automatically requests a larger MTU (185 bytes) after
+ * connecting, then triggers service discovery after MTU is negotiated.
+ *
  * Usage:
  * ```kotlin
  * val proxy = GattCallbackProxy(connectionId)
@@ -49,6 +56,13 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
      */
     var documentListener: HiveDocumentListener? = null
 
+    /**
+     * Current negotiated MTU for this connection.
+     * Default BLE ATT MTU is 23 bytes (20 byte payload).
+     */
+    var negotiatedMtu: Int = 23
+        private set
+
     companion object {
         private const val TAG = "HiveBtle.GattCallback"
 
@@ -60,6 +74,18 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         const val STATE_CONNECTING = BluetoothProfile.STATE_CONNECTING
         const val STATE_CONNECTED = BluetoothProfile.STATE_CONNECTED
         const val STATE_DISCONNECTING = BluetoothProfile.STATE_DISCONNECTING
+
+        /**
+         * Requested MTU size for HIVE connections.
+         *
+         * HiveDocument minimum size: 12 bytes (header only, no counters)
+         * HiveDocument with 1 GCounter entry: 24 bytes
+         * HiveDocument with location data: ~40-60 bytes
+         *
+         * 185 bytes provides good headroom while maintaining compatibility
+         * with most BLE devices. Maximum supported is 517 bytes (BLE 5.0).
+         */
+        const val REQUESTED_MTU = 185
 
         init {
             try {
@@ -93,10 +119,16 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         // Notify listener
         documentListener?.onConnectionStateChanged(newState == STATE_CONNECTED)
 
-        // Auto-discover services on connect
+        // On connect: request larger MTU first (service discovery happens in onMtuChanged)
+        // This is required because HiveDocument can exceed the default 23-byte BLE MTU
         if (newState == STATE_CONNECTED && status == GATT_SUCCESS) {
-            Log.d(TAG, "Starting service discovery")
-            gatt.discoverServices()
+            Log.d(TAG, "Requesting MTU: $REQUESTED_MTU")
+            val mtuRequested = gatt.requestMtu(REQUESTED_MTU)
+            if (!mtuRequested) {
+                // MTU request failed, fall back to immediate service discovery
+                Log.w(TAG, "MTU request failed, proceeding with default MTU")
+                gatt.discoverServices()
+            }
         }
     }
 
@@ -292,13 +324,26 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
     /**
      * Called when the MTU for a connection changes.
      *
+     * After MTU negotiation completes, service discovery is triggered.
+     * This ensures we have a larger MTU before exchanging HiveDocument data.
+     *
      * @param gatt The GATT client
      * @param mtu The new MTU size
      * @param status Status of the MTU request
      */
     override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-        Log.i(TAG, "MTU changed: $mtu (status=$status)")
+        if (status == GATT_SUCCESS) {
+            negotiatedMtu = mtu
+            Log.i(TAG, "MTU negotiated: $mtu bytes")
+        } else {
+            Log.w(TAG, "MTU negotiation failed (status=$status), using default: $negotiatedMtu")
+        }
+
         nativeOnMtuChanged(connectionId, mtu, status)
+
+        // Proceed with service discovery now that MTU is negotiated
+        Log.d(TAG, "Starting service discovery (MTU=$negotiatedMtu)")
+        gatt.discoverServices()
     }
 
     /**

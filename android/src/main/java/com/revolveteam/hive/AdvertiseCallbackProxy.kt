@@ -1,4 +1,4 @@
-package com.hive.btle
+package com.revolveteam.hive
 
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseSettings

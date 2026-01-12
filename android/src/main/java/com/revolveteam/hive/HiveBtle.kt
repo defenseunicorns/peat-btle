@@ -1,4 +1,4 @@
-package com.hive.btle
+package com.revolveteam.hive
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
@@ -310,6 +310,7 @@ class HiveBtle(
     private var meshListener: HiveMeshListener? = null
     private val handler = Handler(Looper.getMainLooper())
     private var localDocument: HiveDocument? = null
+    private var localPeripheral: HivePeripheral? = null  // Persistent peripheral state (location, health, etc.)
     private var localCounter = mutableListOf<GCounterEntry>()
 
     // Mesh configuration
@@ -504,7 +505,7 @@ class HiveBtle(
      * @param txPower TX power level (default: medium)
      */
     fun startAdvertising(
-        mode: Int = AdvertiseSettings.ADVERTISE_MODE_BALANCED,
+        mode: Int = AdvertiseSettings.ADVERTISE_MODE_LOW_POWER,
         txPower: Int = AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
     ) {
         checkInitialized()
@@ -525,17 +526,30 @@ class HiveBtle(
             .setTimeout(0) // Advertise indefinitely
             .build()
 
-        // Build advertise data - just service UUID to stay within 31-byte limit
-        // Full 128-bit UUID + service data exceeds the limit
+        // Build service data containing node ID and mesh ID for reliable discovery
+        // Format: [nodeId:4 bytes BE][meshId: up to 8 chars UTF-8]
+        val meshIdBytes = meshId.toByteArray(Charsets.UTF_8).take(8).toByteArray()
+        val serviceDataBytes = ByteArray(4 + meshIdBytes.size)
+        serviceDataBytes[0] = ((nodeId shr 24) and 0xFF).toByte()
+        serviceDataBytes[1] = ((nodeId shr 16) and 0xFF).toByte()
+        serviceDataBytes[2] = ((nodeId shr 8) and 0xFF).toByte()
+        serviceDataBytes[3] = (nodeId and 0xFF).toByte()
+        meshIdBytes.copyInto(serviceDataBytes, 4)
+
+        // Build advertise data with 16-bit service UUID alias and service data
+        // Using 16-bit UUID (0xF47A) saves space vs full 128-bit UUID (31-byte BLE limit)
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(false) // Name goes in scan response
-            .addServiceUuid(ParcelUuid(HIVE_SERVICE_UUID))
+            .addServiceUuid(ParcelUuid(HIVE_SERVICE_UUID_16))
+            .addServiceData(ParcelUuid(HIVE_SERVICE_UUID_16), serviceDataBytes)
             .build()
 
-        // Build scan response with device name (contains mesh ID and node ID)
+        // Build scan response with device name (for debugging/visibility)
         val scanResponse = AdvertiseData.Builder()
             .setIncludeDeviceName(true)
             .build()
+
+        Log.d(TAG, "Advertising service data: ${serviceDataBytes.joinToString(" ") { String.format("%02X", it) }}")
 
         // Create callback proxy
         advertiseCallback = AdvertiseCallbackProxy()
@@ -724,8 +738,8 @@ class HiveBtle(
                 Log.d(TAG, "Read request from $address for ${characteristic.uuid}")
 
                 if (characteristic.uuid == HIVE_CHAR_DOCUMENT) {
-                    // Return current document state
-                    val documentBytes = HiveDocument.encode(nodeId, localCounter, null)
+                    // Return current document state with peripheral data (location, health, etc.)
+                    val documentBytes = HiveDocument.encode(nodeId, localCounter, localPeripheral)
                     val response = if (offset > documentBytes.size) {
                         ByteArray(0)
                     } else {
@@ -1055,28 +1069,43 @@ class HiveBtle(
      * Send an event to all peers in the mesh.
      *
      * @param eventType The event to broadcast
+     * @param location Optional location to include in the broadcast
+     * @param callsign Optional callsign to include
+     * @param battery Optional battery percentage (0-100)
+     * @param heartRate Optional heart rate
      */
-    fun sendEvent(eventType: HiveEventType) {
+    fun sendEvent(
+        eventType: HiveEventType,
+        location: HiveLocation? = null,
+        callsign: String = "ANDROID",
+        battery: Int = 100,
+        heartRate: Int? = null
+    ) {
         if (!isMeshRunning) {
             Log.w(TAG, "Mesh not running, cannot send event")
             return
         }
 
-        Log.i(TAG, "Broadcasting event: $eventType to ${connections.size} peripherals and ${connectedCentrals.size} centrals")
+        Log.i(TAG, "Broadcasting event: $eventType to ${connections.size} peripherals and ${connectedCentrals.size} centrals" +
+                (location?.let { " with location (${it.latitude}, ${it.longitude})" } ?: ""))
 
         // Increment our counter
         incrementLocalCounter()
 
-        // Create document with event
+        // Create peripheral with current state and store it for future sync cycles
         val peripheral = HivePeripheral(
             id = nodeId,
             parentNode = 0,
             peripheralType = HivePeripheralType.SOLDIER_SENSOR,
-            callsign = "ANDROID",
-            health = HiveHealthStatus(100, null, 0, 0),
+            callsign = callsign.take(12),
+            health = HiveHealthStatus(battery, heartRate, 0, 0),
             lastEvent = HivePeripheralEvent(eventType, System.currentTimeMillis()),
+            location = location,
             timestamp = System.currentTimeMillis()
         )
+
+        // Store the peripheral so syncWithPeers() and read requests use it
+        localPeripheral = peripheral
 
         val documentBytes = HiveDocument.encode(nodeId, localCounter, peripheral)
 
@@ -1355,8 +1384,12 @@ class HiveBtle(
     private fun syncWithPeers() {
         if (connections.isEmpty() && connectedCentrals.isEmpty()) return
 
-        // Create sync document (no event, just counter state - don't increment on sync)
-        val documentBytes = HiveDocument.encode(nodeId, localCounter, null)
+        // Create sync document with persistent peripheral state (location, health, etc.)
+        // This ensures peers always receive our latest state, not just counter updates
+        val documentBytes = HiveDocument.encode(nodeId, localCounter, localPeripheral)
+
+        val hasLoc = localPeripheral?.location != null
+        Log.d(TAG, "syncWithPeers: ${documentBytes.size} bytes, hasPeripheral=${localPeripheral != null}, hasLocation=$hasLoc")
 
         // Send to peripherals we connected to
         for ((address, gatt) in connections) {
@@ -1936,8 +1969,53 @@ data class HivePeripheralEvent(
 }
 
 /**
+ * HIVE location data.
+ */
+data class HiveLocation(
+    val latitude: Float,
+    val longitude: Float,
+    val altitude: Float
+) {
+    companion object {
+        const val SIZE = 12  // 3 floats x 4 bytes
+
+        fun decode(data: ByteArray, offset: Int): HiveLocation? {
+            if (data.size < offset + SIZE) return null
+            val lat = bytesToFloat(data, offset)
+            val lon = bytesToFloat(data, offset + 4)
+            val alt = bytesToFloat(data, offset + 8)
+            return HiveLocation(lat, lon, alt)
+        }
+
+        fun encode(location: HiveLocation): ByteArray {
+            val buf = ByteArray(SIZE)
+            floatToBytes(location.latitude, buf, 0)
+            floatToBytes(location.longitude, buf, 4)
+            floatToBytes(location.altitude, buf, 8)
+            return buf
+        }
+
+        private fun bytesToFloat(data: ByteArray, offset: Int): Float {
+            val bits = ((data[offset].toInt() and 0xFF)) or
+                    ((data[offset + 1].toInt() and 0xFF) shl 8) or
+                    ((data[offset + 2].toInt() and 0xFF) shl 16) or
+                    ((data[offset + 3].toInt() and 0xFF) shl 24)
+            return java.lang.Float.intBitsToFloat(bits)
+        }
+
+        private fun floatToBytes(f: Float, buf: ByteArray, offset: Int) {
+            val bits = java.lang.Float.floatToIntBits(f)
+            buf[offset] = (bits and 0xFF).toByte()
+            buf[offset + 1] = ((bits shr 8) and 0xFF).toByte()
+            buf[offset + 2] = ((bits shr 16) and 0xFF).toByte()
+            buf[offset + 3] = ((bits shr 24) and 0xFF).toByte()
+        }
+    }
+}
+
+/**
  * HIVE Peripheral data structure.
- * Format: [id:4][parent:4][type:1][callsign:12][health:4][has_event:1][event:9?][timestamp:8]
+ * Format: [id:4][parent:4][type:1][callsign:12][health:4][has_event:1][event:9?][has_location:1][location:12?][timestamp:8]
  */
 data class HivePeripheral(
     val id: Long,
@@ -1946,12 +2024,15 @@ data class HivePeripheral(
     val callsign: String,
     val health: HiveHealthStatus,
     val lastEvent: HivePeripheralEvent?,
+    val location: HiveLocation?,
     val timestamp: Long
 ) {
     companion object {
         private const val TAG = "HivePeripheral"
-        private const val MIN_SIZE = 34  // Without event
-        private const val SIZE_WITH_EVENT = 43
+        private const val MIN_SIZE = 35  // Without event or location (added 1 byte for hasLocation flag)
+        private const val SIZE_WITH_EVENT = 44  // With event, no location
+        private const val SIZE_WITH_LOCATION = 47  // No event, with location
+        private const val SIZE_WITH_BOTH = 56  // With event and location
 
         fun decode(data: ByteArray, offset: Int = 0): HivePeripheral? {
             if (data.size < offset + MIN_SIZE) {
@@ -1988,13 +2069,25 @@ data class HivePeripheral(
             pos += 1
 
             val lastEvent = if (hasEvent) {
-                if (data.size < offset + SIZE_WITH_EVENT) {
-                    Log.e(TAG, "Peripheral with event too short: ${data.size - offset} bytes (need $SIZE_WITH_EVENT)")
-                    return null
-                }
                 val event = HivePeripheralEvent.decode(data, pos)
                 pos += 9
                 event
+            } else {
+                null
+            }
+
+            // Read location flag (new field - check if we have enough bytes)
+            val hasLocation = if (data.size > pos) {
+                data[pos] != 0.toByte()
+            } else {
+                false  // Old format without location flag
+            }
+            if (data.size > pos) pos += 1
+
+            val location = if (hasLocation && data.size >= pos + HiveLocation.SIZE) {
+                val loc = HiveLocation.decode(data, pos)
+                pos += HiveLocation.SIZE
+                loc
             } else {
                 null
             }
@@ -2006,7 +2099,8 @@ data class HivePeripheral(
             val timestamp = readU64LE(data, pos)
 
             Log.d(TAG, "Decoded: id=${String.format("%08X", id)}, type=$peripheralType, " +
-                    "event=${lastEvent?.eventType}, health=${health.batteryPercent}%")
+                    "event=${lastEvent?.eventType}, health=${health.batteryPercent}%, " +
+                    "location=${location?.let { "(${it.latitude}, ${it.longitude})" } ?: "none"}")
 
             return HivePeripheral(
                 id = id,
@@ -2015,13 +2109,20 @@ data class HivePeripheral(
                 callsign = callsign,
                 health = health,
                 lastEvent = lastEvent,
+                location = location,
                 timestamp = timestamp
             )
         }
 
         fun encode(peripheral: HivePeripheral): ByteArray {
             val hasEvent = peripheral.lastEvent != null
-            val size = if (hasEvent) SIZE_WITH_EVENT else MIN_SIZE
+            val hasLocation = peripheral.location != null
+            val size = when {
+                hasEvent && hasLocation -> SIZE_WITH_BOTH
+                hasEvent -> SIZE_WITH_EVENT
+                hasLocation -> SIZE_WITH_LOCATION
+                else -> MIN_SIZE
+            }
             val buf = ByteArray(size)
             var pos = 0
 
@@ -2050,6 +2151,16 @@ data class HivePeripheral(
                 val eventBytes = HivePeripheralEvent.encode(peripheral.lastEvent)
                 eventBytes.copyInto(buf, pos)
                 pos += 9
+            }
+
+            // Write location flag and data
+            buf[pos] = if (hasLocation) 1 else 0
+            pos += 1
+
+            if (hasLocation && peripheral.location != null) {
+                val locationBytes = HiveLocation.encode(peripheral.location)
+                locationBytes.copyInto(buf, pos)
+                pos += HiveLocation.SIZE
             }
 
             writeU64LE(buf, pos, peripheral.timestamp)
@@ -2258,10 +2369,16 @@ data class HiveDocument(
          * @param nodeId This node's ID
          * @param counter GCounter entries
          * @param eventType Optional event type
+         * @param location Optional location data
          * @return Encoded document bytes
          */
-        fun encodeWithEvent(nodeId: Long, counter: List<GCounterEntry>, eventType: HiveEventType = HiveEventType.NONE): ByteArray {
-            val peripheral = if (eventType != HiveEventType.NONE) {
+        fun encodeWithEvent(
+            nodeId: Long,
+            counter: List<GCounterEntry>,
+            eventType: HiveEventType = HiveEventType.NONE,
+            location: HiveLocation? = null
+        ): ByteArray {
+            val peripheral = if (eventType != HiveEventType.NONE || location != null) {
                 val timestamp = System.currentTimeMillis()
                 HivePeripheral(
                     id = nodeId,
@@ -2269,7 +2386,8 @@ data class HiveDocument(
                     peripheralType = HivePeripheralType.SOLDIER_SENSOR,
                     callsign = "",
                     health = HiveHealthStatus(100, null, 0, 0),
-                    lastEvent = HivePeripheralEvent(eventType, timestamp),
+                    lastEvent = if (eventType != HiveEventType.NONE) HivePeripheralEvent(eventType, timestamp) else null,
+                    location = location,
                     timestamp = timestamp
                 )
             } else null
@@ -2337,4 +2455,19 @@ data class HiveDocument(
      * Get the battery percentage from peripheral health data.
      */
     fun batteryPercent(): Int? = peripheral?.health?.batteryPercent
+
+    /**
+     * Get the location from peripheral data.
+     */
+    fun location(): HiveLocation? = peripheral?.location
+
+    /**
+     * Get the callsign from peripheral data.
+     */
+    fun callsign(): String? = peripheral?.callsign?.takeIf { it.isNotEmpty() }
+
+    /**
+     * Get the heart rate from peripheral health data.
+     */
+    fun heartRate(): Int? = peripheral?.health?.heartRate
 }

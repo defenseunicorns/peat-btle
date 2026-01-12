@@ -1,4 +1,4 @@
-package com.hive.btle
+package com.revolveteam.hive
 
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
@@ -82,12 +82,20 @@ class ScanCallbackProxy(
             var meshId: String? = parsed?.first
             var nodeId: Long? = parsed?.second
 
-            // If name parsing failed, try service data (4 bytes, big-endian node ID)
-            if (nodeId == null && hiveServiceData != null && hiveServiceData.size >= 4) {
-                nodeId = ((hiveServiceData[0].toLong() and 0xFF) shl 24) or
-                    ((hiveServiceData[1].toLong() and 0xFF) shl 16) or
-                    ((hiveServiceData[2].toLong() and 0xFF) shl 8) or
-                    (hiveServiceData[3].toLong() and 0xFF)
+            // If name parsing failed, try service data
+            // Format: [nodeId:4 bytes BE][meshId: up to 8 chars UTF-8]
+            if (hiveServiceData != null && hiveServiceData.size >= 4) {
+                if (nodeId == null) {
+                    nodeId = ((hiveServiceData[0].toLong() and 0xFF) shl 24) or
+                        ((hiveServiceData[1].toLong() and 0xFF) shl 16) or
+                        ((hiveServiceData[2].toLong() and 0xFF) shl 8) or
+                        (hiveServiceData[3].toLong() and 0xFF)
+                }
+                // Extract mesh ID from service data (bytes 4+)
+                if (meshId == null && hiveServiceData.size > 4) {
+                    meshId = String(hiveServiceData, 4, hiveServiceData.size - 4, Charsets.UTF_8)
+                }
+                Log.i(TAG, "HIVE device found via service data: nodeId=${nodeId?.let { String.format("%08X", it) }}, meshId=$meshId")
             }
 
             // Debug: log service data if present
