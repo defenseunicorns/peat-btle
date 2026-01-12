@@ -2,8 +2,6 @@
 # Goa CI script for hive-btle
 # Triggered when changes are detected on the Radicle repo
 
-set -e
-
 # Ensure cargo is in PATH for systemd/service environments
 export PATH="$HOME/.cargo/bin:$PATH"
 
@@ -14,22 +12,61 @@ echo "Patch: ${GOA_PATCH_ID:-none}"
 # Pull latest changes for the patch/branch being tested
 git fetch rad
 
+# Track CI results
+FAILED=""
+PASSED=""
+
 # Run CI checks
 echo ""
 echo "--- Format Check ---"
-cargo fmt --check
+if cargo fmt --check; then
+    PASSED="${PASSED}fmt "
+else
+    FAILED="${FAILED}fmt "
+fi
 
 echo ""
 echo "--- Clippy ---"
-cargo clippy -- -D warnings
+if cargo clippy -- -D warnings; then
+    PASSED="${PASSED}clippy "
+else
+    FAILED="${FAILED}clippy "
+fi
 
 echo ""
 echo "--- Tests ---"
-cargo test
+if cargo test; then
+    PASSED="${PASSED}tests "
+else
+    FAILED="${FAILED}tests "
+fi
 
 echo ""
 echo "--- Examples ---"
-cargo check --examples
+if cargo check --examples; then
+    PASSED="${PASSED}examples "
+else
+    FAILED="${FAILED}examples "
+fi
 
 echo ""
-echo "=== CI completed successfully ==="
+
+# Report results to patch if this is a patch trigger
+if [ -n "$GOA_PATCH_ID" ]; then
+    if [ -z "$FAILED" ]; then
+        echo "=== CI passed, accepting patch ==="
+        rad patch review "$GOA_PATCH_ID" --accept -m "CI passed: ${PASSED}"
+    else
+        echo "=== CI failed, rejecting patch ==="
+        rad patch review "$GOA_PATCH_ID" --reject -m "CI failed: ${FAILED}| Passed: ${PASSED}"
+    fi
+fi
+
+# Final status
+if [ -z "$FAILED" ]; then
+    echo "=== CI completed successfully ==="
+    exit 0
+else
+    echo "=== CI failed: ${FAILED}==="
+    exit 1
+fi
