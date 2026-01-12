@@ -65,6 +65,51 @@
 //! - `coded-phy`: Enable Coded PHY for extended range
 //! - `extended-adv`: Enable extended advertising
 //!
+//! ## External Crate Usage (hive-ffi)
+//!
+//! This crate exports platform adapters for use by external crates like `hive-ffi`.
+//! Each platform adapter is conditionally exported based on feature flags:
+//!
+//! ```toml
+//! # In your Cargo.toml
+//! [dependencies]
+//! hive-btle = { version = "0.0.5", features = ["linux"] }
+//! ```
+//!
+//! Then use the appropriate adapter:
+//!
+//! ```ignore
+//! use hive_btle::{BleConfig, BluerAdapter, HiveMesh, NodeId};
+//!
+//! // Platform adapter is automatically available via feature flag
+//! let adapter = BluerAdapter::new().await?;
+//! let config = BleConfig::hive_lite(NodeId::new(0x12345678));
+//! ```
+//!
+//! ### Platform → Adapter Mapping
+//!
+//! | Feature | Target | Adapter Type |
+//! |---------|--------|--------------|
+//! | `linux` | Linux | `BluerAdapter` |
+//! | `android` | Android | `AndroidAdapter` |
+//! | `macos` | macOS | `CoreBluetoothAdapter` |
+//! | `ios` | iOS | `CoreBluetoothAdapter` |
+//! | `windows` | Windows | `WinRtBleAdapter` |
+//!
+//! ### Document Encoding for Translation Layer
+//!
+//! For translating between Automerge (full HIVE) and hive-btle documents:
+//!
+//! ```ignore
+//! use hive_btle::HiveDocument;
+//!
+//! // Decode bytes received from BLE
+//! let doc = HiveDocument::from_bytes(&received_bytes)?;
+//!
+//! // Encode for BLE transmission
+//! let bytes = doc.to_bytes();
+//! ```
+//!
 //! ## Power Profiles
 //!
 //! | Profile | Duty Cycle | Watch Battery |
@@ -125,6 +170,23 @@ pub use mesh::MeshManager;
 pub use mesh::{MeshRouter, MeshTopology, TopologyConfig, TopologyEvent};
 pub use phy::{PhyCapabilities, PhyController, PhyStrategy};
 pub use platform::{BleAdapter, ConnectionEvent, DisconnectReason, DiscoveredDevice, StubAdapter};
+
+// Platform-specific adapter re-exports for external crates (hive-ffi)
+// These allow external crates to use platform adapters via feature flags
+#[cfg(all(feature = "linux", target_os = "linux"))]
+pub use platform::linux::BluerAdapter;
+
+#[cfg(feature = "android")]
+pub use platform::android::AndroidAdapter;
+
+#[cfg(any(feature = "macos", feature = "ios"))]
+pub use platform::apple::CoreBluetoothAdapter;
+
+#[cfg(feature = "windows")]
+pub use platform::windows::WinRtBleAdapter;
+
+#[cfg(feature = "std")]
+pub use platform::mock::MockBleAdapter;
 pub use power::{BatteryState, RadioScheduler, SyncPriority};
 pub use sync::{GattSyncProtocol, SyncConfig, SyncState};
 pub use transport::{BleConnection, BluetoothLETransport, MeshTransport, TransportCapabilities};
