@@ -3,13 +3,20 @@
 use async_trait::async_trait;
 use bluer::{
     adv::{Advertisement, AdvertisementHandle},
+    gatt::local::{
+        Application, ApplicationHandle, Characteristic, CharacteristicNotify,
+        CharacteristicNotifyMethod, CharacteristicRead, CharacteristicWrite,
+        CharacteristicWriteMethod, Service,
+    },
     Adapter, Address, Session,
 };
 use std::collections::HashMap;
-use tokio::sync::{broadcast, RwLock};
+use std::sync::Arc;
+use tokio::sync::{broadcast, Mutex, RwLock};
 
 use crate::config::{BleConfig, DiscoveryConfig};
 use crate::error::{BleError, Result};
+use crate::gatt::HiveCharacteristicUuids;
 use crate::platform::{
     BleAdapter, ConnectionCallback, ConnectionEvent, DisconnectReason, DiscoveredDevice,
     DiscoveryCallback,
@@ -44,6 +51,46 @@ impl Default for AdapterState {
     }
 }
 
+/// State shared between GATT characteristic callbacks
+struct GattState {
+    /// Node ID for this adapter
+    node_id: Mutex<Option<NodeId>>,
+    /// Node info data (readable)
+    node_info: Mutex<Vec<u8>>,
+    /// Sync state data (readable, notifiable)
+    sync_state: Mutex<Vec<u8>>,
+    /// Status data (readable, notifiable)
+    status: Mutex<Vec<u8>>,
+    /// Received sync data callback
+    sync_data_callback: Mutex<Option<Box<dyn Fn(Vec<u8>) + Send + Sync>>>,
+    /// Received command callback
+    command_callback: Mutex<Option<Box<dyn Fn(Vec<u8>) + Send + Sync>>>,
+}
+
+impl GattState {
+    fn new() -> Self {
+        Self {
+            node_id: Mutex::new(None),
+            node_info: Mutex::new(Vec::new()),
+            sync_state: Mutex::new(Vec::new()),
+            status: Mutex::new(Vec::new()),
+            sync_data_callback: Mutex::new(None),
+            command_callback: Mutex::new(None),
+        }
+    }
+
+    /// Initialize state with node information
+    async fn init(&self, node_id: NodeId) {
+        *self.node_id.lock().await = Some(node_id);
+        // Initialize node_info with basic data (node_id as 4 bytes LE)
+        *self.node_info.lock().await = node_id.as_u32().to_le_bytes().to_vec();
+        // Initialize sync_state as idle (0x00)
+        *self.sync_state.lock().await = vec![0x00];
+        // Initialize status as empty
+        *self.status.lock().await = vec![0x00];
+    }
+}
+
 /// Linux/BlueZ BLE adapter
 ///
 /// Implements the `BleAdapter` trait using the `bluer` crate for
@@ -64,6 +111,10 @@ pub struct BluerAdapter {
     state: RwLock<AdapterState>,
     /// Advertisement handle (keeps advertisement alive)
     adv_handle: RwLock<Option<AdvertisementHandle>>,
+    /// GATT application handle (keeps service registered)
+    gatt_handle: RwLock<Option<ApplicationHandle>>,
+    /// GATT service state for read/write callbacks
+    gatt_state: Arc<GattState>,
     /// Discovery callback
     discovery_callback: RwLock<Option<DiscoveryCallback>>,
     /// Connection callback
@@ -111,6 +162,8 @@ impl BluerAdapter {
             config: RwLock::new(None),
             state: RwLock::new(AdapterState::default()),
             adv_handle: RwLock::new(None),
+            gatt_handle: RwLock::new(None),
+            gatt_state: Arc::new(GattState::new()),
             discovery_callback: RwLock::new(None),
             connection_callback: RwLock::new(None),
             shutdown_tx,
@@ -150,6 +203,8 @@ impl BluerAdapter {
             config: RwLock::new(None),
             state: RwLock::new(AdapterState::default()),
             adv_handle: RwLock::new(None),
+            gatt_handle: RwLock::new(None),
+            gatt_state: Arc::new(GattState::new()),
             discovery_callback: RwLock::new(None),
             connection_callback: RwLock::new(None),
             shutdown_tx,
@@ -516,14 +571,184 @@ impl BleAdapter for BluerAdapter {
     }
 
     async fn register_gatt_service(&self) -> Result<()> {
-        // TODO: Implement GATT server registration
-        // This will be done in #405 (GATT Service Definition)
-        log::warn!("GATT service registration not yet implemented");
+        // Get config to access node_id
+        let config = self.config.read().await;
+        let node_id = config
+            .as_ref()
+            .map(|c| c.node_id)
+            .ok_or_else(|| BleError::InvalidState("Adapter not initialized".to_string()))?;
+
+        // Initialize GATT state with node info
+        self.gatt_state.init(node_id).await;
+
+        // Clone Arc for use in callbacks
+        let state = self.gatt_state.clone();
+        let state_read_node = state.clone();
+        let state_read_sync = state.clone();
+        let state_read_status = state.clone();
+        let state_write_sync = state.clone();
+        let state_write_cmd = state.clone();
+
+        // Build GATT application with HIVE service
+        let app = Application {
+            services: vec![Service {
+                uuid: HIVE_SERVICE_UUID,
+                primary: true,
+                characteristics: vec![
+                    // Node Info characteristic (0001) - READ
+                    Characteristic {
+                        uuid: HiveCharacteristicUuids::node_info(),
+                        read: Some(CharacteristicRead {
+                            read: true,
+                            fun: Box::new(move |req| {
+                                let state = state_read_node.clone();
+                                Box::pin(async move {
+                                    let data = state.node_info.lock().await;
+                                    log::debug!(
+                                        "GATT read node_info from {:?}: {} bytes",
+                                        req.device_address,
+                                        data.len()
+                                    );
+                                    Ok(data.clone())
+                                })
+                            }),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    // Sync State characteristic (0002) - READ, NOTIFY
+                    Characteristic {
+                        uuid: HiveCharacteristicUuids::sync_state(),
+                        read: Some(CharacteristicRead {
+                            read: true,
+                            fun: Box::new(move |req| {
+                                let state = state_read_sync.clone();
+                                Box::pin(async move {
+                                    let data = state.sync_state.lock().await;
+                                    log::debug!(
+                                        "GATT read sync_state from {:?}: {} bytes",
+                                        req.device_address,
+                                        data.len()
+                                    );
+                                    Ok(data.clone())
+                                })
+                            }),
+                            ..Default::default()
+                        }),
+                        notify: Some(CharacteristicNotify {
+                            notify: true,
+                            method: CharacteristicNotifyMethod::Io,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    // Sync Data characteristic (0003) - WRITE, INDICATE
+                    Characteristic {
+                        uuid: HiveCharacteristicUuids::sync_data(),
+                        write: Some(CharacteristicWrite {
+                            write: true,
+                            method: CharacteristicWriteMethod::Fun(Box::new(move |data, req| {
+                                let state = state_write_sync.clone();
+                                Box::pin(async move {
+                                    log::debug!(
+                                        "GATT write sync_data from {:?}: {} bytes",
+                                        req.device_address,
+                                        data.len()
+                                    );
+                                    // Invoke callback if set
+                                    if let Some(ref cb) = *state.sync_data_callback.lock().await {
+                                        cb(data);
+                                    }
+                                    Ok(())
+                                })
+                            })),
+                            ..Default::default()
+                        }),
+                        notify: Some(CharacteristicNotify {
+                            indicate: true,
+                            method: CharacteristicNotifyMethod::Io,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    // Command characteristic (0004) - WRITE
+                    Characteristic {
+                        uuid: HiveCharacteristicUuids::command(),
+                        write: Some(CharacteristicWrite {
+                            write: true,
+                            write_without_response: true,
+                            method: CharacteristicWriteMethod::Fun(Box::new(move |data, req| {
+                                let state = state_write_cmd.clone();
+                                Box::pin(async move {
+                                    log::debug!(
+                                        "GATT write command from {:?}: {} bytes",
+                                        req.device_address,
+                                        data.len()
+                                    );
+                                    // Invoke callback if set
+                                    if let Some(ref cb) = *state.command_callback.lock().await {
+                                        cb(data);
+                                    }
+                                    Ok(())
+                                })
+                            })),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    // Status characteristic (0005) - READ, NOTIFY
+                    Characteristic {
+                        uuid: HiveCharacteristicUuids::status(),
+                        read: Some(CharacteristicRead {
+                            read: true,
+                            fun: Box::new(move |req| {
+                                let state = state_read_status.clone();
+                                Box::pin(async move {
+                                    let data = state.status.lock().await;
+                                    log::debug!(
+                                        "GATT read status from {:?}: {} bytes",
+                                        req.device_address,
+                                        data.len()
+                                    );
+                                    Ok(data.clone())
+                                })
+                            }),
+                            ..Default::default()
+                        }),
+                        notify: Some(CharacteristicNotify {
+                            notify: true,
+                            method: CharacteristicNotifyMethod::Io,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        // Register the GATT application with BlueZ
+        let handle = self.adapter.serve_gatt_application(app).await.map_err(|e| {
+            BleError::GattError(format!("Failed to register GATT service: {}", e))
+        })?;
+
+        // Store the handle to keep the service alive
+        *self.gatt_handle.write().await = Some(handle);
+
+        log::info!(
+            "GATT service registered for node {:08X} with 5 characteristics",
+            node_id.as_u32()
+        );
         Ok(())
     }
 
     async fn unregister_gatt_service(&self) -> Result<()> {
-        // TODO: Implement GATT server unregistration
+        // Drop the handle to unregister the GATT application
+        let handle = self.gatt_handle.write().await.take();
+        if handle.is_some() {
+            log::info!("GATT service unregistered");
+        }
         Ok(())
     }
 
