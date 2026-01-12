@@ -267,6 +267,8 @@ impl HiveDocument {
     }
 
     /// Encode to bytes for BLE transmission
+    ///
+    /// Alias: [`Self::to_bytes()`]
     pub fn encode(&self) -> Vec<u8> {
         let counter_data = self.counter.encode();
         let peripheral_data = self.peripheral.as_ref().map(|p| p.encode());
@@ -309,7 +311,18 @@ impl HiveDocument {
         buf
     }
 
+    /// Encode to bytes for transmission (alias for [`Self::encode()`])
+    ///
+    /// This is the conventional name used by external crates like hive-ffi
+    /// for transport-agnostic document serialization.
+    #[inline]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.encode()
+    }
+
     /// Decode from bytes received over BLE
+    ///
+    /// Alias: [`Self::from_bytes()`]
     pub fn decode(data: &[u8]) -> Option<Self> {
         if data.len() < MIN_DOCUMENT_SIZE {
             return None;
@@ -377,6 +390,15 @@ impl HiveDocument {
             peripheral,
             emergency,
         })
+    }
+
+    /// Decode from bytes (alias for [`Self::decode()`])
+    ///
+    /// This is the conventional name used by external crates like hive-ffi
+    /// for transport-agnostic document deserialization.
+    #[inline]
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        Self::decode(data)
     }
 
     /// Get the total counter value
