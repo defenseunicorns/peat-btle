@@ -699,7 +699,9 @@ pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnConne
 
 /// Native callback for services discovered
 #[no_mangle]
-pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnServicesDiscovered<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnServicesDiscovered<
+    'local,
+>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     connection_id: jlong,
@@ -753,7 +755,9 @@ pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnServi
 
 /// Native callback for characteristic read
 #[no_mangle]
-pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnCharacteristicRead<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnCharacteristicRead<
+    'local,
+>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     connection_id: jlong,
@@ -798,7 +802,9 @@ pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnChara
 
 /// Native callback for characteristic write
 #[no_mangle]
-pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnCharacteristicWrite<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnCharacteristicWrite<
+    'local,
+>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     connection_id: jlong,
@@ -871,7 +877,9 @@ pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnChara
 
 /// Native callback for descriptor write
 #[no_mangle]
-pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnDescriptorWrite<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_GattCallbackProxy_nativeOnDescriptorWrite<
+    'local,
+>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     connection_id: jlong,
@@ -1030,7 +1038,9 @@ pub extern "system" fn Java_com_revolveteam_hive_AdvertiseCallbackProxy_nativeOn
 
 /// Native callback for advertising start failure
 #[no_mangle]
-pub extern "system" fn Java_com_revolveteam_hive_AdvertiseCallbackProxy_nativeOnStartFailure<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_AdvertiseCallbackProxy_nativeOnStartFailure<
+    'local,
+>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     error_code: jint,

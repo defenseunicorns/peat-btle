@@ -729,9 +729,11 @@ impl BleAdapter for BluerAdapter {
         };
 
         // Register the GATT application with BlueZ
-        let handle = self.adapter.serve_gatt_application(app).await.map_err(|e| {
-            BleError::GattError(format!("Failed to register GATT service: {}", e))
-        })?;
+        let handle = self
+            .adapter
+            .serve_gatt_application(app)
+            .await
+            .map_err(|e| BleError::GattError(format!("Failed to register GATT service: {}", e)))?;
 
         // Store the handle to keep the service alive
         *self.gatt_handle.write().await = Some(handle);

@@ -4,6 +4,9 @@
 
 set -e
 
+# Ensure cargo is in PATH for systemd/service environments
+export PATH="$HOME/.cargo/bin:$PATH"
+
 echo "=== Goa CI triggered at $(date) ==="
 echo "Commit: ${GOA_COMMIT_OID:-unknown}"
 echo "Patch: ${GOA_PATCH_ID:-none}"
