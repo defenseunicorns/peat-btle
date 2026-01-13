@@ -162,6 +162,28 @@ class HiveMesh(
 
         @JvmStatic
         private external fun nativeMatchesMesh(handle: Long, deviceMeshId: String?): Boolean
+
+        // Connection State Graph methods
+        @JvmStatic
+        private external fun nativeGetConnectionStateCounts(handle: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeGetAllPeerStates(handle: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeGetPeerConnectionState(handle: Long, nodeId: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeGetConnectedPeers(handle: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeGetDegradedPeers(handle: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeGetRecentlyDisconnected(handle: Long, withinMs: Long, nowMs: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeGetLostPeers(handle: Long): ByteArray
     }
 
     /** Native handle returned by nativeCreate */
@@ -397,6 +419,98 @@ class HiveMesh(
         return nativeMatchesMesh(handle, deviceMeshId)
     }
 
+    // ========================================================================
+    // Connection State Graph API
+    // ========================================================================
+
+    /**
+     * Get summary counts of peers in each connection state.
+     *
+     * Useful for displaying badge counts or summary statistics in UI.
+     *
+     * @return StateCountSummary with counts per state, or null on error
+     */
+    fun getConnectionStateCounts(): StateCountSummary? {
+        checkNotDestroyed()
+        val data = nativeGetConnectionStateCounts(handle)
+        return StateCountSummary.decode(data)
+    }
+
+    /**
+     * Get all tracked peers with their connection states.
+     *
+     * @return List of all peer connection states
+     */
+    fun getAllPeerStates(): List<PeerConnectionState> {
+        checkNotDestroyed()
+        val data = nativeGetAllPeerStates(handle)
+        return PeerConnectionState.decodeList(data)
+    }
+
+    /**
+     * Get connection state for a specific peer.
+     *
+     * @param nodeId The peer's node ID
+     * @return PeerConnectionState if found, null otherwise
+     */
+    fun getPeerConnectionState(nodeId: Long): PeerConnectionState? {
+        checkNotDestroyed()
+        val data = nativeGetPeerConnectionState(handle, nodeId)
+        if (data.isEmpty()) return null
+        return PeerConnectionState.decode(data)
+    }
+
+    /**
+     * Get all currently connected peers (Connected or Degraded state).
+     *
+     * @return List of connected peer states
+     */
+    fun getConnectedPeers(): List<PeerConnectionState> {
+        checkNotDestroyed()
+        val data = nativeGetConnectedPeers(handle)
+        return PeerConnectionState.decodeList(data)
+    }
+
+    /**
+     * Get all peers in Degraded state (connected but with poor signal).
+     *
+     * @return List of degraded peer states
+     */
+    fun getDegradedPeers(): List<PeerConnectionState> {
+        checkNotDestroyed()
+        val data = nativeGetDegradedPeers(handle)
+        return PeerConnectionState.decodeList(data)
+    }
+
+    /**
+     * Get peers that disconnected within the specified time window.
+     *
+     * Useful for showing "stale" peers that might still have relevant data.
+     *
+     * @param withinMs Time window in milliseconds (e.g., 30000 for last 30 seconds)
+     * @param nowMs Current timestamp (defaults to System.currentTimeMillis())
+     * @return List of recently disconnected peer states
+     */
+    fun getRecentlyDisconnected(
+        withinMs: Long,
+        nowMs: Long = System.currentTimeMillis()
+    ): List<PeerConnectionState> {
+        checkNotDestroyed()
+        val data = nativeGetRecentlyDisconnected(handle, withinMs, nowMs)
+        return PeerConnectionState.decodeList(data)
+    }
+
+    /**
+     * Get all peers in Lost state (disconnected and not seen in advertisements).
+     *
+     * @return List of lost peer states
+     */
+    fun getLostPeers(): List<PeerConnectionState> {
+        checkNotDestroyed()
+        val data = nativeGetLostPeers(handle)
+        return PeerConnectionState.decodeList(data)
+    }
+
     private fun checkNotDestroyed() {
         if (isDestroyed) {
             throw IllegalStateException("HiveMesh has been destroyed")
@@ -498,5 +612,250 @@ annotation class DisconnectReason {
         const val CONNECTION_FAILED = 4
         /** Unknown reason */
         const val UNKNOWN = 5
+    }
+}
+
+/**
+ * Connection state aligned with hive-protocol abstractions.
+ *
+ * Represents the lifecycle states of a peer connection, from initial
+ * discovery through connection, degradation, and disconnection.
+ */
+@Retention(AnnotationRetention.SOURCE)
+@IntDef(
+    ConnectionState.DISCOVERED,
+    ConnectionState.CONNECTING,
+    ConnectionState.CONNECTED,
+    ConnectionState.DEGRADED,
+    ConnectionState.DISCONNECTING,
+    ConnectionState.DISCONNECTED,
+    ConnectionState.LOST
+)
+annotation class ConnectionState {
+    companion object {
+        /** Peer has been seen via BLE advertisement but never connected */
+        const val DISCOVERED = 0
+        /** BLE connection is being established */
+        const val CONNECTING = 1
+        /** Active BLE connection with healthy signal */
+        const val CONNECTED = 2
+        /** Connected but with degraded quality (low RSSI) */
+        const val DEGRADED = 3
+        /** Graceful disconnect in progress */
+        const val DISCONNECTING = 4
+        /** Was previously connected, now disconnected */
+        const val DISCONNECTED = 5
+        /** Disconnected and no longer seen in advertisements */
+        const val LOST = 6
+
+        /** Returns true if this state represents an active connection */
+        fun isConnected(state: Int): Boolean = state == CONNECTED || state == DEGRADED
+
+        /** Returns true if this state indicates the peer was previously known */
+        fun wasConnected(state: Int): Boolean = state in listOf(
+            CONNECTED, DEGRADED, DISCONNECTING, DISCONNECTED, LOST
+        )
+    }
+}
+
+/**
+ * Per-peer connection state with history.
+ *
+ * Provides a comprehensive view of a peer's connection lifecycle,
+ * including timestamps, statistics, and associated data metrics.
+ * This enables apps to display appropriate UI indicators and track
+ * data provenance.
+ */
+data class PeerConnectionState(
+    /** HIVE node identifier (32-bit) */
+    val nodeId: Long,
+    /** Platform-specific BLE identifier (MAC address on Android) */
+    val identifier: String,
+    /** Current connection state */
+    @ConnectionState val state: Int,
+    /** Timestamp when peer was first discovered (ms since epoch) */
+    val discoveredAt: Long,
+    /** Timestamp of most recent connection (ms since epoch), or null if never connected */
+    val connectedAt: Long?,
+    /** Timestamp of most recent disconnection (ms since epoch), or null if never disconnected */
+    val disconnectedAt: Long?,
+    /** Reason for most recent disconnection */
+    @DisconnectReason val disconnectReason: Int?,
+    /** Most recent RSSI reading (dBm) */
+    val lastRssi: Int?,
+    /** Total number of successful connections to this peer */
+    val connectionCount: Int,
+    /** Number of documents synced with this peer */
+    val documentsSynced: Int,
+    /** Bytes received from this peer */
+    val bytesReceived: Long,
+    /** Bytes sent to this peer */
+    val bytesSent: Long,
+    /** Last time peer was seen (advertisement or data, ms since epoch) */
+    val lastSeenMs: Long,
+    /** Optional device name */
+    val name: String?,
+    /** Mesh ID this peer belongs to */
+    val meshId: String?
+) {
+    /** Returns true if peer is currently connected (Connected or Degraded state) */
+    fun isConnected(): Boolean = ConnectionState.isConnected(state)
+
+    /** Get time since last connection in milliseconds */
+    fun timeSinceConnected(nowMs: Long = System.currentTimeMillis()): Long? =
+        connectedAt?.let { nowMs - it }
+
+    /** Get time since disconnection in milliseconds */
+    fun timeSinceDisconnected(nowMs: Long = System.currentTimeMillis()): Long? =
+        disconnectedAt?.let { nowMs - it }
+
+    /** Get connection duration if currently connected */
+    fun connectionDuration(nowMs: Long = System.currentTimeMillis()): Long? =
+        if (isConnected()) connectedAt?.let { nowMs - it } else null
+
+    companion object {
+        /**
+         * Decode peer connection state from native byte format.
+         *
+         * Format: [node_id: 4][state: 1][discovered_at: 8][connected_at: 8][disconnected_at: 8]
+         *         [disconnect_reason: 1][last_rssi: 1][connection_count: 4][documents_synced: 4]
+         *         [bytes_received: 8][bytes_sent: 8][last_seen_ms: 8]
+         *         [identifier_len: 2][identifier: N][name_len: 2][name: N][mesh_id_len: 2][mesh_id: N]
+         */
+        fun decode(data: ByteArray): PeerConnectionState? {
+            if (data.size < 65) return null // Minimum size without strings
+
+            val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+
+            val nodeId = buffer.int.toLong() and 0xFFFFFFFFL
+            val state = buffer.get().toInt() and 0xFF
+            val discoveredAt = buffer.long
+            val connectedAtRaw = buffer.long
+            val connectedAt = if (connectedAtRaw == 0L) null else connectedAtRaw
+            val disconnectedAtRaw = buffer.long
+            val disconnectedAt = if (disconnectedAtRaw == 0L) null else disconnectedAtRaw
+            val disconnectReasonRaw = buffer.get().toInt() and 0xFF
+            val disconnectReason = if (disconnectReasonRaw == 0xFF) null else disconnectReasonRaw
+            val lastRssiRaw = buffer.get().toInt()
+            val lastRssi = if (lastRssiRaw == -128) null else lastRssiRaw
+            val connectionCount = buffer.int
+            val documentsSynced = buffer.int
+            val bytesReceived = buffer.long
+            val bytesSent = buffer.long
+            val lastSeenMs = buffer.long
+
+            // Read strings
+            val identifierLen = buffer.short.toInt() and 0xFFFF
+            val identifierBytes = ByteArray(identifierLen)
+            buffer.get(identifierBytes)
+            val identifier = String(identifierBytes, Charsets.UTF_8)
+
+            val nameLen = buffer.short.toInt() and 0xFFFF
+            val name = if (nameLen > 0) {
+                val nameBytes = ByteArray(nameLen)
+                buffer.get(nameBytes)
+                String(nameBytes, Charsets.UTF_8)
+            } else null
+
+            val meshIdLen = buffer.short.toInt() and 0xFFFF
+            val meshId = if (meshIdLen > 0) {
+                val meshIdBytes = ByteArray(meshIdLen)
+                buffer.get(meshIdBytes)
+                String(meshIdBytes, Charsets.UTF_8)
+            } else null
+
+            return PeerConnectionState(
+                nodeId = nodeId,
+                identifier = identifier,
+                state = state,
+                discoveredAt = discoveredAt,
+                connectedAt = connectedAt,
+                disconnectedAt = disconnectedAt,
+                disconnectReason = disconnectReason,
+                lastRssi = lastRssi,
+                connectionCount = connectionCount,
+                documentsSynced = documentsSynced,
+                bytesReceived = bytesReceived,
+                bytesSent = bytesSent,
+                lastSeenMs = lastSeenMs,
+                name = name,
+                meshId = meshId
+            )
+        }
+
+        /**
+         * Decode a list of peer connection states from native byte format.
+         *
+         * Format: [count: 4][peer1_len: 4][peer1: N][peer2_len: 4][peer2: N]...
+         */
+        fun decodeList(data: ByteArray): List<PeerConnectionState> {
+            if (data.size < 4) return emptyList()
+
+            val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+            val count = buffer.int
+
+            val result = mutableListOf<PeerConnectionState>()
+            repeat(count) {
+                if (buffer.remaining() < 4) return result
+                val peerLen = buffer.int
+                if (buffer.remaining() < peerLen) return result
+
+                val peerBytes = ByteArray(peerLen)
+                buffer.get(peerBytes)
+                decode(peerBytes)?.let { result.add(it) }
+            }
+            return result
+        }
+    }
+}
+
+/**
+ * Summary of peer counts by connection state.
+ *
+ * Useful for displaying badge counts or summary statistics in UI.
+ */
+data class StateCountSummary(
+    /** Peers discovered but never connected */
+    val discovered: Int,
+    /** Peers currently connecting */
+    val connecting: Int,
+    /** Peers with healthy connection */
+    val connected: Int,
+    /** Peers connected but with degraded signal */
+    val degraded: Int,
+    /** Peers currently disconnecting */
+    val disconnecting: Int,
+    /** Peers recently disconnected */
+    val disconnected: Int,
+    /** Peers disconnected and not seen in advertisements */
+    val lost: Int
+) {
+    /** Total number of peers actively connected */
+    val activeConnections: Int get() = connected + degraded
+
+    /** Total number of tracked peers */
+    val total: Int get() = discovered + connecting + connected + degraded + disconnecting + disconnected + lost
+
+    companion object {
+        /**
+         * Decode from native byte format.
+         *
+         * Format: [discovered: 4][connecting: 4][connected: 4][degraded: 4]
+         *         [disconnecting: 4][disconnected: 4][lost: 4]
+         */
+        fun decode(data: ByteArray): StateCountSummary? {
+            if (data.size < 28) return null
+
+            val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+            return StateCountSummary(
+                discovered = buffer.int,
+                connecting = buffer.int,
+                connected = buffer.int,
+                degraded = buffer.int,
+                disconnecting = buffer.int,
+                disconnected = buffer.int,
+                lost = buffer.int
+            )
+        }
     }
 }

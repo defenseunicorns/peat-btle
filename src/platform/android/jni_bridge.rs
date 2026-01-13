@@ -1555,6 +1555,295 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeMatchesMesh<'loc
     }
 }
 
+// ============================================================================
+// JNI Native Method Exports - Connection State Graph API
+// ============================================================================
+
+use crate::peer::{ConnectionState, PeerConnectionState, StateCountSummary};
+
+/// Encode a PeerConnectionState to bytes for JNI transfer
+///
+/// Format: [node_id: 4][state: 1][discovered_at: 8][connected_at: 8][disconnected_at: 8]
+///         [disconnect_reason: 1][last_rssi: 1][connection_count: 4][documents_synced: 4]
+///         [bytes_received: 8][bytes_sent: 8][last_seen_ms: 8]
+///         [identifier_len: 2][identifier: N][name_len: 2][name: N][mesh_id_len: 2][mesh_id: N]
+fn encode_peer_connection_state(state: &PeerConnectionState) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(128);
+
+    // Fixed-size fields
+    buf.extend_from_slice(&state.node_id.as_u32().to_le_bytes());
+    buf.push(connection_state_to_u8(&state.state));
+    buf.extend_from_slice(&state.discovered_at.to_le_bytes());
+    buf.extend_from_slice(&state.connected_at.unwrap_or(0).to_le_bytes());
+    buf.extend_from_slice(&state.disconnected_at.unwrap_or(0).to_le_bytes());
+    buf.push(
+        state
+            .disconnect_reason
+            .map_or(0xFF, disconnect_reason_to_u8),
+    );
+    buf.push(state.last_rssi.map_or(-128i8, |r| r) as u8);
+    buf.extend_from_slice(&state.connection_count.to_le_bytes());
+    buf.extend_from_slice(&state.documents_synced.to_le_bytes());
+    buf.extend_from_slice(&state.bytes_received.to_le_bytes());
+    buf.extend_from_slice(&state.bytes_sent.to_le_bytes());
+    buf.extend_from_slice(&state.last_seen_ms.to_le_bytes());
+
+    // Variable-length strings
+    let identifier_bytes = state.identifier.as_bytes();
+    buf.extend_from_slice(&(identifier_bytes.len() as u16).to_le_bytes());
+    buf.extend_from_slice(identifier_bytes);
+
+    let name_bytes = state.name.as_ref().map(|s| s.as_bytes()).unwrap_or(&[]);
+    buf.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
+    buf.extend_from_slice(name_bytes);
+
+    let mesh_id_bytes = state.mesh_id.as_ref().map(|s| s.as_bytes()).unwrap_or(&[]);
+    buf.extend_from_slice(&(mesh_id_bytes.len() as u16).to_le_bytes());
+    buf.extend_from_slice(mesh_id_bytes);
+
+    buf
+}
+
+/// Encode a list of PeerConnectionStates for JNI transfer
+///
+/// Format: [count: 4][peer1_len: 4][peer1: N][peer2_len: 4][peer2: N]...
+fn encode_peer_connection_state_list(states: &[PeerConnectionState]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(states.len() * 128 + 4);
+
+    buf.extend_from_slice(&(states.len() as u32).to_le_bytes());
+
+    for state in states {
+        let encoded = encode_peer_connection_state(state);
+        buf.extend_from_slice(&(encoded.len() as u32).to_le_bytes());
+        buf.extend_from_slice(&encoded);
+    }
+
+    buf
+}
+
+/// Encode StateCountSummary to bytes
+///
+/// Format: [discovered: 4][connecting: 4][connected: 4][degraded: 4]
+///         [disconnecting: 4][disconnected: 4][lost: 4]
+fn encode_state_count_summary(summary: &StateCountSummary) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(28);
+    buf.extend_from_slice(&(summary.discovered as u32).to_le_bytes());
+    buf.extend_from_slice(&(summary.connecting as u32).to_le_bytes());
+    buf.extend_from_slice(&(summary.connected as u32).to_le_bytes());
+    buf.extend_from_slice(&(summary.degraded as u32).to_le_bytes());
+    buf.extend_from_slice(&(summary.disconnecting as u32).to_le_bytes());
+    buf.extend_from_slice(&(summary.disconnected as u32).to_le_bytes());
+    buf.extend_from_slice(&(summary.lost as u32).to_le_bytes());
+    buf
+}
+
+fn connection_state_to_u8(state: &ConnectionState) -> u8 {
+    match state {
+        ConnectionState::Discovered => 0,
+        ConnectionState::Connecting => 1,
+        ConnectionState::Connected => 2,
+        ConnectionState::Degraded => 3,
+        ConnectionState::Disconnecting => 4,
+        ConnectionState::Disconnected => 5,
+        ConnectionState::Lost => 6,
+    }
+}
+
+fn disconnect_reason_to_u8(reason: DisconnectReason) -> u8 {
+    match reason {
+        DisconnectReason::LocalRequest => 0,
+        DisconnectReason::RemoteRequest => 1,
+        DisconnectReason::Timeout => 2,
+        DisconnectReason::LinkLoss => 3,
+        DisconnectReason::ConnectionFailed => 4,
+        DisconnectReason::Unknown => 5,
+    }
+}
+
+/// Get connection state counts
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetConnectionStateCounts<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let summary = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .map(|m| m.get_connection_state_counts())
+    } else {
+        None
+    };
+
+    match summary {
+        Some(s) => {
+            let encoded = encode_state_count_summary(&s);
+            env.byte_array_from_slice(&encoded)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get all peer states
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetAllPeerStates<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let states = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).map(|m| m.get_connection_graph())
+    } else {
+        None
+    };
+
+    match states {
+        Some(s) => {
+            let encoded = encode_peer_connection_state_list(&s);
+            env.byte_array_from_slice(&encoded)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get specific peer's connection state
+///
+/// JNI Signature: (JJ)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetPeerConnectionState<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    node_id: jlong,
+) -> JByteArray<'local> {
+    let state = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .and_then(|m| m.get_peer_connection_state(NodeId::new(node_id as u32)))
+    } else {
+        None
+    };
+
+    match state {
+        Some(s) => {
+            let encoded = encode_peer_connection_state(&s);
+            env.byte_array_from_slice(&encoded)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get connected peers (Connected or Degraded state)
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetConnectedPeers<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let states = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).map(|m| m.get_connected_states())
+    } else {
+        None
+    };
+
+    match states {
+        Some(s) => {
+            let encoded = encode_peer_connection_state_list(&s);
+            env.byte_array_from_slice(&encoded)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get degraded peers
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetDegradedPeers<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let states = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).map(|m| m.get_degraded_peers())
+    } else {
+        None
+    };
+
+    match states {
+        Some(s) => {
+            let encoded = encode_peer_connection_state_list(&s);
+            env.byte_array_from_slice(&encoded)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get recently disconnected peers
+///
+/// JNI Signature: (JJJ)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetRecentlyDisconnected<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    within_ms: jlong,
+    now_ms: jlong,
+) -> JByteArray<'local> {
+    let states = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .map(|m| m.get_recently_disconnected(within_ms as u64, now_ms as u64))
+    } else {
+        None
+    };
+
+    match states {
+        Some(s) => {
+            let encoded = encode_peer_connection_state_list(&s);
+            env.byte_array_from_slice(&encoded)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get lost peers
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetLostPeers<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let states = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).map(|m| m.get_lost_peers())
+    } else {
+        None
+    };
+
+    match states {
+        Some(s) => {
+            let encoded = encode_peer_connection_state_list(&s);
+            env.byte_array_from_slice(&encoded)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // JNI tests require Android runtime environment

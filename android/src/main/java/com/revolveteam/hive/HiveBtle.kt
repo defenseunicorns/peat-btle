@@ -724,18 +724,28 @@ class HiveBtle(
                         Log.i(TAG, "Central connected: $name ($address)")
                         connectedCentrals[address] = device
 
-                        // Notify mesh listener about new connection
-                        handler.post {
-                            meshListener?.onMeshUpdated(peers.values.toList())
+                        // Find and update peer, notify listener
+                        val nodeId = addressToNodeId[address]
+                        val peer = nodeId?.let { peers[it] }
+                        if (peer != null) {
+                            peer.isConnected = true
+                            peer.lastSeen = System.currentTimeMillis()
+                            notifyPeerConnected(peer)
                         }
+                        notifyMeshUpdated()
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
                         Log.i(TAG, "Central disconnected: $name ($address)")
                         connectedCentrals.remove(address)
 
-                        handler.post {
-                            meshListener?.onMeshUpdated(peers.values.toList())
+                        // Find and update peer, notify listener for immediate UI update
+                        val nodeId = addressToNodeId[address]
+                        val peer = nodeId?.let { peers[it] }
+                        if (peer != null) {
+                            peer.isConnected = false
+                            notifyPeerDisconnected(peer)
                         }
+                        notifyMeshUpdated()
                     }
                 }
             } catch (e: SecurityException) {
