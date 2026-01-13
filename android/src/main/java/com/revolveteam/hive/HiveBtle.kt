@@ -1251,7 +1251,11 @@ class HiveBtle(
                     val currentPeer = peers.values.find { it.address == peer.address }
                     if (currentPeer != null) {
                         currentPeer.isConnected = connected
-                        currentPeer.lastSeen = System.currentTimeMillis()
+                        // Only update lastSeen on successful connection, not disconnection.
+                        // This allows stale peer cleanup to work after disconnect + failed reconnects.
+                        if (connected) {
+                            currentPeer.lastSeen = System.currentTimeMillis()
+                        }
                     }
                     if (!connected) {
                         connections.remove(peer.address)
