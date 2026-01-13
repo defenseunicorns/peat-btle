@@ -1257,7 +1257,12 @@ class HiveBtle(
                             currentPeer.lastSeen = System.currentTimeMillis()
                         }
                     }
-                    if (!connected) {
+                    if (connected) {
+                        // Notify listener of peer connection for immediate UI update
+                        currentPeer?.let { notifyPeerConnected(it) }
+                    } else {
+                        // Notify listener of peer disconnection for immediate UI update
+                        currentPeer?.let { notifyPeerDisconnected(it) }
                         connections.remove(peer.address)
                         gattCallbacks.remove(peer.address)
                         // Retry connection after a delay if mesh is still running
@@ -1442,6 +1447,18 @@ class HiveBtle(
     private fun notifyMeshUpdated() {
         handler.post {
             meshListener?.onMeshUpdated(peers.values.toList())
+        }
+    }
+
+    private fun notifyPeerConnected(peer: HivePeer) {
+        handler.post {
+            meshListener?.onPeerConnected(peer)
+        }
+    }
+
+    private fun notifyPeerDisconnected(peer: HivePeer) {
+        handler.post {
+            meshListener?.onPeerDisconnected(peer)
         }
     }
 
@@ -1702,6 +1719,19 @@ interface HiveMeshListener {
      * @param document The merged document state
      */
     fun onDocumentSynced(document: HiveDocument) {}
+
+    /**
+     * Called when a peer connection is established.
+     * @param peer The connected peer
+     */
+    fun onPeerConnected(peer: HivePeer) {}
+
+    /**
+     * Called when a peer connection is lost.
+     * Use this for immediate UI updates when a peer disconnects.
+     * @param peer The disconnected peer
+     */
+    fun onPeerDisconnected(peer: HivePeer) {}
 }
 
 /**
