@@ -2,10 +2,11 @@ plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
     id("maven-publish")
+    id("signing")
 }
 
 group = "com.revolveteam"
-version = "0.0.5"
+version = "0.0.6"
 
 android {
     namespace = "com.revolveteam.hive"
@@ -47,6 +48,13 @@ android {
     sourceSets {
         getByName("main") {
             jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
+
+    // Configure publishing variant
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
         }
     }
 }
@@ -180,11 +188,54 @@ afterEvaluate {
                 }
             }
 
-            // Local Maven repository for testing
+            // Local staging repository for Central Portal bundle
             maven {
                 name = "local"
                 url = uri(layout.buildDirectory.dir("repo"))
             }
         }
     }
+
+    // Sign all publications
+    signing {
+        useGpgCmd()
+        sign(publishing.publications["release"])
+    }
+}
+
+// Task to create Maven Central bundle ZIP
+tasks.register<Zip>("createMavenCentralBundle") {
+    description = "Create ZIP bundle for Maven Central upload"
+    group = "publishing"
+
+    dependsOn("publishReleasePublicationToLocalRepository")
+
+    from(layout.buildDirectory.dir("repo"))
+    archiveFileName.set("hive-${project.version}-bundle.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("bundle"))
+}
+
+// Task to publish to Maven Central via Central Portal API
+tasks.register<Exec>("publishToMavenCentral") {
+    description = "Upload bundle to Maven Central via Sonatype Central Portal"
+    group = "publishing"
+
+    dependsOn("createMavenCentralBundle")
+
+    val bundleFile = layout.buildDirectory.file("bundle/hive-${project.version}-bundle.zip")
+    val username = project.findProperty("sonatypeUsername") as String? ?: System.getenv("SONATYPE_USERNAME") ?: ""
+    val password = project.findProperty("sonatypePassword") as String? ?: System.getenv("SONATYPE_PASSWORD") ?: ""
+
+    doFirst {
+        if (username.isEmpty() || password.isEmpty()) {
+            throw GradleException("Sonatype credentials not configured. Set sonatypeUsername and sonatypePassword in gradle.properties")
+        }
+    }
+
+    commandLine("bash", "-c", """
+        curl --fail-with-body \
+            -u "$username:$password" \
+            -F "bundle=@${bundleFile.get().asFile.absolutePath}" \
+            "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC"
+    """.trimIndent())
 }
