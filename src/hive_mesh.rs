@@ -62,7 +62,7 @@ use std::sync::Arc;
 use crate::document::{ENCRYPTED_MARKER, KEY_EXCHANGE_MARKER, PEER_E2EE_MARKER};
 use crate::document_sync::DocumentSync;
 use crate::observer::{DisconnectReason, HiveEvent, HiveObserver, SecurityViolationKind};
-use crate::peer::{HivePeer, PeerManagerConfig};
+use crate::peer::{ConnectionStateGraph, HivePeer, PeerConnectionState, PeerManagerConfig, StateCountSummary};
 use crate::peer_manager::PeerManager;
 use crate::security::{
     KeyExchangeMessage, MeshEncryptionKey, PeerEncryptedMessage, PeerSessionManager, SessionState,
@@ -205,6 +205,9 @@ pub struct HiveMesh {
 
     /// Optional per-peer E2EE session manager
     peer_sessions: std::sync::Mutex<Option<PeerSessionManager>>,
+
+    /// Connection state graph for tracking peer connection lifecycle
+    connection_graph: std::sync::Mutex<ConnectionStateGraph>,
 }
 
 #[cfg(feature = "std")]
@@ -223,6 +226,12 @@ impl HiveMesh {
             .encryption_secret
             .map(|secret| MeshEncryptionKey::from_shared_secret(&config.mesh_id, &secret));
 
+        // Create connection state graph with config thresholds
+        let connection_graph = ConnectionStateGraph::with_config(
+            config.peer_config.rssi_degraded_threshold,
+            config.peer_config.lost_timeout_ms,
+        );
+
         Self {
             config,
             peer_manager,
@@ -232,6 +241,7 @@ impl HiveMesh {
             last_cleanup_ms: std::sync::atomic::AtomicU32::new(0),
             encryption_key,
             peer_sessions: std::sync::Mutex::new(None),
+            connection_graph: std::sync::Mutex::new(connection_graph),
         }
     }
 
@@ -742,6 +752,19 @@ impl HiveMesh {
 
         let peer = self.peer_manager.get_peer(node_id)?;
 
+        // Update connection graph
+        {
+            let mut graph = self.connection_graph.lock().unwrap();
+            graph.on_discovered(
+                node_id,
+                identifier.to_string(),
+                name.map(|s| s.to_string()),
+                mesh_id.map(|s| s.to_string()),
+                rssi,
+                now_ms,
+            );
+        }
+
         if is_new {
             self.notify(HiveEvent::PeerDiscovered { peer: peer.clone() });
             self.notify_mesh_state_changed();
@@ -755,6 +778,13 @@ impl HiveMesh {
     /// Returns the NodeId if this identifier is known.
     pub fn on_ble_connected(&self, identifier: &str, now_ms: u64) -> Option<NodeId> {
         let node_id = self.peer_manager.on_connected(identifier, now_ms)?;
+
+        // Update connection graph
+        {
+            let mut graph = self.connection_graph.lock().unwrap();
+            graph.on_connected(node_id, now_ms);
+        }
+
         self.notify(HiveEvent::PeerConnected { node_id });
         self.notify_mesh_state_changed();
         Some(node_id)
@@ -766,8 +796,27 @@ impl HiveMesh {
         identifier: &str,
         reason: DisconnectReason,
     ) -> Option<NodeId> {
-        let (node_id, reason) = self.peer_manager.on_disconnected(identifier, reason)?;
-        self.notify(HiveEvent::PeerDisconnected { node_id, reason });
+        let (node_id, observer_reason) = self.peer_manager.on_disconnected(identifier, reason)?;
+
+        // Update connection graph (convert observer reason to platform reason)
+        {
+            let mut graph = self.connection_graph.lock().unwrap();
+            let platform_reason = match observer_reason {
+                DisconnectReason::LocalRequest => crate::platform::DisconnectReason::LocalRequest,
+                DisconnectReason::RemoteRequest => crate::platform::DisconnectReason::RemoteRequest,
+                DisconnectReason::Timeout => crate::platform::DisconnectReason::Timeout,
+                DisconnectReason::LinkLoss => crate::platform::DisconnectReason::LinkLoss,
+                DisconnectReason::ConnectionFailed => crate::platform::DisconnectReason::ConnectionFailed,
+                DisconnectReason::Unknown => crate::platform::DisconnectReason::Unknown,
+            };
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            graph.on_disconnected(node_id, platform_reason, now_ms);
+        }
+
+        self.notify(HiveEvent::PeerDisconnected { node_id, reason: observer_reason });
         self.notify_mesh_state_changed();
         Some(node_id)
     }
@@ -780,6 +829,24 @@ impl HiveMesh {
             .peer_manager
             .on_disconnected_by_node_id(node_id, reason)
         {
+            // Update connection graph
+            {
+                let mut graph = self.connection_graph.lock().unwrap();
+                let platform_reason = match reason {
+                    DisconnectReason::LocalRequest => crate::platform::DisconnectReason::LocalRequest,
+                    DisconnectReason::RemoteRequest => crate::platform::DisconnectReason::RemoteRequest,
+                    DisconnectReason::Timeout => crate::platform::DisconnectReason::Timeout,
+                    DisconnectReason::LinkLoss => crate::platform::DisconnectReason::LinkLoss,
+                    DisconnectReason::ConnectionFailed => crate::platform::DisconnectReason::ConnectionFailed,
+                    DisconnectReason::Unknown => crate::platform::DisconnectReason::Unknown,
+                };
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                graph.on_disconnected(node_id, platform_reason, now_ms);
+            }
+
             self.notify(HiveEvent::PeerDisconnected { node_id, reason });
             self.notify_mesh_state_changed();
         }
@@ -792,6 +859,22 @@ impl HiveMesh {
         let is_new = self
             .peer_manager
             .on_incoming_connection(identifier, node_id, now_ms);
+
+        // Update connection graph
+        {
+            let mut graph = self.connection_graph.lock().unwrap();
+            if is_new {
+                graph.on_discovered(
+                    node_id,
+                    identifier.to_string(),
+                    None,
+                    Some(self.config.mesh_id.clone()),
+                    -50, // Default good RSSI for incoming connections
+                    now_ms,
+                );
+            }
+            graph.on_connected(node_id, now_ms);
+        }
 
         if is_new {
             if let Some(peer) = self.peer_manager.get_peer(node_id) {
@@ -1039,6 +1122,24 @@ impl HiveMesh {
             if !removed.is_empty() {
                 self.notify_mesh_state_changed();
             }
+
+            // Run connection graph maintenance (transition Disconnected -> Lost)
+            {
+                let mut graph = self.connection_graph.lock().unwrap();
+                let newly_lost = graph.tick(now_ms);
+                // Also cleanup peers lost for more than peer_timeout
+                graph.cleanup_lost(self.config.peer_config.peer_timeout_ms, now_ms);
+                drop(graph);
+
+                // Emit PeerLost events for newly lost peers from graph
+                // (these may differ from peer_manager removals)
+                for node_id in newly_lost {
+                    // Only notify if not already notified by peer_manager
+                    if !removed.contains(&node_id) {
+                        self.notify(HiveEvent::PeerLost { node_id });
+                    }
+                }
+            }
         }
 
         // Check if sync broadcast is needed
@@ -1086,6 +1187,99 @@ impl HiveMesh {
     /// Check if a device mesh ID matches our mesh
     pub fn matches_mesh(&self, device_mesh_id: Option<&str>) -> bool {
         self.peer_manager.matches_mesh(device_mesh_id)
+    }
+
+    // ==================== Connection State Graph ====================
+
+    /// Get the connection state graph with all peer states
+    ///
+    /// Returns a snapshot of all tracked peers and their connection lifecycle state.
+    /// Apps can use this to display appropriate UI indicators:
+    /// - Green for Connected peers
+    /// - Yellow for Degraded or RecentlyDisconnected peers
+    /// - Gray for Lost peers
+    ///
+    /// # Example
+    /// ```ignore
+    /// let states = mesh.get_connection_graph();
+    /// for peer in states {
+    ///     match peer.state {
+    ///         ConnectionState::Connected => show_green_indicator(&peer),
+    ///         ConnectionState::Degraded => show_yellow_indicator(&peer),
+    ///         ConnectionState::Disconnected => show_stale_indicator(&peer),
+    ///         ConnectionState::Lost => show_gray_indicator(&peer),
+    ///         _ => {}
+    ///     }
+    /// }
+    /// ```
+    pub fn get_connection_graph(&self) -> Vec<PeerConnectionState> {
+        self.connection_graph
+            .lock()
+            .unwrap()
+            .get_all_owned()
+    }
+
+    /// Get a specific peer's connection state
+    pub fn get_peer_connection_state(&self, node_id: NodeId) -> Option<PeerConnectionState> {
+        self.connection_graph
+            .lock()
+            .unwrap()
+            .get_peer(node_id)
+            .cloned()
+    }
+
+    /// Get all currently connected peers from the connection graph
+    pub fn get_connected_states(&self) -> Vec<PeerConnectionState> {
+        self.connection_graph
+            .lock()
+            .unwrap()
+            .get_connected()
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Get peers in degraded state (connected but poor signal quality)
+    pub fn get_degraded_peers(&self) -> Vec<PeerConnectionState> {
+        self.connection_graph
+            .lock()
+            .unwrap()
+            .get_degraded()
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Get peers that disconnected within the specified time window
+    ///
+    /// Useful for showing "stale" peers that were recently connected.
+    pub fn get_recently_disconnected(&self, within_ms: u64, now_ms: u64) -> Vec<PeerConnectionState> {
+        self.connection_graph
+            .lock()
+            .unwrap()
+            .get_recently_disconnected(within_ms, now_ms)
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Get peers in Lost state (disconnected and no longer advertising)
+    pub fn get_lost_peers(&self) -> Vec<PeerConnectionState> {
+        self.connection_graph
+            .lock()
+            .unwrap()
+            .get_lost()
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Get summary counts of peers in each connection state
+    pub fn get_connection_state_counts(&self) -> StateCountSummary {
+        self.connection_graph
+            .lock()
+            .unwrap()
+            .state_counts()
     }
 
     /// Get total counter value
