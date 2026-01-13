@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Apple platform implementation (iOS/macOS)
 //!
 //! This module provides the BLE adapter implementation for Apple platforms using

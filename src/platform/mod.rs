@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Platform abstraction layer for BLE
 //!
 //! This module defines the traits that platform-specific implementations

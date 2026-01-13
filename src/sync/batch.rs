@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Batch Accumulator for HIVE-Lite Sync
 //!
 //! Collects CRDT operations over a configurable time window or size limit,

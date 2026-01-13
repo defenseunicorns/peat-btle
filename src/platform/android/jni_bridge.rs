@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! JNI bridge for Android Bluetooth API
 //!
 //! This module provides the low-level JNI interface to Android Bluetooth classes.

@@ -1,4 +1,4 @@
-// Copyright (c) 2024-2025 (r)evolve - Revolve Team LLC
+// Copyright (c) 2025-2026 (r)evolve - Revolve Team LLC
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.0.6"
+version = "0.0.7"
 
 android {
     namespace = "com.revolveteam.hive"

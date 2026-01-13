@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Embedded platform implementation (placeholder)
 //!
 //! This module will provide ESP32-specific BLE functionality via NimBLE.

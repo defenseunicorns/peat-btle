@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! BLE Scanner for discovering HIVE nodes
 //!
 //! Provides filtering, deduplication, and tracking of discovered HIVE beacons.

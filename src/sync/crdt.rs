@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! CRDT (Conflict-free Replicated Data Types) for HIVE-Lite
 //!
 //! Provides lightweight CRDT implementations optimized for BLE sync:

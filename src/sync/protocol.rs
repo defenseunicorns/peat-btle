@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! GATT Sync Protocol for HIVE-Lite
 //!
 //! Coordinates batching, delta encoding, and chunked transfer over GATT

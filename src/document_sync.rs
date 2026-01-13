@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Document synchronization for HIVE BLE mesh
 //!
 //! This module provides centralized document state management for HIVE-Lite nodes.

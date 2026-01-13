@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Per-peer E2EE session management
 //!
 //! Manages the lifecycle of encrypted sessions between specific peer pairs:

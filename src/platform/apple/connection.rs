@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! CoreBluetooth connection wrapper
 //!
 //! This module provides a connection wrapper for CoreBluetooth peripherals,

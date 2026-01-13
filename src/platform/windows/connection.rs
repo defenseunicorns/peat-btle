@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! BLE connection and GATT client for Windows
 //!
 //! Wraps `BluetoothLEDevice` and GATT operations.

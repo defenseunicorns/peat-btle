@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! HIVE-BTLE: Bluetooth Low Energy mesh transport for HIVE Protocol
 //!
 //! This crate provides BLE-based peer-to-peer mesh networking for HIVE,
@@ -220,7 +219,10 @@ pub use hive_mesh::{DataReceivedResult, HiveMesh, HiveMeshConfig};
 #[cfg(feature = "std")]
 pub use observer::{CollectingObserver, ObserverManager};
 pub use observer::{DisconnectReason as HiveDisconnectReason, HiveEvent, HiveObserver};
-pub use peer::{HivePeer, PeerManagerConfig, SignalStrength};
+pub use peer::{
+    ConnectionState, ConnectionStateGraph, HivePeer, PeerConnectionState, PeerManagerConfig,
+    SignalStrength, StateCountSummary,
+};
 pub use peer_manager::PeerManager;
 // Phase 1: Mesh-wide encryption
 pub use security::{EncryptedDocument, EncryptionError, MeshEncryptionKey};

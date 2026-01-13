@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Mesh Manager
 //!
 //! Manages the mesh topology, connections, and provides parent failover.

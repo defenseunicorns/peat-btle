@@ -13,60 +13,70 @@ echo "Patch: ${GOA_PATCH_ID:-none}"
 git fetch rad
 
 # Track CI results
-FAILED=""
-PASSED=""
+FMT_STATUS="skip"
+CLIPPY_STATUS="skip"
+TESTS_STATUS="skip"
+EXAMPLES_STATUS="skip"
+HAS_FAILURE=0
 
 # Run CI checks
 echo ""
 echo "--- Format Check ---"
 if cargo fmt --check; then
-    PASSED="${PASSED}fmt "
+    FMT_STATUS="pass"
 else
-    FAILED="${FAILED}fmt "
+    FMT_STATUS="FAIL"
+    HAS_FAILURE=1
 fi
 
 echo ""
 echo "--- Clippy ---"
 if cargo clippy -- -D warnings; then
-    PASSED="${PASSED}clippy "
+    CLIPPY_STATUS="pass"
 else
-    FAILED="${FAILED}clippy "
+    CLIPPY_STATUS="FAIL"
+    HAS_FAILURE=1
 fi
 
 echo ""
 echo "--- Tests ---"
 if cargo test; then
-    PASSED="${PASSED}tests "
+    TESTS_STATUS="pass"
 else
-    FAILED="${FAILED}tests "
+    TESTS_STATUS="FAIL"
+    HAS_FAILURE=1
 fi
 
 echo ""
 echo "--- Examples ---"
 if cargo check --examples; then
-    PASSED="${PASSED}examples "
+    EXAMPLES_STATUS="pass"
 else
-    FAILED="${FAILED}examples "
+    EXAMPLES_STATUS="FAIL"
+    HAS_FAILURE=1
 fi
 
 echo ""
 
+# Build status message
+STATUS_MSG="fmt: ${FMT_STATUS}, clippy: ${CLIPPY_STATUS}, tests: ${TESTS_STATUS}, examples: ${EXAMPLES_STATUS}"
+
 # Report results to patch if this is a patch trigger
 if [ -n "$GOA_PATCH_ID" ]; then
-    if [ -z "$FAILED" ]; then
+    if [ $HAS_FAILURE -eq 0 ]; then
         echo "=== CI passed, accepting patch ==="
-        rad patch review "$GOA_PATCH_ID" --accept -m "CI passed: ${PASSED}"
+        rad patch review "$GOA_PATCH_ID" --accept -m "CI passed - ${STATUS_MSG}"
     else
         echo "=== CI failed, rejecting patch ==="
-        rad patch review "$GOA_PATCH_ID" --reject -m "CI failed: ${FAILED}| Passed: ${PASSED}"
+        rad patch review "$GOA_PATCH_ID" --reject -m "CI failed - ${STATUS_MSG}"
     fi
 fi
 
 # Final status
-if [ -z "$FAILED" ]; then
+if [ $HAS_FAILURE -eq 0 ]; then
     echo "=== CI completed successfully ==="
     exit 0
 else
-    echo "=== CI failed: ${FAILED}==="
+    echo "=== CI failed: ${STATUS_MSG} ==="
     exit 1
 fi

@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! WinRT BLE adapter implementation
 //!
 //! Main adapter that implements the `BleAdapter` trait using Windows BLE APIs.

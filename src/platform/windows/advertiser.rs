@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! BLE advertisement publisher for Windows
 //!
 //! Wraps `BluetoothLEAdvertisementPublisher` for advertising.

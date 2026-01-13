@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Objective-C delegate implementations for CoreBluetooth
 //!
 //! CoreBluetooth uses the delegate pattern for callbacks. This module defines

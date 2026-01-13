@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! PHY Selection Strategy
 //!
 //! Defines strategies for automatic PHY selection based on signal quality,

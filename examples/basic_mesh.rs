@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Basic Mesh Example
 //!
 //! Demonstrates the core HiveMesh API for CRDT-based mesh synchronization.

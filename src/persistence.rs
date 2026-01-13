@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Persistence abstraction for HIVE documents
 //!
 //! This module provides traits for persisting HIVE mesh state across restarts.

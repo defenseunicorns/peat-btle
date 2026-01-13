@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Linux/BlueZ platform implementation
 //!
 //! This module provides the BLE adapter implementation for Linux using

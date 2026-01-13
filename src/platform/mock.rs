@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Mock BLE adapter for testing
 //!
 //! This module provides a simulated BLE adapter that enables unit and integration

@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! HIVE Discovery Module
 //!
 //! This module implements BLE discovery for HIVE mesh networks, including:

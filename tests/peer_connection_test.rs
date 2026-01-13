@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Test peer connection state tracking and emergency/ACK flow
 //!
 //! Verifies that hive-btle properly tracks peer connection state

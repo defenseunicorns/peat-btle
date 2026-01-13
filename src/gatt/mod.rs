@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! HIVE GATT Service Module
 //!
 //! Provides the GATT service implementation for HIVE Protocol BLE communication.

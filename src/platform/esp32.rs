@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! ESP32 BLE Adapter using NimBLE
 //!
 //! Provides BLE functionality for ESP32 devices using ESP-IDF NimBLE.

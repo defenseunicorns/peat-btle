@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Windows platform implementation (WinRT Bluetooth APIs)
 //!
 //! This module provides the BLE adapter implementation for Windows using

@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Peer management for HIVE BLE mesh
 //!
 //! This module provides centralized peer tracking, connection management,

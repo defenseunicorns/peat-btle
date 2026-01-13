@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Delta Encoder for HIVE-Lite Sync
 //!
 //! Tracks what state has been sent to each peer and only sends

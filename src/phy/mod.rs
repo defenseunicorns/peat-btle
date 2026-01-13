@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! BLE PHY Configuration
 //!
 //! Configures physical layer parameters for BLE connections, including

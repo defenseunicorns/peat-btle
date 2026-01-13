@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Observer pattern for HIVE mesh events
 //!
 //! This module provides the event types and observer trait for receiving

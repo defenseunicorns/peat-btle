@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! HIVE-Lite Sync Protocol
 //!
 //! Efficient CRDT synchronization over BLE GATT characteristics.

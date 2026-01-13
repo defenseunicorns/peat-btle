@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! BlueZ adapter implementation using the `bluer` crate
 
 use async_trait::async_trait;

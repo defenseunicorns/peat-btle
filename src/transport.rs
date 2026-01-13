@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Transport trait implementation for HIVE-BTLE
 //!
 //! Implements the pluggable transport abstraction (ADR-032) for Bluetooth LE,

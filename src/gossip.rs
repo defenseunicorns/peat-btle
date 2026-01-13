@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Gossip protocol strategies for mesh synchronization
 //!
 //! This module provides configurable gossip strategies that determine how

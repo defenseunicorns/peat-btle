@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! X25519 key exchange for per-peer E2EE
 //!
 //! Provides Diffie-Hellman key exchange using Curve25519 (X25519) to establish

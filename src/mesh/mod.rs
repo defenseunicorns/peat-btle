@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Mesh Topology Management
 //!
 //! This module provides mesh topology management for HIVE-BTLE, including:

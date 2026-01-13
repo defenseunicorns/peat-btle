@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Android BLE adapter implementation
 //!
 //! This module provides the `AndroidAdapter` which implements `BleAdapter`

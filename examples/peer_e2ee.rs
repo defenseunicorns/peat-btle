@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Per-Peer E2EE Example
 //!
 //! Demonstrates end-to-end encryption between specific peers.

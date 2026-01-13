@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Security module for HIVE-BTLE
 //!
 //! Provides two layers of encryption:

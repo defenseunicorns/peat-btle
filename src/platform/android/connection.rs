@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Android BLE connection wrapper
 //!
 //! This module provides the `AndroidConnection` which wraps a BluetoothGatt

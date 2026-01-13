@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! CoreBluetooth BLE adapter implementation
 //!
 //! This module provides the `CoreBluetoothAdapter` which implements `BleAdapter`

@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! CBCentralManager wrapper
 //!
 //! This module provides a Rust wrapper around CoreBluetooth's CBCentralManager,

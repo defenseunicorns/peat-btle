@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 //! Power Management for HIVE-Lite
 //!
 //! Provides power-efficient radio scheduling and profile management
