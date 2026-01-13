@@ -851,9 +851,11 @@ class HiveBtle(
                                     peers.remove(peer.nodeId)
                                     val updatedPeer = peer.copy(nodeId = sourceNodeId)
                                     peers[sourceNodeId] = updatedPeer
-                                    addressToNodeId[address] = sourceNodeId
                                     peer = updatedPeer
                                 }
+                                // Always update address mapping - central may connect with different
+                                // address than scan address due to BLE address randomization
+                                addressToNodeId[address] = sourceNodeId
                             }
 
                             // Handle document content
