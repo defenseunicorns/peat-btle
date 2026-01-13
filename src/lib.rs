@@ -220,10 +220,7 @@ pub use hive_mesh::{DataReceivedResult, HiveMesh, HiveMeshConfig};
 #[cfg(feature = "std")]
 pub use observer::{CollectingObserver, ObserverManager};
 pub use observer::{DisconnectReason as HiveDisconnectReason, HiveEvent, HiveObserver};
-pub use peer::{
-    ConnectionState, ConnectionStateGraph, HivePeer, PeerConnectionState, PeerManagerConfig,
-    SignalStrength, StateCountSummary,
-};
+pub use peer::{HivePeer, PeerManagerConfig, SignalStrength};
 pub use peer_manager::PeerManager;
 // Phase 1: Mesh-wide encryption
 pub use security::{EncryptedDocument, EncryptionError, MeshEncryptionKey};
