@@ -1,0 +1,16 @@
+# Radicle Ambient CI configuration
+# Runs in isolated VM - safe for untrusted code
+# See: https://ambient.liw.fi/tutorial/
+
+# Pre-plan: runs on host with network access (trusted actions only)
+pre_plan:
+  - action: cargo_fetch
+
+# Plan: runs in isolated VM without network
+plan:
+  - action: cargo-fmt
+  - action: cargo-clippy
+  - action: cargo-test
+  - action: shell
+    shell: |
+      cargo check --examples

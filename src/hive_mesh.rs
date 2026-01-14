@@ -552,11 +552,12 @@ impl HiveMesh {
         // Update indirect peer graph if origin differs from source
         // This means the message was relayed through source_peer from origin_node
         if envelope.origin_node != source_peer && envelope.origin_node != self.node_id() {
-            let is_new = self
-                .connection_graph
-                .lock()
-                .unwrap()
-                .on_relay_received(source_peer, envelope.origin_node, envelope.hop_count, now_ms);
+            let is_new = self.connection_graph.lock().unwrap().on_relay_received(
+                source_peer,
+                envelope.origin_node,
+                envelope.hop_count,
+                now_ms,
+            );
 
             if is_new {
                 log::debug!(
@@ -2238,7 +2239,10 @@ impl HiveMesh {
     /// Removes indirect peers that haven't been seen within the timeout.
     /// Returns the list of removed peer IDs.
     pub fn cleanup_indirect_peers(&self, now_ms: u64) -> Vec<NodeId> {
-        self.connection_graph.lock().unwrap().cleanup_indirect(now_ms)
+        self.connection_graph
+            .lock()
+            .unwrap()
+            .cleanup_indirect(now_ms)
     }
 
     /// Get total counter value
