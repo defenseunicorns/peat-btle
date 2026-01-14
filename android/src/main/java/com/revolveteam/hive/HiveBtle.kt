@@ -311,6 +311,15 @@ class HiveBtle(
     private val connectedCentrals = ConcurrentHashMap<String, BluetoothDevice>() // address -> device
     private var syncDataCharacteristic: BluetoothGattCharacteristic? = null
 
+    // Message relay deduplication cache (message hash -> timestamp)
+    // Uses LinkedHashMap with access-order for LRU eviction
+    private val seenMessages = object : LinkedHashMap<Long, Long>(100, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Long>?): Boolean {
+            return size > 1000  // Keep last 1000 messages
+        }
+    }
+    private val seenMessagesLock = Any()
+
     // State
     private var isInitialized = false
     private var isScanning = false
@@ -1462,7 +1471,7 @@ class HiveBtle(
 
         if (connectedPeer != null && connectedPeer.nodeId == docNodeId) {
             // Document is from the directly connected peer
-            handlePeerDocumentInternal(connectedPeer, document)
+            handlePeerDocumentInternal(connectedPeer, document, data, peer.address)
         } else if (connectedPeer != null && connectedPeer.nodeId != docNodeId) {
             // Document is RELAYED through connectedPeer from a different originating node
             // Find or create peer entry for the originating nodeId
@@ -1484,7 +1493,7 @@ class HiveBtle(
             }
             // Process document for the originating peer
             Log.d(TAG, "Processing relayed document from ${originatingPeer.displayName()} via ${connectedPeer.displayName()}")
-            handlePeerDocumentInternal(originatingPeer, document)
+            handlePeerDocumentInternal(originatingPeer, document, data, peer.address)
         } else {
             // Fallback: peer not in our list yet, use document nodeId
             val newPeer = peers[docNodeId] ?: HivePeer(
@@ -1497,11 +1506,24 @@ class HiveBtle(
                 lastDocument = null,
                 lastSeen = System.currentTimeMillis()
             ).also { peers[docNodeId] = it }
-            handlePeerDocumentInternal(newPeer, document)
+            handlePeerDocumentInternal(newPeer, document, data, peer.address)
         }
     }
 
-    private fun handlePeerDocumentInternal(peer: HivePeer, document: HiveDocument) {
+    /**
+     * Process a document internally and forward to other connected peers.
+     *
+     * @param peer The peer that sent/originated this document
+     * @param document The decoded document
+     * @param rawBytes The raw bytes to forward (null to skip forwarding)
+     * @param sourceAddress The BLE address of the peer we received this from (to exclude from forwarding)
+     */
+    private fun handlePeerDocumentInternal(
+        peer: HivePeer,
+        document: HiveDocument,
+        rawBytes: ByteArray? = null,
+        sourceAddress: String? = null
+    ) {
         // Store last document
         val previousEvent = peer.lastDocument?.peripheral?.lastEvent
         val previousEventType = previousEvent?.eventType ?: HiveEventType.NONE
@@ -1532,11 +1554,89 @@ class HiveBtle(
         }
 
         notifyMeshUpdated()
+
+        // Forward document to other connected peers (multi-hop relay)
+        if (rawBytes != null && rawBytes.isNotEmpty()) {
+            forwardDocumentToOtherPeers(document.nodeId, rawBytes, sourceAddress)
+        }
+    }
+
+    /**
+     * Forward a document to all connected peers except the source.
+     * Uses deduplication cache to prevent forwarding loops.
+     */
+    private fun forwardDocumentToOtherPeers(originNodeId: Long, rawBytes: ByteArray, sourceAddress: String?) {
+        // Skip if document is from ourselves
+        if (originNodeId == nodeId) return
+
+        // Compute message hash for deduplication (origin + content hash)
+        val contentHash = rawBytes.contentHashCode().toLong()
+        val messageHash = (originNodeId shl 32) or (contentHash and 0xFFFFFFFFL)
+
+        // Check deduplication cache
+        val now = System.currentTimeMillis()
+        synchronized(seenMessagesLock) {
+            val lastSeen = seenMessages[messageHash]
+            if (lastSeen != null && (now - lastSeen) < 30_000) {
+                // Already forwarded this message within last 30 seconds
+                Log.v(TAG, "[RELAY-SKIP] Already forwarded message from ${String.format("%08X", originNodeId)}")
+                return
+            }
+            seenMessages[messageHash] = now
+        }
+
+        // Count targets for logging
+        var forwardCount = 0
+
+        // Forward to peripherals (devices we connected to)
+        for ((address, gatt) in connections) {
+            if (address == sourceAddress) continue  // Don't echo back to source
+            writeDocumentToGatt(gatt, rawBytes)
+            forwardCount++
+        }
+
+        // Forward to centrals (devices that connected to us)
+        for ((address, _) in connectedCentrals) {
+            if (address == sourceAddress) continue  // Don't echo back to source
+            // notifyConnectedCentrals handles the actual write
+        }
+
+        // Use existing notify mechanism for centrals
+        if (sourceAddress != null) {
+            // Notify all centrals except source
+            val centralsExcludingSource = connectedCentrals.filter { it.key != sourceAddress }
+            if (centralsExcludingSource.isNotEmpty()) {
+                notifySpecificCentrals(centralsExcludingSource.keys.toList(), rawBytes)
+                forwardCount += centralsExcludingSource.size
+            }
+        }
+
+        if (forwardCount > 0) {
+            Log.i(TAG, "[RELAY] Forwarded document from ${String.format("%08X", originNodeId)} to $forwardCount peers")
+        }
+    }
+
+    /**
+     * Notify specific centrals with document data.
+     */
+    private fun notifySpecificCentrals(addresses: List<String>, data: ByteArray) {
+        val server = gattServer ?: return
+        val characteristic = syncDataCharacteristic ?: return
+
+        for (address in addresses) {
+            val device = connectedCentrals[address] ?: continue
+            try {
+                characteristic.value = data
+                server.notifyCharacteristicChanged(device, characteristic, false)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify central $address: ${e.message}")
+            }
+        }
     }
 
     /**
      * Handle an incoming marker document from a peer.
-     * Decodes markers and notifies listener.
+     * Decodes markers, notifies listener, and forwards to other peers.
      */
     private fun handlePeerMarkerDocument(peer: HivePeer, data: ByteArray) {
         // Marker document format: marker(1) + nodeId(4) + count(2) + markers...
@@ -1581,6 +1681,9 @@ class HiveBtle(
                 break
             }
         }
+
+        // Forward marker document to other connected peers
+        forwardDocumentToOtherPeers(sourceNodeId, data, peer.address)
     }
 
     /**
@@ -1835,6 +1938,9 @@ class HiveBtle(
         }
 
         notifyMeshUpdated()
+
+        // Forward delta document to other connected peers
+        forwardDocumentToOtherPeers(docNodeId, data, peer.address)
     }
 
     private fun mergeCounter(remoteCounter: List<GCounterEntry>) {
