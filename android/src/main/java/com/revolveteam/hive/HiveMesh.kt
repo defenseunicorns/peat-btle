@@ -184,6 +184,28 @@ class HiveMesh(
 
         @JvmStatic
         private external fun nativeGetLostPeers(handle: Long): ByteArray
+
+        // Delta Sync methods
+        @JvmStatic
+        private external fun nativeRegisterPeerForDelta(handle: Long, peerNodeId: Long)
+
+        @JvmStatic
+        private external fun nativeUnregisterPeerForDelta(handle: Long, peerNodeId: Long)
+
+        @JvmStatic
+        private external fun nativeResetPeerDeltaState(handle: Long, peerNodeId: Long)
+
+        @JvmStatic
+        private external fun nativeBuildDeltaDocumentForPeer(handle: Long, peerNodeId: Long, nowMs: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeBuildFullDeltaDocument(handle: Long, nowMs: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeGetDeltaStats(handle: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeGetPeerDeltaStats(handle: Long, peerNodeId: Long): ByteArray
     }
 
     /** Native handle returned by nativeCreate */
@@ -509,6 +531,127 @@ class HiveMesh(
         checkNotDestroyed()
         val data = nativeGetLostPeers(handle)
         return PeerConnectionState.decodeList(data)
+    }
+
+    // ========================================================================
+    // Delta Sync API
+    // ========================================================================
+
+    /**
+     * Register a peer for delta sync tracking.
+     *
+     * Call this when a peer connects to enable bandwidth-efficient delta sync.
+     * Once registered, [buildDeltaDocumentForPeer] will track what has been
+     * sent and only return new operations.
+     *
+     * @param peerNodeId The peer's node ID (32-bit)
+     */
+    fun registerPeerForDelta(peerNodeId: Long) {
+        checkNotDestroyed()
+        nativeRegisterPeerForDelta(handle, peerNodeId)
+    }
+
+    /**
+     * Unregister a peer from delta sync tracking.
+     *
+     * Call this when a peer disconnects to clean up tracking state and
+     * free memory.
+     *
+     * @param peerNodeId The peer's node ID (32-bit)
+     */
+    fun unregisterPeerForDelta(peerNodeId: Long) {
+        checkNotDestroyed()
+        nativeUnregisterPeerForDelta(handle, peerNodeId)
+    }
+
+    /**
+     * Reset delta sync state for a peer.
+     *
+     * Call this when a peer reconnects to force a full sync on the next
+     * call to [buildDeltaDocumentForPeer]. This ensures the peer receives
+     * complete state after reconnection.
+     *
+     * @param peerNodeId The peer's node ID (32-bit)
+     */
+    fun resetPeerDeltaState(peerNodeId: Long) {
+        checkNotDestroyed()
+        nativeResetPeerDeltaState(handle, peerNodeId)
+    }
+
+    /**
+     * Build a delta document for a specific peer.
+     *
+     * Returns only operations that have changed since the last sync with
+     * this peer. This significantly reduces bandwidth usage compared to
+     * [buildDocument] or [buildFullDeltaDocument].
+     *
+     * **Usage pattern:**
+     * ```kotlin
+     * // When peer connects
+     * mesh.registerPeerForDelta(peerNodeId)
+     *
+     * // Periodic sync - only sends changes
+     * val delta = mesh.buildDeltaDocumentForPeer(peerNodeId)
+     * if (delta != null) {
+     *     sendToPeer(delta)
+     * }
+     *
+     * // When peer disconnects
+     * mesh.unregisterPeerForDelta(peerNodeId)
+     * ```
+     *
+     * @param peerNodeId The peer's node ID (32-bit)
+     * @param nowMs Current timestamp (defaults to System.currentTimeMillis())
+     * @return Encoded delta document bytes, or null if nothing new to send
+     */
+    fun buildDeltaDocumentForPeer(
+        peerNodeId: Long,
+        nowMs: Long = System.currentTimeMillis()
+    ): ByteArray? {
+        checkNotDestroyed()
+        val result = nativeBuildDeltaDocumentForPeer(handle, peerNodeId, nowMs)
+        return if (result.isEmpty()) null else result
+    }
+
+    /**
+     * Build a full delta document for broadcast.
+     *
+     * Returns complete state in the new wire format v2. Use this for:
+     * - Broadcasting to all peers (not tracking individual states)
+     * - Sending to newly discovered peers
+     * - Initial sync before registering for delta tracking
+     *
+     * @param nowMs Current timestamp (defaults to System.currentTimeMillis())
+     * @return Encoded delta document bytes with complete state
+     */
+    fun buildFullDeltaDocument(nowMs: Long = System.currentTimeMillis()): ByteArray {
+        checkNotDestroyed()
+        return nativeBuildFullDeltaDocument(handle, nowMs)
+    }
+
+    /**
+     * Get aggregate delta sync statistics.
+     *
+     * Returns overall statistics across all tracked peers.
+     *
+     * @return DeltaStats with aggregate metrics, or null on error
+     */
+    fun getDeltaStats(): DeltaStats? {
+        checkNotDestroyed()
+        val data = nativeGetDeltaStats(handle)
+        return DeltaStats.decode(data)
+    }
+
+    /**
+     * Get delta sync statistics for a specific peer.
+     *
+     * @param peerNodeId The peer's node ID (32-bit)
+     * @return PeerDeltaStats if peer is registered, null otherwise
+     */
+    fun getPeerDeltaStats(peerNodeId: Long): PeerDeltaStats? {
+        checkNotDestroyed()
+        val data = nativeGetPeerDeltaStats(handle, peerNodeId)
+        return PeerDeltaStats.decode(data)
     }
 
     private fun checkNotDestroyed() {
@@ -855,6 +998,73 @@ data class StateCountSummary(
                 disconnecting = buffer.int,
                 disconnected = buffer.int,
                 lost = buffer.int
+            )
+        }
+    }
+}
+
+/**
+ * Aggregate delta sync statistics across all tracked peers.
+ *
+ * Provides metrics for monitoring delta sync efficiency and bandwidth savings.
+ */
+data class DeltaStats(
+    /** Number of peers currently registered for delta sync */
+    val peerCount: Int,
+    /** Total bytes sent via delta sync */
+    val totalBytesSent: Long,
+    /** Total bytes received via delta sync */
+    val totalBytesReceived: Long,
+    /** Total number of sync operations performed */
+    val totalSyncs: Int
+) {
+    companion object {
+        /**
+         * Decode from native byte format.
+         *
+         * Format: [peer_count: 4][total_bytes_sent: 8][total_bytes_received: 8][total_syncs: 4]
+         */
+        fun decode(data: ByteArray): DeltaStats? {
+            if (data.size < 24) return null
+
+            val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+            return DeltaStats(
+                peerCount = buffer.int,
+                totalBytesSent = buffer.long,
+                totalBytesReceived = buffer.long,
+                totalSyncs = buffer.int
+            )
+        }
+    }
+}
+
+/**
+ * Delta sync statistics for a specific peer.
+ *
+ * Tracks bandwidth usage and sync frequency for individual peer connections.
+ */
+data class PeerDeltaStats(
+    /** Bytes sent to this peer via delta sync */
+    val bytesSent: Long,
+    /** Bytes received from this peer via delta sync */
+    val bytesReceived: Long,
+    /** Number of sync operations with this peer */
+    val syncCount: Int
+) {
+    companion object {
+        /**
+         * Decode from native byte format.
+         *
+         * Format: [bytes_sent: 8][bytes_received: 8][sync_count: 4]
+         */
+        fun decode(data: ByteArray): PeerDeltaStats? {
+            if (data.size < 20) return null
+
+            val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+            return PeerDeltaStats(
+                bytesSent = buffer.long,
+                bytesReceived = buffer.long,
+                syncCount = buffer.int
             )
         }
     }

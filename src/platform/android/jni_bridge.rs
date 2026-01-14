@@ -1844,6 +1844,194 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetLostPeers<'lo
     }
 }
 
+// ==================== Delta Sync API ====================
+
+/// Register a peer for delta sync tracking
+///
+/// Call this when a peer connects to enable bandwidth-efficient delta sync.
+///
+/// JNI Signature: (JJ)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeRegisterPeerForDelta<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    peer_node_id: jlong,
+) {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            let peer_id = crate::NodeId::new(peer_node_id as u32);
+            mesh.register_peer_for_delta(&peer_id);
+        }
+    }
+}
+
+/// Unregister a peer from delta sync tracking
+///
+/// Call this when a peer disconnects to clean up tracking state.
+///
+/// JNI Signature: (JJ)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeUnregisterPeerForDelta<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    peer_node_id: jlong,
+) {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            let peer_id = crate::NodeId::new(peer_node_id as u32);
+            mesh.unregister_peer_for_delta(&peer_id);
+        }
+    }
+}
+
+/// Reset delta sync state for a peer
+///
+/// Call this when a peer reconnects to force a full sync.
+///
+/// JNI Signature: (JJ)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeResetPeerDeltaState<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    peer_node_id: jlong,
+) {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            let peer_id = crate::NodeId::new(peer_node_id as u32);
+            mesh.reset_peer_delta_state(&peer_id);
+        }
+    }
+}
+
+/// Build delta document for a specific peer
+///
+/// Returns only operations that have changed since last sync with this peer.
+/// Returns empty array if nothing new to send.
+///
+/// JNI Signature: (JJJ)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeBuildDeltaDocumentForPeer<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    peer_node_id: jlong,
+    now_ms: jlong,
+) -> JByteArray<'local> {
+    let doc_bytes = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).and_then(|m| {
+            let peer_id = crate::NodeId::new(peer_node_id as u32);
+            m.build_delta_document_for_peer(&peer_id, now_ms as u64)
+        })
+    } else {
+        None
+    };
+
+    match doc_bytes {
+        Some(bytes) => env
+            .byte_array_from_slice(&bytes)
+            .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array")),
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Build full delta document for broadcast
+///
+/// Returns complete state in delta format (wire format v2).
+/// Use this for broadcasts or when sending to new peers.
+///
+/// JNI Signature: (JJ)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeBuildFullDeltaDocument<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    now_ms: jlong,
+) -> JByteArray<'local> {
+    let doc_bytes = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .map(|m| m.build_full_delta_document(now_ms as u64))
+    } else {
+        None
+    };
+
+    match doc_bytes {
+        Some(bytes) => env
+            .byte_array_from_slice(&bytes)
+            .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array")),
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get aggregate delta sync statistics
+///
+/// Returns encoded stats: [peer_count: 4][total_bytes_sent: 8][total_bytes_received: 8][total_syncs: 4]
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetDeltaStats<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let stats = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).map(|m| m.delta_stats())
+    } else {
+        None
+    };
+
+    match stats {
+        Some(s) => {
+            let mut buf = Vec::with_capacity(24);
+            buf.extend_from_slice(&(s.peer_count as u32).to_le_bytes());
+            buf.extend_from_slice(&s.total_bytes_sent.to_le_bytes());
+            buf.extend_from_slice(&s.total_bytes_received.to_le_bytes());
+            buf.extend_from_slice(&s.total_syncs.to_le_bytes());
+            env.byte_array_from_slice(&buf)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get delta sync statistics for a specific peer
+///
+/// Returns encoded stats: [bytes_sent: 8][bytes_received: 8][sync_count: 4]
+/// Returns empty array if peer not found.
+///
+/// JNI Signature: (JJ)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetPeerDeltaStats<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    peer_node_id: jlong,
+) -> JByteArray<'local> {
+    let stats = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).and_then(|m| {
+            let peer_id = crate::NodeId::new(peer_node_id as u32);
+            m.peer_delta_stats(&peer_id)
+        })
+    } else {
+        None
+    };
+
+    match stats {
+        Some((bytes_sent, bytes_received, sync_count)) => {
+            let mut buf = Vec::with_capacity(20);
+            buf.extend_from_slice(&bytes_sent.to_le_bytes());
+            buf.extend_from_slice(&bytes_received.to_le_bytes());
+            buf.extend_from_slice(&sync_count.to_le_bytes());
+            env.byte_array_from_slice(&buf)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // JNI tests require Android runtime environment
