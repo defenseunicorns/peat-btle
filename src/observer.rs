@@ -171,6 +171,33 @@ pub enum HiveEvent {
         /// Optional source identifier (node_id, BLE identifier, etc.)
         source: Option<String>,
     },
+
+    // ==================== Relay Events ====================
+    /// A message was relayed to other peers
+    MessageRelayed {
+        /// Original sender of the message
+        origin_node: NodeId,
+        /// Number of peers the message was relayed to
+        relay_count: usize,
+        /// Current hop count
+        hop_count: u8,
+    },
+
+    /// A duplicate message was detected and dropped
+    DuplicateMessageDropped {
+        /// Original sender of the message
+        origin_node: NodeId,
+        /// How many times we've seen this message
+        seen_count: u32,
+    },
+
+    /// A message was dropped due to TTL expiration
+    MessageTtlExpired {
+        /// Original sender of the message
+        origin_node: NodeId,
+        /// Hop count when dropped
+        hop_count: u8,
+    },
 }
 
 impl HiveEvent {
