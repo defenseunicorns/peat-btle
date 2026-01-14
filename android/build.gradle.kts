@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.0.8"
+version = "0.0.9"
 
 android {
     namespace = "com.revolveteam.hive"
