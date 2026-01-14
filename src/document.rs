@@ -94,6 +94,23 @@ pub const PEER_E2EE_MARKER: u8 = 0xAF;
 /// ```
 pub const KEY_EXCHANGE_MARKER: u8 = 0xB0;
 
+/// Marker byte indicating relay envelope for multi-hop transmission
+///
+/// Used to wrap documents for multi-hop relay with deduplication and TTL.
+/// See [`crate::relay`] module for details.
+///
+/// ```text
+/// marker:        1 byte (0xB1)
+/// flags:         1 byte (bit 0: requires_ack, bit 1: is_broadcast)
+/// message_id:    16 bytes (UUID for deduplication)
+/// hop_count:     1 byte (current hop count)
+/// max_hops:      1 byte (TTL)
+/// origin_node:   4 bytes (LE) - original sender node ID
+/// payload_len:   4 bytes (LE)
+/// payload:       variable (encrypted document)
+/// ```
+pub const RELAY_ENVELOPE_MARKER: u8 = 0xB1;
+
 /// Minimum document size (header only, no counter entries)
 pub const MIN_DOCUMENT_SIZE: usize = 8;
 

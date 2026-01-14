@@ -60,11 +60,17 @@ use std::sync::Arc;
 
 use crate::document::{ENCRYPTED_MARKER, KEY_EXCHANGE_MARKER, PEER_E2EE_MARKER};
 use crate::document_sync::DocumentSync;
+use crate::gossip::{GossipStrategy, RandomFanout};
 use crate::observer::{DisconnectReason, HiveEvent, HiveObserver, SecurityViolationKind};
 use crate::peer::{
     ConnectionStateGraph, HivePeer, PeerConnectionState, PeerManagerConfig, StateCountSummary,
 };
 use crate::peer_manager::PeerManager;
+use crate::relay::{
+    MessageId, RelayEnvelope, SeenMessageCache, DEFAULT_MAX_HOPS, DEFAULT_SEEN_TTL_MS,
+    RELAY_ENVELOPE_MARKER,
+};
+use crate::sync::delta::{DeltaEncoder, DeltaStats};
 use crate::security::{
     KeyExchangeMessage, MeshEncryptionKey, PeerEncryptedMessage, PeerSessionManager, SessionState,
 };
@@ -113,6 +119,33 @@ pub struct HiveMeshConfig {
     ///
     /// Default: false (backward compatible - accepts unencrypted for gradual rollout)
     pub strict_encryption: bool,
+
+    /// Enable multi-hop relay
+    ///
+    /// When enabled, received messages will be forwarded to other peers based
+    /// on the gossip strategy. Requires message deduplication to prevent loops.
+    ///
+    /// Default: false
+    pub enable_relay: bool,
+
+    /// Maximum hops for relay messages (TTL)
+    ///
+    /// Messages will not be relayed beyond this many hops from the origin.
+    /// Default: 7
+    pub max_relay_hops: u8,
+
+    /// Gossip fanout for relay
+    ///
+    /// Number of peers to forward each message to. Higher values increase
+    /// convergence speed but also bandwidth usage.
+    /// Default: 2
+    pub relay_fanout: usize,
+
+    /// TTL for seen message cache (milliseconds)
+    ///
+    /// How long to remember message IDs for deduplication.
+    /// Default: 300_000 (5 minutes)
+    pub seen_cache_ttl_ms: u64,
 }
 
 impl HiveMeshConfig {
@@ -128,6 +161,10 @@ impl HiveMeshConfig {
             auto_broadcast_events: true,
             encryption_secret: None,
             strict_encryption: false,
+            enable_relay: false,
+            max_relay_hops: DEFAULT_MAX_HOPS,
+            relay_fanout: 2,
+            seen_cache_ttl_ms: DEFAULT_SEEN_TTL_MS,
         }
     }
 
@@ -175,6 +212,39 @@ impl HiveMeshConfig {
         self.strict_encryption = true;
         self
     }
+
+    /// Enable multi-hop relay
+    ///
+    /// When enabled, received messages will be forwarded to other connected peers
+    /// based on the gossip strategy. This enables mesh-wide message propagation.
+    pub fn with_relay(mut self) -> Self {
+        self.enable_relay = true;
+        self
+    }
+
+    /// Set maximum relay hops (TTL)
+    ///
+    /// Messages will not be relayed beyond this many hops from the origin.
+    pub fn with_max_relay_hops(mut self, max_hops: u8) -> Self {
+        self.max_relay_hops = max_hops;
+        self
+    }
+
+    /// Set gossip fanout for relay
+    ///
+    /// Number of peers to forward each message to.
+    pub fn with_relay_fanout(mut self, fanout: usize) -> Self {
+        self.relay_fanout = fanout.max(1);
+        self
+    }
+
+    /// Set TTL for seen message cache
+    ///
+    /// How long to remember message IDs for deduplication (milliseconds).
+    pub fn with_seen_cache_ttl(mut self, ttl_ms: u64) -> Self {
+        self.seen_cache_ttl_ms = ttl_ms;
+        self
+    }
 }
 
 /// Main facade for HIVE BLE mesh operations
@@ -209,6 +279,12 @@ pub struct HiveMesh {
 
     /// Connection state graph for tracking peer connection lifecycle
     connection_graph: std::sync::Mutex<ConnectionStateGraph>,
+
+    /// Seen message cache for relay deduplication
+    seen_cache: std::sync::Mutex<SeenMessageCache>,
+
+    /// Gossip strategy for relay peer selection
+    gossip_strategy: Box<dyn GossipStrategy>,
 }
 
 #[cfg(feature = "std")]
@@ -233,6 +309,13 @@ impl HiveMesh {
             config.peer_config.lost_timeout_ms,
         );
 
+        // Create seen message cache for relay deduplication
+        let seen_cache = SeenMessageCache::with_ttl(config.seen_cache_ttl_ms);
+
+        // Create gossip strategy for relay
+        let gossip_strategy: Box<dyn GossipStrategy> =
+            Box::new(RandomFanout::new(config.relay_fanout));
+
         Self {
             config,
             peer_manager,
@@ -243,6 +326,8 @@ impl HiveMesh {
             encryption_key,
             peer_sessions: std::sync::Mutex::new(None),
             connection_graph: std::sync::Mutex::new(connection_graph),
+            seen_cache: std::sync::Mutex::new(seen_cache),
+            gossip_strategy,
         }
     }
 
@@ -356,6 +441,174 @@ impl HiveMesh {
                 Some(std::borrow::Cow::Borrowed(data))
             }
         }
+    }
+
+    // ==================== Multi-Hop Relay ====================
+
+    /// Check if multi-hop relay is enabled
+    pub fn is_relay_enabled(&self) -> bool {
+        self.config.enable_relay
+    }
+
+    /// Enable multi-hop relay
+    pub fn enable_relay(&mut self) {
+        self.config.enable_relay = true;
+    }
+
+    /// Disable multi-hop relay
+    pub fn disable_relay(&mut self) {
+        self.config.enable_relay = false;
+    }
+
+    /// Check if a message has been seen before (for deduplication)
+    ///
+    /// Returns true if the message was already seen (duplicate).
+    pub fn has_seen_message(&self, message_id: &MessageId) -> bool {
+        self.seen_cache.lock().unwrap().has_seen(message_id)
+    }
+
+    /// Mark a message as seen
+    ///
+    /// Returns true if this is a new message (first time seen).
+    pub fn mark_message_seen(&self, message_id: MessageId, origin: NodeId, now_ms: u64) -> bool {
+        self.seen_cache
+            .lock()
+            .unwrap()
+            .check_and_mark(message_id, origin, now_ms)
+    }
+
+    /// Get the number of entries in the seen message cache
+    pub fn seen_cache_size(&self) -> usize {
+        self.seen_cache.lock().unwrap().len()
+    }
+
+    /// Clear the seen message cache
+    pub fn clear_seen_cache(&self) {
+        self.seen_cache.lock().unwrap().clear();
+    }
+
+    /// Wrap a document in a relay envelope for multi-hop transmission
+    ///
+    /// The returned bytes can be sent to peers and will be automatically
+    /// relayed through the mesh if relay is enabled on receiving nodes.
+    pub fn wrap_for_relay(&self, payload: Vec<u8>) -> Vec<u8> {
+        let envelope = RelayEnvelope::broadcast(self.config.node_id, payload)
+            .with_max_hops(self.config.max_relay_hops);
+        envelope.encode()
+    }
+
+    /// Get peers to relay a message to
+    ///
+    /// Uses the configured gossip strategy to select relay targets.
+    /// Excludes the source peer (if provided) to avoid sending back to sender.
+    pub fn get_relay_targets(&self, exclude_peer: Option<NodeId>) -> Vec<HivePeer> {
+        let connected = self.peer_manager.get_connected_peers();
+        let filtered: Vec<_> = if let Some(exclude) = exclude_peer {
+            connected
+                .into_iter()
+                .filter(|p| p.node_id != exclude)
+                .collect()
+        } else {
+            connected
+        };
+
+        self.gossip_strategy
+            .select_peers(&filtered)
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Process an incoming relay envelope
+    ///
+    /// Handles deduplication, TTL checking, and determines if the message
+    /// should be processed and/or relayed.
+    ///
+    /// Returns:
+    /// - `Ok(Some(RelayDecision))` if message should be processed/relayed
+    /// - `Ok(None)` if message was a duplicate or TTL expired
+    /// - `Err` if parsing failed
+    pub fn process_relay_envelope(
+        &self,
+        data: &[u8],
+        _source_peer: NodeId,
+        now_ms: u64,
+    ) -> Option<RelayDecision> {
+        // Parse envelope
+        let envelope = RelayEnvelope::decode(data)?;
+
+        // Check deduplication
+        if !self.mark_message_seen(envelope.message_id, envelope.origin_node, now_ms) {
+            // Duplicate message
+            let stats = self
+                .seen_cache
+                .lock()
+                .unwrap()
+                .get_stats(&envelope.message_id);
+            let seen_count = stats.map(|(_, count, _)| count).unwrap_or(1);
+
+            self.notify(HiveEvent::DuplicateMessageDropped {
+                origin_node: envelope.origin_node,
+                seen_count,
+            });
+
+            log::debug!(
+                "Dropped duplicate message {} from {:08X} (seen {} times)",
+                envelope.message_id,
+                envelope.origin_node.as_u32(),
+                seen_count
+            );
+            return None;
+        }
+
+        // Check TTL
+        if !envelope.can_relay() {
+            self.notify(HiveEvent::MessageTtlExpired {
+                origin_node: envelope.origin_node,
+                hop_count: envelope.hop_count,
+            });
+
+            log::debug!(
+                "Message {} from {:08X} TTL expired at hop {}",
+                envelope.message_id,
+                envelope.origin_node.as_u32(),
+                envelope.hop_count
+            );
+
+            // Still process locally even if TTL expired
+            return Some(RelayDecision {
+                payload: envelope.payload,
+                origin_node: envelope.origin_node,
+                hop_count: envelope.hop_count,
+                should_relay: false,
+                relay_envelope: None,
+            });
+        }
+
+        // Determine if we should relay
+        let should_relay = self.config.enable_relay;
+        let relay_envelope = if should_relay {
+            envelope.relay() // Increments hop count
+        } else {
+            None
+        };
+
+        Some(RelayDecision {
+            payload: envelope.payload,
+            origin_node: envelope.origin_node,
+            hop_count: envelope.hop_count,
+            should_relay,
+            relay_envelope,
+        })
+    }
+
+    /// Build a document wrapped in a relay envelope
+    ///
+    /// Convenience method that builds the document, encrypts it (if enabled),
+    /// and wraps it in a relay envelope for multi-hop transmission.
+    pub fn build_relay_document(&self) -> Vec<u8> {
+        let doc = self.build_document(); // Already encrypted if encryption enabled
+        self.wrap_for_relay(doc)
     }
 
     // ==================== Per-Peer E2EE ====================
@@ -915,7 +1168,7 @@ impl HiveMesh {
         // Get node ID from identifier
         let node_id = self.peer_manager.get_node_id(identifier)?;
 
-        // Check for per-peer E2EE messages first
+        // Check for special message types first
         if data.len() >= 2 {
             match data[0] {
                 KEY_EXCHANGE_MARKER => {
@@ -930,18 +1183,39 @@ impl HiveMesh {
                     // Return None as this isn't a document sync
                     return None;
                 }
+                RELAY_ENVELOPE_MARKER => {
+                    // Handle relay envelope for multi-hop
+                    return self.handle_relay_envelope_with_identifier(
+                        node_id, identifier, data, now_ms,
+                    );
+                }
                 _ => {}
             }
         }
 
-        // Decrypt if encrypted (mesh-wide encryption)
+        // Direct document (not relay envelope)
+        self.process_document_data_with_identifier(node_id, identifier, data, now_ms, None, None, 0)
+    }
+
+    /// Internal: Process document data with identifier as source hint
+    fn process_document_data_with_identifier(
+        &self,
+        source_node: NodeId,
+        identifier: &str,
+        data: &[u8],
+        now_ms: u64,
+        relay_data: Option<Vec<u8>>,
+        origin_node: Option<NodeId>,
+        hop_count: u8,
+    ) -> Option<DataReceivedResult> {
+        // Decrypt if encrypted (mesh-wide encryption) - use identifier as source hint
         let decrypted = self.decrypt_document(data, Some(identifier))?;
 
         // Merge the document
         let result = self.document_sync.merge_document(&decrypted)?;
 
         // Record sync
-        self.peer_manager.record_sync(node_id, now_ms);
+        self.peer_manager.record_sync(source_node, now_ms);
 
         // Generate events based on what was received
         if result.is_emergency() {
@@ -961,6 +1235,16 @@ impl HiveMesh {
             });
         }
 
+        // Emit relay event if we're relaying
+        if relay_data.is_some() {
+            let relay_targets = self.get_relay_targets(Some(source_node));
+            self.notify(HiveEvent::MessageRelayed {
+                origin_node: origin_node.unwrap_or(result.source_node),
+                relay_count: relay_targets.len(),
+                hop_count,
+            });
+        }
+
         Some(DataReceivedResult {
             source_node: result.source_node,
             is_emergency: result.is_emergency(),
@@ -969,7 +1253,62 @@ impl HiveMesh {
             emergency_changed: result.emergency_changed,
             total_count: result.total_count,
             event_timestamp: result.event.as_ref().map(|e| e.timestamp).unwrap_or(0),
+            relay_data,
+            origin_node,
+            hop_count,
         })
+    }
+
+    /// Internal: Handle relay envelope with identifier as source hint
+    fn handle_relay_envelope_with_identifier(
+        &self,
+        source_node: NodeId,
+        identifier: &str,
+        data: &[u8],
+        now_ms: u64,
+    ) -> Option<DataReceivedResult> {
+        // Process the relay envelope
+        let envelope = RelayEnvelope::decode(data)?;
+
+        // Check deduplication
+        if !self.mark_message_seen(envelope.message_id, envelope.origin_node, now_ms) {
+            let stats = self
+                .seen_cache
+                .lock()
+                .unwrap()
+                .get_stats(&envelope.message_id);
+            let seen_count = stats.map(|(_, count, _)| count).unwrap_or(1);
+
+            self.notify(HiveEvent::DuplicateMessageDropped {
+                origin_node: envelope.origin_node,
+                seen_count,
+            });
+            return None;
+        }
+
+        // Check TTL and get relay data
+        let relay_data = if envelope.can_relay() && self.config.enable_relay {
+            envelope.relay().map(|e| e.encode())
+        } else {
+            if !envelope.can_relay() {
+                self.notify(HiveEvent::MessageTtlExpired {
+                    origin_node: envelope.origin_node,
+                    hop_count: envelope.hop_count,
+                });
+            }
+            None
+        };
+
+        // Process the inner payload
+        self.process_document_data_with_identifier(
+            source_node,
+            identifier,
+            &envelope.payload,
+            now_ms,
+            relay_data,
+            Some(envelope.origin_node),
+            envelope.hop_count,
+        )
     }
 
     /// Called when data is received but we don't have the identifier mapped
@@ -977,13 +1316,14 @@ impl HiveMesh {
     /// Use this when receiving data from a peripheral we discovered.
     /// If encryption is enabled, decrypts the document first.
     /// Handles per-peer E2EE messages (KEY_EXCHANGE and PEER_E2EE markers).
+    /// Handles relay envelopes for multi-hop mesh operation.
     pub fn on_ble_data_received_from_node(
         &self,
         node_id: NodeId,
         data: &[u8],
         now_ms: u64,
     ) -> Option<DataReceivedResult> {
-        // Check for per-peer E2EE messages first
+        // Check for special message types first
         if data.len() >= 2 {
             match data[0] {
                 KEY_EXCHANGE_MARKER => {
@@ -994,19 +1334,37 @@ impl HiveMesh {
                     let _plaintext = self.handle_peer_e2ee_message(data, now_ms);
                     return None;
                 }
+                RELAY_ENVELOPE_MARKER => {
+                    // Handle relay envelope for multi-hop
+                    return self.handle_relay_envelope(node_id, data, now_ms);
+                }
                 _ => {}
             }
         }
 
+        // Direct document (not relay envelope)
+        self.process_document_data(node_id, data, now_ms, None, None, 0)
+    }
+
+    /// Internal: Process document data (shared by direct and relay paths)
+    fn process_document_data(
+        &self,
+        source_node: NodeId,
+        data: &[u8],
+        now_ms: u64,
+        relay_data: Option<Vec<u8>>,
+        origin_node: Option<NodeId>,
+        hop_count: u8,
+    ) -> Option<DataReceivedResult> {
         // Decrypt if encrypted (mesh-wide encryption)
-        let source_hint = format!("node:{:08X}", node_id.as_u32());
+        let source_hint = format!("node:{:08X}", source_node.as_u32());
         let decrypted = self.decrypt_document(data, Some(&source_hint))?;
 
         // Merge the document
         let result = self.document_sync.merge_document(&decrypted)?;
 
         // Record sync
-        self.peer_manager.record_sync(node_id, now_ms);
+        self.peer_manager.record_sync(source_node, now_ms);
 
         // Generate events based on what was received
         if result.is_emergency() {
@@ -1026,6 +1384,16 @@ impl HiveMesh {
             });
         }
 
+        // Emit relay event if we're relaying
+        if relay_data.is_some() {
+            let relay_targets = self.get_relay_targets(Some(source_node));
+            self.notify(HiveEvent::MessageRelayed {
+                origin_node: origin_node.unwrap_or(result.source_node),
+                relay_count: relay_targets.len(),
+                hop_count,
+            });
+        }
+
         Some(DataReceivedResult {
             source_node: result.source_node,
             is_emergency: result.is_emergency(),
@@ -1034,7 +1402,38 @@ impl HiveMesh {
             emergency_changed: result.emergency_changed,
             total_count: result.total_count,
             event_timestamp: result.event.as_ref().map(|e| e.timestamp).unwrap_or(0),
+            relay_data,
+            origin_node,
+            hop_count,
         })
+    }
+
+    /// Internal: Handle relay envelope
+    fn handle_relay_envelope(
+        &self,
+        source_node: NodeId,
+        data: &[u8],
+        now_ms: u64,
+    ) -> Option<DataReceivedResult> {
+        // Process the relay envelope
+        let decision = self.process_relay_envelope(data, source_node, now_ms)?;
+
+        // Get relay data if we should relay
+        let relay_data = if decision.should_relay {
+            decision.relay_data()
+        } else {
+            None
+        };
+
+        // Process the inner payload
+        self.process_document_data(
+            source_node,
+            &decision.payload,
+            now_ms,
+            relay_data,
+            Some(decision.origin_node),
+            decision.hop_count,
+        )
     }
 
     /// Called when data is received without a known identifier
@@ -1044,13 +1443,14 @@ impl HiveMesh {
     /// (e.g., ESP32 NimBLE).
     /// If encryption is enabled, decrypts the document first.
     /// Handles per-peer E2EE messages (KEY_EXCHANGE and PEER_E2EE markers).
+    /// Handles relay envelopes for multi-hop mesh operation.
     pub fn on_ble_data(
         &self,
         identifier: &str,
         data: &[u8],
         now_ms: u64,
     ) -> Option<DataReceivedResult> {
-        // Check for per-peer E2EE messages first
+        // Check for special message types first
         if data.len() >= 2 {
             match data[0] {
                 KEY_EXCHANGE_MARKER => {
@@ -1061,10 +1461,28 @@ impl HiveMesh {
                     let _plaintext = self.handle_peer_e2ee_message(data, now_ms);
                     return None;
                 }
+                RELAY_ENVELOPE_MARKER => {
+                    // Handle relay envelope - extract origin from envelope
+                    return self.handle_relay_envelope_with_incoming(identifier, data, now_ms);
+                }
                 _ => {}
             }
         }
 
+        // Direct document - process normally
+        self.process_incoming_document(identifier, data, now_ms, None, None, 0)
+    }
+
+    /// Internal: Process incoming document (handles peer registration)
+    fn process_incoming_document(
+        &self,
+        identifier: &str,
+        data: &[u8],
+        now_ms: u64,
+        relay_data: Option<Vec<u8>>,
+        origin_node: Option<NodeId>,
+        hop_count: u8,
+    ) -> Option<DataReceivedResult> {
         // Decrypt if encrypted (mesh-wide encryption)
         let decrypted = self.decrypt_document(data, Some(identifier))?;
 
@@ -1096,6 +1514,16 @@ impl HiveMesh {
             });
         }
 
+        // Emit relay event if we're relaying
+        if relay_data.is_some() {
+            let relay_targets = self.get_relay_targets(Some(result.source_node));
+            self.notify(HiveEvent::MessageRelayed {
+                origin_node: origin_node.unwrap_or(result.source_node),
+                relay_count: relay_targets.len(),
+                hop_count,
+            });
+        }
+
         Some(DataReceivedResult {
             source_node: result.source_node,
             is_emergency: result.is_emergency(),
@@ -1104,7 +1532,62 @@ impl HiveMesh {
             emergency_changed: result.emergency_changed,
             total_count: result.total_count,
             event_timestamp: result.event.as_ref().map(|e| e.timestamp).unwrap_or(0),
+            relay_data,
+            origin_node,
+            hop_count,
         })
+    }
+
+    /// Internal: Handle relay envelope with incoming connection registration
+    fn handle_relay_envelope_with_incoming(
+        &self,
+        identifier: &str,
+        data: &[u8],
+        now_ms: u64,
+    ) -> Option<DataReceivedResult> {
+        // Parse envelope to get origin
+        let envelope = RelayEnvelope::decode(data)?;
+
+        // Check deduplication
+        if !self.mark_message_seen(envelope.message_id, envelope.origin_node, now_ms) {
+            // Duplicate - get stats for event
+            let stats = self
+                .seen_cache
+                .lock()
+                .unwrap()
+                .get_stats(&envelope.message_id);
+            let seen_count = stats.map(|(_, count, _)| count).unwrap_or(1);
+
+            self.notify(HiveEvent::DuplicateMessageDropped {
+                origin_node: envelope.origin_node,
+                seen_count,
+            });
+            return None;
+        }
+
+        // Check TTL
+        let (should_relay, relay_data) = if envelope.can_relay() && self.config.enable_relay {
+            let relay_env = envelope.relay();
+            (true, relay_env.map(|e| e.encode()))
+        } else {
+            if !envelope.can_relay() {
+                self.notify(HiveEvent::MessageTtlExpired {
+                    origin_node: envelope.origin_node,
+                    hop_count: envelope.hop_count,
+                });
+            }
+            (false, None)
+        };
+
+        // Process the inner payload
+        self.process_incoming_document(
+            identifier,
+            &envelope.payload,
+            now_ms,
+            if should_relay { relay_data } else { None },
+            Some(envelope.origin_node),
+            envelope.hop_count,
+        )
     }
 
     // ==================== Periodic Maintenance ====================
@@ -1373,6 +1856,48 @@ pub struct DataReceivedResult {
 
     /// Event timestamp (if event present) - use to detect duplicate events
     pub event_timestamp: u64,
+
+    /// Data to relay to other peers (if multi-hop relay is enabled)
+    ///
+    /// When present, the platform adapter should send this data to peers
+    /// returned by `get_relay_targets(Some(source_node))`.
+    pub relay_data: Option<Vec<u8>>,
+
+    /// Origin node for relay (may differ from source_node for relayed messages)
+    pub origin_node: Option<NodeId>,
+
+    /// Current hop count (for relayed messages)
+    pub hop_count: u8,
+}
+
+/// Decision from processing a relay envelope
+#[derive(Debug, Clone)]
+pub struct RelayDecision {
+    /// The payload (document) to process locally
+    pub payload: Vec<u8>,
+
+    /// Original sender of the message
+    pub origin_node: NodeId,
+
+    /// Current hop count
+    pub hop_count: u8,
+
+    /// Whether this message should be relayed to other peers
+    pub should_relay: bool,
+
+    /// The relay envelope to forward (with incremented hop count)
+    ///
+    /// Only present if `should_relay` is true and TTL not expired.
+    pub relay_envelope: Option<RelayEnvelope>,
+}
+
+impl RelayDecision {
+    /// Get the relay data to send to peers
+    ///
+    /// Returns None if relay is not needed.
+    pub fn relay_data(&self) -> Option<Vec<u8>> {
+        self.relay_envelope.as_ref().map(|e| e.encode())
+    }
 }
 
 #[cfg(all(test, feature = "std"))]
@@ -2201,5 +2726,220 @@ mod tests {
 
         assert!(mesh.is_encryption_enabled());
         assert!(mesh.is_strict_encryption_enabled());
+    }
+
+    // ==================== Multi-Hop Relay Tests ====================
+
+    fn create_relay_mesh(node_id: u32, callsign: &str) -> HiveMesh {
+        let config = HiveMeshConfig::new(NodeId::new(node_id), callsign, "TEST").with_relay();
+        HiveMesh::new(config)
+    }
+
+    #[test]
+    fn test_relay_disabled_by_default() {
+        let mesh = create_mesh(0x11111111, "ALPHA-1");
+        assert!(!mesh.is_relay_enabled());
+    }
+
+    #[test]
+    fn test_relay_enabled() {
+        let mesh = create_relay_mesh(0x11111111, "ALPHA-1");
+        assert!(mesh.is_relay_enabled());
+    }
+
+    #[test]
+    fn test_relay_config_builder() {
+        let config = HiveMeshConfig::new(NodeId::new(0x11111111), "ALPHA-1", "TEST")
+            .with_relay()
+            .with_max_relay_hops(5)
+            .with_relay_fanout(3)
+            .with_seen_cache_ttl(60_000);
+
+        assert!(config.enable_relay);
+        assert_eq!(config.max_relay_hops, 5);
+        assert_eq!(config.relay_fanout, 3);
+        assert_eq!(config.seen_cache_ttl_ms, 60_000);
+    }
+
+    #[test]
+    fn test_seen_message_deduplication() {
+        let mesh = create_relay_mesh(0x11111111, "ALPHA-1");
+        let origin = NodeId::new(0x22222222);
+        let msg_id = crate::relay::MessageId::from_content(origin, 1000, 0xDEADBEEF);
+
+        // First time - should be new
+        assert!(mesh.mark_message_seen(msg_id, origin, 1000));
+
+        // Second time - should be duplicate
+        assert!(!mesh.mark_message_seen(msg_id, origin, 2000));
+
+        assert_eq!(mesh.seen_cache_size(), 1);
+    }
+
+    #[test]
+    fn test_wrap_for_relay() {
+        let mesh = create_relay_mesh(0x11111111, "ALPHA-1");
+
+        let payload = vec![1, 2, 3, 4, 5];
+        let wrapped = mesh.wrap_for_relay(payload.clone());
+
+        // Should start with relay envelope marker
+        assert_eq!(wrapped[0], crate::relay::RELAY_ENVELOPE_MARKER);
+
+        // Decode and verify
+        let envelope = crate::relay::RelayEnvelope::decode(&wrapped).unwrap();
+        assert_eq!(envelope.payload, payload);
+        assert_eq!(envelope.origin_node, NodeId::new(0x11111111));
+        assert_eq!(envelope.hop_count, 0);
+    }
+
+    #[test]
+    fn test_process_relay_envelope_new_message() {
+        let mesh = create_relay_mesh(0x11111111, "ALPHA-1");
+        let observer = Arc::new(CollectingObserver::new());
+        mesh.add_observer(observer.clone());
+
+        // Create an envelope from another node
+        let payload = vec![1, 2, 3, 4, 5];
+        let envelope = crate::relay::RelayEnvelope::broadcast(NodeId::new(0x22222222), payload.clone())
+            .with_max_hops(7);
+        let data = envelope.encode();
+
+        // Process it
+        let decision = mesh.process_relay_envelope(&data, NodeId::new(0x33333333), 1000);
+
+        assert!(decision.is_some());
+        let decision = decision.unwrap();
+        assert_eq!(decision.payload, payload);
+        assert_eq!(decision.origin_node.as_u32(), 0x22222222);
+        assert_eq!(decision.hop_count, 0);
+        assert!(decision.should_relay);
+        assert!(decision.relay_envelope.is_some());
+
+        // Relay envelope should have incremented hop count
+        let relay_env = decision.relay_envelope.unwrap();
+        assert_eq!(relay_env.hop_count, 1);
+    }
+
+    #[test]
+    fn test_process_relay_envelope_duplicate() {
+        let mesh = create_relay_mesh(0x11111111, "ALPHA-1");
+        let observer = Arc::new(CollectingObserver::new());
+        mesh.add_observer(observer.clone());
+
+        let payload = vec![1, 2, 3, 4, 5];
+        let envelope = crate::relay::RelayEnvelope::broadcast(NodeId::new(0x22222222), payload);
+        let data = envelope.encode();
+
+        // First time - should succeed
+        let decision = mesh.process_relay_envelope(&data, NodeId::new(0x33333333), 1000);
+        assert!(decision.is_some());
+
+        // Second time - should be duplicate
+        let decision = mesh.process_relay_envelope(&data, NodeId::new(0x33333333), 2000);
+        assert!(decision.is_none());
+
+        // Should have DuplicateMessageDropped event
+        let events = observer.events();
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, HiveEvent::DuplicateMessageDropped { .. })));
+    }
+
+    #[test]
+    fn test_process_relay_envelope_ttl_expired() {
+        let mesh = create_relay_mesh(0x11111111, "ALPHA-1");
+        let observer = Arc::new(CollectingObserver::new());
+        mesh.add_observer(observer.clone());
+
+        // Create envelope at max hops (TTL expired)
+        let payload = vec![1, 2, 3, 4, 5];
+        let mut envelope = crate::relay::RelayEnvelope::broadcast(NodeId::new(0x22222222), payload.clone())
+            .with_max_hops(3);
+
+        // Simulate having been relayed 3 times already
+        envelope = envelope.relay().unwrap(); // hop 1
+        envelope = envelope.relay().unwrap(); // hop 2
+        envelope = envelope.relay().unwrap(); // hop 3 - at max now
+
+        let data = envelope.encode();
+
+        // Process - should still process locally but not relay further
+        let decision = mesh.process_relay_envelope(&data, NodeId::new(0x33333333), 1000);
+
+        assert!(decision.is_some());
+        let decision = decision.unwrap();
+        assert_eq!(decision.payload, payload);
+        assert!(!decision.should_relay); // Cannot relay further
+        assert!(decision.relay_envelope.is_none());
+
+        // Should have MessageTtlExpired event
+        let events = observer.events();
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, HiveEvent::MessageTtlExpired { .. })));
+    }
+
+    #[test]
+    fn test_build_relay_document() {
+        let mesh = create_relay_mesh(0x11111111, "ALPHA-1");
+
+        let relay_doc = mesh.build_relay_document();
+
+        // Should be a valid relay envelope
+        assert_eq!(relay_doc[0], crate::relay::RELAY_ENVELOPE_MARKER);
+
+        // Decode and verify it contains a valid document
+        let envelope = crate::relay::RelayEnvelope::decode(&relay_doc).unwrap();
+        assert_eq!(envelope.origin_node.as_u32(), 0x11111111);
+
+        // The payload should be a valid HiveDocument
+        let doc = crate::document::HiveDocument::decode(&envelope.payload);
+        assert!(doc.is_some());
+    }
+
+    #[test]
+    fn test_relay_targets_excludes_source() {
+        let mesh = create_relay_mesh(0x11111111, "ALPHA-1");
+
+        // Add some peers
+        mesh.on_ble_discovered("peer-1", Some("HIVE_TEST-22222222"), -60, Some("TEST"), 1000);
+        mesh.on_ble_connected("peer-1", 1000);
+
+        mesh.on_ble_discovered("peer-2", Some("HIVE_TEST-33333333"), -65, Some("TEST"), 1000);
+        mesh.on_ble_connected("peer-2", 1000);
+
+        mesh.on_ble_discovered("peer-3", Some("HIVE_TEST-44444444"), -70, Some("TEST"), 1000);
+        mesh.on_ble_connected("peer-3", 1000);
+
+        // Get relay targets excluding peer-2
+        let targets = mesh.get_relay_targets(Some(NodeId::new(0x33333333)));
+
+        // Should not include peer-2 in targets
+        assert!(targets.iter().all(|p| p.node_id.as_u32() != 0x33333333));
+    }
+
+    #[test]
+    fn test_clear_seen_cache() {
+        let mesh = create_relay_mesh(0x11111111, "ALPHA-1");
+        let origin = NodeId::new(0x22222222);
+
+        // Add some messages
+        mesh.mark_message_seen(
+            crate::relay::MessageId::from_content(origin, 1000, 0x11111111),
+            origin,
+            1000,
+        );
+        mesh.mark_message_seen(
+            crate::relay::MessageId::from_content(origin, 2000, 0x22222222),
+            origin,
+            2000,
+        );
+
+        assert_eq!(mesh.seen_cache_size(), 2);
+
+        // Clear
+        mesh.clear_seen_cache();
+        assert_eq!(mesh.seen_cache_size(), 0);
     }
 }

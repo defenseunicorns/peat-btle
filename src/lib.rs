@@ -165,6 +165,7 @@ pub mod persistence;
 pub mod phy;
 pub mod platform;
 pub mod power;
+pub mod relay;
 pub mod security;
 pub mod sync;
 pub mod transport;
@@ -215,7 +216,7 @@ pub use document::{
 // Security (mesh-wide and per-peer encryption)
 pub use document_sync::{DocumentCheck, DocumentSync};
 #[cfg(feature = "std")]
-pub use hive_mesh::{DataReceivedResult, HiveMesh, HiveMeshConfig};
+pub use hive_mesh::{DataReceivedResult, HiveMesh, HiveMeshConfig, RelayDecision};
 #[cfg(feature = "std")]
 pub use observer::{CollectingObserver, ObserverManager};
 pub use observer::{DisconnectReason as HiveDisconnectReason, HiveEvent, HiveObserver};
@@ -238,6 +239,12 @@ pub use security::{
 pub use gossip::{BroadcastAll, EmergencyAware, GossipStrategy, RandomFanout, SignalBasedFanout};
 #[cfg(feature = "std")]
 pub use persistence::{DocumentStore, FileStore, MemoryStore, SharedStore};
+
+// Multi-hop relay support
+pub use relay::{
+    MessageId, RelayEnvelope, RelayFlags, SeenMessageCache, DEFAULT_MAX_HOPS, DEFAULT_SEEN_TTL_MS,
+    RELAY_ENVELOPE_MARKER,
+};
 
 /// HIVE BLE Service UUID (128-bit)
 ///
