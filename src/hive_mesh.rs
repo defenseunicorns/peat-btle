@@ -285,6 +285,12 @@ pub struct HiveMesh {
 
     /// Gossip strategy for relay peer selection
     gossip_strategy: Box<dyn GossipStrategy>,
+
+    /// Delta encoder for per-peer sync state tracking
+    ///
+    /// Tracks what data has been sent to each peer to enable delta sync
+    /// (sending only changes instead of full documents).
+    delta_encoder: std::sync::Mutex<DeltaEncoder>,
 }
 
 #[cfg(feature = "std")]
@@ -316,6 +322,9 @@ impl HiveMesh {
         let gossip_strategy: Box<dyn GossipStrategy> =
             Box::new(RandomFanout::new(config.relay_fanout));
 
+        // Create delta encoder for per-peer sync state tracking
+        let delta_encoder = DeltaEncoder::new(config.node_id);
+
         Self {
             config,
             peer_manager,
@@ -328,6 +337,7 @@ impl HiveMesh {
             connection_graph: std::sync::Mutex::new(connection_graph),
             seen_cache: std::sync::Mutex::new(seen_cache),
             gossip_strategy,
+            delta_encoder: std::sync::Mutex::new(delta_encoder),
         }
     }
 
@@ -609,6 +619,76 @@ impl HiveMesh {
     pub fn build_relay_document(&self) -> Vec<u8> {
         let doc = self.build_document(); // Already encrypted if encryption enabled
         self.wrap_for_relay(doc)
+    }
+
+    // ==================== Delta Sync ====================
+
+    /// Register a peer for delta sync tracking
+    ///
+    /// Call this when a peer connects to start tracking what data has been
+    /// sent to them. This enables future delta sync (sending only changes).
+    pub fn register_peer_for_delta(&self, peer_id: &NodeId) {
+        let mut encoder = self.delta_encoder.lock().unwrap();
+        encoder.add_peer(peer_id);
+        log::debug!(
+            "Registered peer {:08X} for delta sync tracking",
+            peer_id.as_u32()
+        );
+    }
+
+    /// Unregister a peer from delta sync tracking
+    ///
+    /// Call this when a peer disconnects to clean up tracking state.
+    pub fn unregister_peer_for_delta(&self, peer_id: &NodeId) {
+        let mut encoder = self.delta_encoder.lock().unwrap();
+        encoder.remove_peer(peer_id);
+        log::debug!(
+            "Unregistered peer {:08X} from delta sync tracking",
+            peer_id.as_u32()
+        );
+    }
+
+    /// Reset delta sync state for a peer
+    ///
+    /// Call this when a peer reconnects to force a full sync on next
+    /// communication. This clears the record of what was previously sent.
+    pub fn reset_peer_delta_state(&self, peer_id: &NodeId) {
+        let mut encoder = self.delta_encoder.lock().unwrap();
+        encoder.reset_peer(peer_id);
+        log::debug!(
+            "Reset delta sync state for peer {:08X}",
+            peer_id.as_u32()
+        );
+    }
+
+    /// Record bytes sent to a peer (for delta statistics)
+    pub fn record_delta_sent(&self, peer_id: &NodeId, bytes: usize) {
+        let mut encoder = self.delta_encoder.lock().unwrap();
+        encoder.record_sent(peer_id, bytes);
+    }
+
+    /// Record bytes received from a peer (for delta statistics)
+    pub fn record_delta_received(&self, peer_id: &NodeId, bytes: usize, timestamp: u64) {
+        let mut encoder = self.delta_encoder.lock().unwrap();
+        encoder.record_received(peer_id, bytes, timestamp);
+    }
+
+    /// Get delta sync statistics
+    ///
+    /// Returns aggregate statistics about delta sync across all peers,
+    /// including bytes sent/received and sync counts.
+    pub fn delta_stats(&self) -> DeltaStats {
+        self.delta_encoder.lock().unwrap().stats()
+    }
+
+    /// Get delta sync statistics for a specific peer
+    ///
+    /// Returns the bytes sent/received and sync count for a single peer.
+    pub fn peer_delta_stats(&self, peer_id: &NodeId) -> Option<(u64, u64, u32)> {
+        let encoder = self.delta_encoder.lock().unwrap();
+        encoder.get_peer_state(peer_id).map(|state| {
+            (state.bytes_sent, state.bytes_received, state.sync_count)
+        })
     }
 
     // ==================== Per-Peer E2EE ====================
