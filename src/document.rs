@@ -111,6 +111,22 @@ pub const KEY_EXCHANGE_MARKER: u8 = 0xB0;
 /// ```
 pub const RELAY_ENVELOPE_MARKER: u8 = 0xB1;
 
+/// Marker byte indicating delta document for bandwidth-efficient sync
+///
+/// Used to send only changed operations instead of full state snapshots.
+/// See [`crate::sync::delta_document`] module for details.
+///
+/// ```text
+/// marker:        1 byte (0xB2)
+/// flags:         1 byte (bit 0: has_vector_clock, bit 1: is_response)
+/// origin_node:   4 bytes (LE) - origin node ID
+/// timestamp_ms:  8 bytes (LE) - creation timestamp
+/// vector_clock:  variable (if flag set)
+/// op_count:      2 bytes (LE) - number of operations
+/// operations:    variable
+/// ```
+pub const DELTA_DOCUMENT_MARKER: u8 = 0xB2;
+
 /// Minimum document size (header only, no counter entries)
 pub const MIN_DOCUMENT_SIZE: usize = 8;
 

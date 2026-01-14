@@ -117,6 +117,7 @@
 pub mod batch;
 pub mod crdt;
 pub mod delta;
+pub mod delta_document;
 pub mod protocol;
 
 pub use batch::{BatchAccumulator, BatchConfig, OperationBatch};
@@ -125,6 +126,7 @@ pub use crdt::{
     PeripheralType, Position, Timestamp,
 };
 pub use delta::{DeltaEncoder, DeltaStats, PeerSyncState, VectorClock};
+pub use delta_document::{DeltaDocument, DeltaFlags, Operation, DELTA_DOCUMENT_MARKER};
 pub use protocol::{
     chunk_data, ChunkHeader, ChunkReassembler, GattSyncProtocol, SyncChunk, SyncConfig, SyncState,
     SyncStats, CHUNK_HEADER_SIZE, DEFAULT_MTU, MAX_MTU,
