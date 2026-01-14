@@ -320,6 +320,30 @@ class HiveBtle(
     // Native handle
     private var nativeHandle: Long = 0
 
+    // HiveMesh instance for ConnectionStateGraph API
+    private var _mesh: HiveMesh? = null
+
+    /**
+     * The HiveMesh instance for accessing ConnectionStateGraph API.
+     *
+     * Available after init() is called. Provides methods for querying peer
+     * connection states:
+     * - mesh.getConnectionStateCounts() - summary counts for UI badges
+     * - mesh.getConnectedPeers() - peers with active connections
+     * - mesh.getDegradedPeers() - peers with weak signal
+     * - mesh.getLostPeers() - peers no longer seen
+     * - mesh.getPeerConnectionState(nodeId) - specific peer state
+     *
+     * Example:
+     * ```kotlin
+     * hiveBtle.mesh?.getConnectedPeers()?.forEach { peer ->
+     *     Log.d(TAG, "Connected: ${peer.name} (${peer.state})")
+     * }
+     * ```
+     */
+    val mesh: HiveMesh?
+        get() = _mesh
+
     // Mesh management
     private val peers = ConcurrentHashMap<Long, HivePeer>() // nodeId -> peer
     private val addressToNodeId = ConcurrentHashMap<String, Long>() // address -> nodeId
@@ -397,6 +421,14 @@ class HiveBtle(
         if (nativeHandle == 0L) {
             throw IllegalStateException("Failed to initialize native adapter")
         }
+
+        // Create HiveMesh for ConnectionStateGraph API
+        _mesh = HiveMesh(
+            nodeId = nodeId,
+            callsign = "ANDROID",
+            meshId = meshId,
+            peripheralType = PeripheralType.SOLDIER_SENSOR
+        )
 
         isInitialized = true
         Log.i(TAG, "Initialized for node ${String.format("%08X", nodeId)}")
@@ -732,6 +764,8 @@ class HiveBtle(
                             peer.lastSeen = System.currentTimeMillis()
                             notifyPeerConnected(peer)
                         }
+                        // Update HiveMesh ConnectionStateGraph
+                        _mesh?.onBleConnected(address, System.currentTimeMillis())
                         notifyMeshUpdated()
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
@@ -745,6 +779,8 @@ class HiveBtle(
                             peer.isConnected = false
                             notifyPeerDisconnected(peer)
                         }
+                        // Update HiveMesh ConnectionStateGraph
+                        _mesh?.onBleDisconnected(address, DisconnectReason.REMOTE_REQUEST)
                         notifyMeshUpdated()
                     }
                 }
@@ -1218,6 +1254,15 @@ class HiveBtle(
             connectToPeer(peer)
         }
 
+        // Update HiveMesh ConnectionStateGraph
+        _mesh?.onBleDiscovered(
+            identifier = device.address,
+            name = device.name.ifEmpty { null },
+            rssi = device.rssi,
+            deviceMeshId = device.meshId,
+            nowMs = now
+        )
+
         notifyMeshUpdated()
     }
 
@@ -1270,9 +1315,13 @@ class HiveBtle(
                         }
                     }
                     if (connected) {
+                        // Update HiveMesh ConnectionStateGraph
+                        _mesh?.onBleConnected(peer.address, System.currentTimeMillis())
                         // Notify listener of peer connection for immediate UI update
                         currentPeer?.let { notifyPeerConnected(it) }
                     } else {
+                        // Update HiveMesh ConnectionStateGraph
+                        _mesh?.onBleDisconnected(peer.address, DisconnectReason.LINK_LOSS)
                         // Notify listener of peer disconnection for immediate UI update
                         currentPeer?.let { notifyPeerDisconnected(it) }
                         connections.remove(peer.address)
@@ -1617,6 +1666,10 @@ class HiveBtle(
             nativeShutdown(nativeHandle)
             nativeHandle = 0
         }
+
+        // Destroy HiveMesh
+        _mesh?.destroy()
+        _mesh = null
 
         isInitialized = false
         Log.i(TAG, "Shutdown complete")
