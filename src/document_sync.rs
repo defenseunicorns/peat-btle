@@ -330,6 +330,30 @@ impl DocumentSync {
         emergency.as_ref().map(|e| e.all_acked()).unwrap_or(true)
     }
 
+    // ==================== Delta Document Support ====================
+
+    /// Get all counter entries for delta document building
+    ///
+    /// Returns a vector of (node_id, count) pairs for all nodes
+    /// that have contributed to the counter.
+    pub fn counter_entries(&self) -> Vec<(u32, u64)> {
+        self.counter.read().unwrap().entries().collect()
+    }
+
+    /// Get a clone of the peripheral state
+    ///
+    /// Used for building delta documents with peripheral updates.
+    pub fn peripheral_snapshot(&self) -> Peripheral {
+        self.peripheral.read().unwrap().clone()
+    }
+
+    /// Get a clone of the emergency state
+    ///
+    /// Used for building delta documents with emergency data.
+    pub fn emergency_snapshot(&self) -> Option<EmergencyEvent> {
+        self.emergency.read().unwrap().clone()
+    }
+
     // ==================== Document I/O ====================
 
     /// Build the document for transmission

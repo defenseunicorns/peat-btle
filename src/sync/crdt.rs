@@ -165,6 +165,14 @@ impl GCounter {
         self.counts.len()
     }
 
+    /// Get all entries as (node_id, count) pairs
+    ///
+    /// Returns an iterator over all nodes and their counts.
+    /// Used for building delta documents.
+    pub fn entries(&self) -> impl Iterator<Item = (u32, u64)> + '_ {
+        self.counts.iter().map(|(&k, &v)| (k, v))
+    }
+
     /// Encode to bytes for transmission
     pub fn encode(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(4 + self.counts.len() * 12);
@@ -638,6 +646,11 @@ impl EmergencyEvent {
             .filter(|(_, &acked)| !acked)
             .map(|(&node_id, _)| node_id)
             .collect()
+    }
+
+    /// Get all tracked node IDs (both acked and pending)
+    pub fn all_nodes(&self) -> Vec<u32> {
+        self.acks.keys().copied().collect()
     }
 
     /// Check if all tracked nodes have acknowledged
