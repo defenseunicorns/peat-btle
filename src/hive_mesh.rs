@@ -70,12 +70,12 @@ use crate::relay::{
     MessageId, RelayEnvelope, SeenMessageCache, DEFAULT_MAX_HOPS, DEFAULT_SEEN_TTL_MS,
     RELAY_ENVELOPE_MARKER,
 };
-use crate::sync::delta::{DeltaEncoder, DeltaStats};
-use crate::sync::delta_document::{DeltaDocument, Operation};
 use crate::security::{
     KeyExchangeMessage, MeshEncryptionKey, PeerEncryptedMessage, PeerSessionManager, SessionState,
 };
 use crate::sync::crdt::{EventType, PeripheralType};
+use crate::sync::delta::{DeltaEncoder, DeltaStats};
+use crate::sync::delta_document::{DeltaDocument, Operation};
 use crate::NodeId;
 
 #[cfg(feature = "std")]
@@ -656,10 +656,7 @@ impl HiveMesh {
     pub fn reset_peer_delta_state(&self, peer_id: &NodeId) {
         let mut encoder = self.delta_encoder.lock().unwrap();
         encoder.reset_peer(peer_id);
-        log::debug!(
-            "Reset delta sync state for peer {:08X}",
-            peer_id.as_u32()
-        );
+        log::debug!("Reset delta sync state for peer {:08X}", peer_id.as_u32());
     }
 
     /// Record bytes sent to a peer (for delta statistics)
@@ -687,9 +684,9 @@ impl HiveMesh {
     /// Returns the bytes sent/received and sync count for a single peer.
     pub fn peer_delta_stats(&self, peer_id: &NodeId) -> Option<(u64, u64, u32)> {
         let encoder = self.delta_encoder.lock().unwrap();
-        encoder.get_peer_state(peer_id).map(|state| {
-            (state.bytes_sent, state.bytes_received, state.sync_count)
-        })
+        encoder
+            .get_peer_state(peer_id)
+            .map(|state| (state.bytes_sent, state.bytes_received, state.sync_count))
     }
 
     /// Build a delta document for a specific peer
@@ -906,7 +903,8 @@ impl HiveMesh {
                     event_timestamp = *timestamp;
                 }
                 Operation::AckEmergency {
-                    emergency_timestamp, ..
+                    emergency_timestamp,
+                    ..
                 } => {
                     is_ack = true;
                     emergency_changed = true;
@@ -1551,9 +1549,8 @@ impl HiveMesh {
                 }
                 RELAY_ENVELOPE_MARKER => {
                     // Handle relay envelope for multi-hop
-                    return self.handle_relay_envelope_with_identifier(
-                        node_id, identifier, data, now_ms,
-                    );
+                    return self
+                        .handle_relay_envelope_with_identifier(node_id, identifier, data, now_ms);
                 }
                 _ => {}
             }
@@ -1564,6 +1561,7 @@ impl HiveMesh {
     }
 
     /// Internal: Process document data with identifier as source hint
+    #[allow(clippy::too_many_arguments)]
     fn process_document_data_with_identifier(
         &self,
         source_node: NodeId,
@@ -3191,8 +3189,9 @@ mod tests {
 
         // Create an envelope from another node
         let payload = vec![1, 2, 3, 4, 5];
-        let envelope = crate::relay::RelayEnvelope::broadcast(NodeId::new(0x22222222), payload.clone())
-            .with_max_hops(7);
+        let envelope =
+            crate::relay::RelayEnvelope::broadcast(NodeId::new(0x22222222), payload.clone())
+                .with_max_hops(7);
         let data = envelope.encode();
 
         // Process it
@@ -3244,8 +3243,9 @@ mod tests {
 
         // Create envelope at max hops (TTL expired)
         let payload = vec![1, 2, 3, 4, 5];
-        let mut envelope = crate::relay::RelayEnvelope::broadcast(NodeId::new(0x22222222), payload.clone())
-            .with_max_hops(3);
+        let mut envelope =
+            crate::relay::RelayEnvelope::broadcast(NodeId::new(0x22222222), payload.clone())
+                .with_max_hops(3);
 
         // Simulate having been relayed 3 times already
         envelope = envelope.relay().unwrap(); // hop 1
@@ -3293,13 +3293,31 @@ mod tests {
         let mesh = create_relay_mesh(0x11111111, "ALPHA-1");
 
         // Add some peers
-        mesh.on_ble_discovered("peer-1", Some("HIVE_TEST-22222222"), -60, Some("TEST"), 1000);
+        mesh.on_ble_discovered(
+            "peer-1",
+            Some("HIVE_TEST-22222222"),
+            -60,
+            Some("TEST"),
+            1000,
+        );
         mesh.on_ble_connected("peer-1", 1000);
 
-        mesh.on_ble_discovered("peer-2", Some("HIVE_TEST-33333333"), -65, Some("TEST"), 1000);
+        mesh.on_ble_discovered(
+            "peer-2",
+            Some("HIVE_TEST-33333333"),
+            -65,
+            Some("TEST"),
+            1000,
+        );
         mesh.on_ble_connected("peer-2", 1000);
 
-        mesh.on_ble_discovered("peer-3", Some("HIVE_TEST-44444444"), -70, Some("TEST"), 1000);
+        mesh.on_ble_discovered(
+            "peer-3",
+            Some("HIVE_TEST-44444444"),
+            -70,
+            Some("TEST"),
+            1000,
+        );
         mesh.on_ble_connected("peer-3", 1000);
 
         // Get relay targets excluding peer-2

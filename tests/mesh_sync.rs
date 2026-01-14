@@ -322,7 +322,10 @@ async fn test_delta_document_for_peer_no_changes() {
 
     // Second sync without changes should return None
     let second = mesh.build_delta_document_for_peer(&peer_id, now_ms + 100);
-    assert!(second.is_none(), "Should not send delta when nothing changed");
+    assert!(
+        second.is_none(),
+        "Should not send delta when nothing changed"
+    );
 }
 
 #[tokio::test]
@@ -337,7 +340,13 @@ async fn test_delta_document_receive_basic() {
     adapter1.connect(&NodeId::new(0x222)).await.unwrap();
 
     // Register peer in mesh2 before receiving
-    mesh2.on_ble_discovered("device-111", Some("HIVE_TEST-00000111"), -60, Some("TEST"), 1000);
+    mesh2.on_ble_discovered(
+        "device-111",
+        Some("HIVE_TEST-00000111"),
+        -60,
+        Some("TEST"),
+        1000,
+    );
     mesh2.on_ble_connected("device-111", 1000);
 
     // Build delta from mesh1
@@ -367,7 +376,13 @@ async fn test_delta_sync_round_trip() {
     mesh2.register_peer_for_delta(&peer1_id);
 
     // Set up mesh2 to recognize mesh1
-    mesh2.on_ble_discovered("device-111", Some("HIVE_TEST-00000111"), -60, Some("TEST"), 1000);
+    mesh2.on_ble_discovered(
+        "device-111",
+        Some("HIVE_TEST-00000111"),
+        -60,
+        Some("TEST"),
+        1000,
+    );
     mesh2.on_ble_connected("device-111", 1000);
 
     // Sync 1: mesh1 -> mesh2 (full sync)
@@ -380,7 +395,10 @@ async fn test_delta_sync_round_trip() {
 
     // Sync 2: mesh1 -> mesh2 (no changes, should be None)
     let data2 = mesh1.build_delta_document_for_peer(&peer2_id, now_ms + 100);
-    assert!(data2.is_none(), "Second sync without changes should be None");
+    assert!(
+        data2.is_none(),
+        "Second sync without changes should be None"
+    );
 }
 
 #[tokio::test]

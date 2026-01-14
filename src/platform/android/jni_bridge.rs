@@ -1913,7 +1913,9 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeResetPeerDeltaSt
 ///
 /// JNI Signature: (JJJ)[B
 #[no_mangle]
-pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeBuildDeltaDocumentForPeer<'local>(
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeBuildDeltaDocumentForPeer<
+    'local,
+>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,

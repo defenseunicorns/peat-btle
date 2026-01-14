@@ -291,8 +291,7 @@ impl Operation {
                     return None;
                 }
                 let counter_id = data[1];
-                let node_id =
-                    NodeId::new(u32::from_le_bytes([data[2], data[3], data[4], data[5]]));
+                let node_id = NodeId::new(u32::from_le_bytes([data[2], data[3], data[4], data[5]]));
                 let amount = u64::from_le_bytes([
                     data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13],
                 ]);
@@ -366,8 +365,7 @@ impl Operation {
                 if data.len() < 13 {
                     return None;
                 }
-                let node_id =
-                    NodeId::new(u32::from_le_bytes([data[1], data[2], data[3], data[4]]));
+                let node_id = NodeId::new(u32::from_le_bytes([data[1], data[2], data[3], data[4]]));
                 let emergency_timestamp = u64::from_le_bytes([
                     data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12],
                 ]);
@@ -606,8 +604,8 @@ mod tests {
 
     #[test]
     fn test_operation_update_peripheral_encode_decode() {
-        let peripheral = Peripheral::new(0xAABBCCDD, PeripheralType::SoldierSensor)
-            .with_callsign("ALPHA-1");
+        let peripheral =
+            Peripheral::new(0xAABBCCDD, PeripheralType::SoldierSensor).with_callsign("ALPHA-1");
 
         let op = Operation::UpdatePeripheral {
             peripheral: peripheral.clone(),
