@@ -867,21 +867,34 @@ class HiveBtle(
                             if (peer == null) {
                                 // New peer from incoming connection
                                 // Set lastDocument = null so the first event triggers onPeerEvent
+                                val peerName = generateDeviceName(meshId, sourceNodeId)
+                                val now = System.currentTimeMillis()
                                 peer = HivePeer(
                                     nodeId = sourceNodeId,
                                     address = address,
-                                    name = generateDeviceName(meshId, sourceNodeId),
+                                    name = peerName,
                                     meshId = meshId,
                                     rssi = 0,
                                     isConnected = true,
                                     lastDocument = null,
-                                    lastSeen = System.currentTimeMillis()
+                                    lastSeen = now
                                 )
                                 peers[sourceNodeId] = peer
                                 addressToNodeId[address] = sourceNodeId
                                 Log.i(TAG, "Added peer from GATT write: ${peer.displayName()}")
+
+                                // Update HiveMesh ConnectionStateGraph for incoming connection
+                                _mesh?.onBleDiscovered(
+                                    identifier = address,
+                                    name = peerName,
+                                    rssi = 0,
+                                    deviceMeshId = meshId,
+                                    nowMs = now
+                                )
+                                _mesh?.onBleConnected(identifier = address, nowMs = now)
                             } else {
                                 // Update existing peer
+                                val now = System.currentTimeMillis()
                                 if (peer.nodeId != sourceNodeId) {
                                     // NodeId changed - update mapping
                                     peers.remove(peer.nodeId)
@@ -892,6 +905,19 @@ class HiveBtle(
                                 // Always update address mapping - central may connect with different
                                 // address than scan address due to BLE address randomization
                                 addressToNodeId[address] = sourceNodeId
+
+                                // Update HiveMesh - peer is now connected via incoming GATT
+                                // If address changed, re-discover with new address first
+                                if (peer.address != address) {
+                                    _mesh?.onBleDiscovered(
+                                        identifier = address,
+                                        name = peer.name,
+                                        rssi = 0,
+                                        deviceMeshId = meshId,
+                                        nowMs = now
+                                    )
+                                }
+                                _mesh?.onBleConnected(identifier = address, nowMs = now)
                             }
 
                             // Handle document content
