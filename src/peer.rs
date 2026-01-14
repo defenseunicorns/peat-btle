@@ -420,14 +420,20 @@ use alloc::collections::BTreeMap;
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionStateGraph {
-    /// All tracked peers indexed by node ID
+    /// Direct peers (degree 0) indexed by node ID
     peers: BTreeMap<NodeId, PeerConnectionState>,
+
+    /// Indirect peers (degree 1-3) indexed by node ID
+    indirect_peers: BTreeMap<NodeId, IndirectPeer>,
 
     /// RSSI threshold for degraded state
     rssi_degraded_threshold: i8,
 
     /// Time after disconnect before Lost state
     lost_timeout_ms: u64,
+
+    /// Time after which indirect peers are considered stale
+    indirect_peer_timeout_ms: u64,
 }
 
 impl ConnectionStateGraph {
@@ -435,8 +441,10 @@ impl ConnectionStateGraph {
     pub fn new() -> Self {
         Self {
             peers: BTreeMap::new(),
+            indirect_peers: BTreeMap::new(),
             rssi_degraded_threshold: -80,
             lost_timeout_ms: 30_000,
+            indirect_peer_timeout_ms: 120_000, // 2 minutes for indirect peers
         }
     }
 
@@ -444,8 +452,10 @@ impl ConnectionStateGraph {
     pub fn with_config(rssi_degraded_threshold: i8, lost_timeout_ms: u64) -> Self {
         Self {
             peers: BTreeMap::new(),
+            indirect_peers: BTreeMap::new(),
             rssi_degraded_threshold,
             lost_timeout_ms,
+            indirect_peer_timeout_ms: 120_000,
         }
     }
 
@@ -666,6 +676,183 @@ impl ConnectionStateGraph {
         let state = PeerConnectionState::from_peer(peer, now_ms);
         self.peers.insert(peer.node_id, state);
     }
+
+    // ========== Indirect Peer Methods ==========
+
+    /// Record that we received a relay message with given origin
+    ///
+    /// This updates the indirect peer graph when we receive a relay message
+    /// where the origin differs from the immediate sender.
+    ///
+    /// # Arguments
+    /// * `source_peer` - The direct peer we received the relay from
+    /// * `origin_node` - The original sender (from relay envelope)
+    /// * `hop_count` - Current hop count from the relay envelope
+    /// * `now_ms` - Current timestamp
+    ///
+    /// # Returns
+    /// `true` if this is a newly discovered indirect peer
+    pub fn on_relay_received(
+        &mut self,
+        source_peer: NodeId,
+        origin_node: NodeId,
+        hop_count: u8,
+        now_ms: u64,
+    ) -> bool {
+        // Don't track peers beyond our max degree
+        if hop_count > MAX_TRACKED_DEGREE {
+            return false;
+        }
+
+        // Don't track ourselves
+        if self.peers.contains_key(&origin_node) {
+            // Origin is a direct peer, not indirect
+            return false;
+        }
+
+        // Update or create indirect peer entry
+        if let Some(existing) = self.indirect_peers.get_mut(&origin_node) {
+            existing.update_path(source_peer, hop_count, now_ms);
+            false
+        } else {
+            self.indirect_peers.insert(
+                origin_node,
+                IndirectPeer::new(origin_node, source_peer, hop_count, now_ms),
+            );
+            true
+        }
+    }
+
+    /// Get all indirect peers
+    pub fn get_indirect_peers(&self) -> Vec<&IndirectPeer> {
+        self.indirect_peers.values().collect()
+    }
+
+    /// Get all indirect peers as owned values
+    pub fn get_indirect_peers_owned(&self) -> Vec<IndirectPeer> {
+        self.indirect_peers.values().cloned().collect()
+    }
+
+    /// Get a specific indirect peer
+    pub fn get_indirect_peer(&self, node_id: NodeId) -> Option<&IndirectPeer> {
+        self.indirect_peers.get(&node_id)
+    }
+
+    /// Get peers by degree
+    pub fn get_peers_by_degree(&self, degree: PeerDegree) -> Vec<NodeId> {
+        match degree {
+            PeerDegree::Direct => self.peers.keys().copied().collect(),
+            _ => self
+                .indirect_peers
+                .iter()
+                .filter(|(_, p)| p.degree() == Some(degree))
+                .map(|(id, _)| *id)
+                .collect(),
+        }
+    }
+
+    /// Get the degree of a specific peer (direct or indirect)
+    pub fn peer_degree(&self, node_id: NodeId) -> Option<PeerDegree> {
+        if self.peers.contains_key(&node_id) {
+            Some(PeerDegree::Direct)
+        } else {
+            self.indirect_peers.get(&node_id).and_then(|p| p.degree())
+        }
+    }
+
+    /// Get all paths to reach an indirect peer
+    ///
+    /// Returns Vec of (via_peer_id, hop_count) pairs
+    pub fn get_paths_to(&self, node_id: NodeId) -> Vec<(NodeId, u8)> {
+        self.indirect_peers
+            .get(&node_id)
+            .map(|p| p.paths())
+            .unwrap_or_default()
+    }
+
+    /// Check if a node is known (either direct or indirect)
+    pub fn is_known(&self, node_id: NodeId) -> bool {
+        self.peers.contains_key(&node_id) || self.indirect_peers.contains_key(&node_id)
+    }
+
+    /// Cleanup stale indirect peers
+    ///
+    /// Returns list of removed peer IDs
+    pub fn cleanup_indirect(&mut self, now_ms: u64) -> Vec<NodeId> {
+        let to_remove: Vec<NodeId> = self
+            .indirect_peers
+            .iter()
+            .filter(|(_, p)| p.is_stale(now_ms, self.indirect_peer_timeout_ms))
+            .map(|(id, _)| *id)
+            .collect();
+
+        for id in &to_remove {
+            self.indirect_peers.remove(id);
+        }
+
+        to_remove
+    }
+
+    /// Remove a via_peer path from all indirect peers
+    ///
+    /// Called when a direct peer disconnects - the indirect paths through
+    /// that peer may no longer be valid.
+    pub fn remove_via_peer(&mut self, via_peer: NodeId) {
+        let mut to_remove = Vec::new();
+
+        for (node_id, indirect) in self.indirect_peers.iter_mut() {
+            indirect.via_peers.remove(&via_peer);
+
+            // Recalculate min_hops
+            if indirect.via_peers.is_empty() {
+                to_remove.push(*node_id);
+            } else {
+                indirect.min_hops = indirect.via_peers.values().copied().min().unwrap_or(255);
+            }
+        }
+
+        // Remove peers with no remaining paths
+        for id in to_remove {
+            self.indirect_peers.remove(&id);
+        }
+    }
+
+    /// Combined count summary including indirect peers
+    pub fn full_state_counts(&self) -> FullStateCountSummary {
+        let direct = self.state_counts();
+
+        let mut one_hop = 0;
+        let mut two_hop = 0;
+        let mut three_hop = 0;
+
+        for peer in self.indirect_peers.values() {
+            match peer.min_hops {
+                1 => one_hop += 1,
+                2 => two_hop += 1,
+                3 => three_hop += 1,
+                _ => {}
+            }
+        }
+
+        FullStateCountSummary {
+            direct,
+            one_hop,
+            two_hop,
+            three_hop,
+        }
+    }
+
+    /// Number of indirect peers
+    pub fn indirect_peer_count(&self) -> usize {
+        self.indirect_peers.len()
+    }
+
+    /// Set callsign for an indirect peer (learned from document)
+    pub fn set_indirect_callsign(&mut self, node_id: NodeId, callsign: String) {
+        if let Some(peer) = self.indirect_peers.get_mut(&node_id) {
+            peer.callsign = Some(callsign);
+        }
+    }
 }
 
 /// Summary of peer counts by state
@@ -702,6 +889,155 @@ impl StateCountSummary {
             + self.disconnecting
             + self.disconnected
             + self.lost
+    }
+}
+
+/// Maximum number of hops to track for indirect peers
+pub const MAX_TRACKED_DEGREE: u8 = 3;
+
+/// Peer degree classification for multi-hop mesh topology
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeerDegree {
+    /// Directly connected via BLE (degree 0)
+    Direct,
+    /// Reachable via 1 hop through a direct peer (degree 1)
+    OneHop,
+    /// Reachable via 2 hops (degree 2)
+    TwoHop,
+    /// Reachable via 3 hops (degree 3)
+    ThreeHop,
+}
+
+impl PeerDegree {
+    /// Create from hop count
+    pub fn from_hops(hops: u8) -> Option<Self> {
+        match hops {
+            0 => Some(Self::Direct),
+            1 => Some(Self::OneHop),
+            2 => Some(Self::TwoHop),
+            3 => Some(Self::ThreeHop),
+            _ => None, // Beyond tracking range
+        }
+    }
+
+    /// Get the hop count for this degree
+    pub fn hops(&self) -> u8 {
+        match self {
+            Self::Direct => 0,
+            Self::OneHop => 1,
+            Self::TwoHop => 2,
+            Self::ThreeHop => 3,
+        }
+    }
+}
+
+/// Reachability information for an indirect (multi-hop) peer
+///
+/// Tracks peers that are not directly connected via BLE but are
+/// reachable through relay messages via intermediate nodes.
+#[derive(Debug, Clone)]
+pub struct IndirectPeer {
+    /// The indirect peer's node ID
+    pub node_id: NodeId,
+
+    /// Minimum hop count to reach this peer (1-3)
+    pub min_hops: u8,
+
+    /// Direct peers through which we can reach this peer
+    /// Maps via_peer NodeId → hop count through that peer
+    pub via_peers: BTreeMap<NodeId, u8>,
+
+    /// When we first learned about this peer (ms since epoch)
+    pub discovered_at: u64,
+
+    /// Last time we received data from/about this peer (ms since epoch)
+    pub last_seen_ms: u64,
+
+    /// Number of messages relayed from this peer
+    pub messages_received: u32,
+
+    /// Optional callsign if learned from documents
+    pub callsign: Option<String>,
+}
+
+impl IndirectPeer {
+    /// Create a new indirect peer entry
+    pub fn new(node_id: NodeId, via_peer: NodeId, hop_count: u8, now_ms: u64) -> Self {
+        let mut via_peers = BTreeMap::new();
+        via_peers.insert(via_peer, hop_count);
+
+        Self {
+            node_id,
+            min_hops: hop_count,
+            via_peers,
+            discovered_at: now_ms,
+            last_seen_ms: now_ms,
+            messages_received: 1,
+            callsign: None,
+        }
+    }
+
+    /// Update with a new path to this peer
+    ///
+    /// Returns true if this is a better (shorter) path
+    pub fn update_path(&mut self, via_peer: NodeId, hop_count: u8, now_ms: u64) -> bool {
+        self.last_seen_ms = now_ms;
+        self.messages_received += 1;
+
+        let is_better = hop_count < self.min_hops;
+
+        // Update or add this path
+        self.via_peers.insert(via_peer, hop_count);
+
+        // Recalculate min_hops
+        if is_better {
+            self.min_hops = hop_count;
+        } else {
+            // May need to recalculate if we updated an existing path
+            self.min_hops = self.via_peers.values().copied().min().unwrap_or(hop_count);
+        }
+
+        is_better
+    }
+
+    /// Get the degree classification for this peer
+    pub fn degree(&self) -> Option<PeerDegree> {
+        PeerDegree::from_hops(self.min_hops)
+    }
+
+    /// Check if this peer is stale (not seen within timeout)
+    pub fn is_stale(&self, now_ms: u64, timeout_ms: u64) -> bool {
+        now_ms.saturating_sub(self.last_seen_ms) > timeout_ms
+    }
+
+    /// Get all paths to this peer as (via_peer, hop_count) pairs
+    pub fn paths(&self) -> Vec<(NodeId, u8)> {
+        self.via_peers.iter().map(|(&k, &v)| (k, v)).collect()
+    }
+}
+
+/// Extended state summary including indirect peers
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FullStateCountSummary {
+    /// Direct peer counts by connection state
+    pub direct: StateCountSummary,
+    /// Number of 1-hop indirect peers
+    pub one_hop: usize,
+    /// Number of 2-hop indirect peers
+    pub two_hop: usize,
+    /// Number of 3-hop indirect peers
+    pub three_hop: usize,
+}
+
+impl FullStateCountSummary {
+    /// Total number of all known peers (direct + indirect)
+    pub fn total(&self) -> usize {
+        self.direct.total() + self.one_hop + self.two_hop + self.three_hop
+    }
+
+    /// Total indirect peers
+    pub fn total_indirect(&self) -> usize {
+        self.one_hop + self.two_hop + self.three_hop
     }
 }
 

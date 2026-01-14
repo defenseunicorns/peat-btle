@@ -347,6 +347,7 @@ class HiveBtle(
     // Mesh management
     private val peers = ConcurrentHashMap<Long, HivePeer>() // nodeId -> peer
     private val addressToNodeId = ConcurrentHashMap<String, Long>() // address -> nodeId
+    private val peerSyncState = ConcurrentHashMap<Long, PeerSyncState>() // nodeId -> sync state for delta tracking
     private var meshListener: HiveMeshListener? = null
     private val handler = Handler(Looper.getMainLooper())
     private var localDocument: HiveDocument? = null
@@ -1176,8 +1177,10 @@ class HiveBtle(
             return
         }
 
+        val isEmergency = eventType == HiveEventType.EMERGENCY || eventType == HiveEventType.ACK
         Log.i(TAG, "Broadcasting event: $eventType to ${connections.size} peripherals and ${connectedCentrals.size} centrals" +
-                (location?.let { " with location (${it.latitude}, ${it.longitude})" } ?: ""))
+                (location?.let { " with location (${it.latitude}, ${it.longitude})" } ?: "") +
+                if (isEmergency) " [EMERGENCY - FULL DOCUMENT]" else "")
 
         // Increment our counter
         incrementLocalCounter()
@@ -1197,6 +1200,13 @@ class HiveBtle(
         // Store the peripheral so syncWithPeers() and read requests use it
         localPeripheral = peripheral
 
+        // Emergency events always use full documents for reliability
+        // Also reset peer sync state to ensure next sync sends full update
+        if (isEmergency) {
+            peerSyncState.clear()
+            Log.d(TAG, "Emergency bypass: cleared peer sync state for full document sync")
+        }
+
         val documentBytes = HiveDocument.encode(nodeId, localCounter, peripheral)
 
         // Send to all connected peripherals (devices we connected to as Central)
@@ -1205,6 +1215,49 @@ class HiveBtle(
         }
 
         // Send to all connected centrals (devices that connected to us as Peripheral)
+        notifyConnectedCentrals(documentBytes)
+    }
+
+    /**
+     * Send a map marker to all connected peers.
+     *
+     * Markers are sent as a separate marker document (0xAC format) to avoid
+     * interfering with the regular track sync. The receiving peer will call
+     * onMarkerSynced on the listener.
+     *
+     * @param marker The marker to send
+     */
+    fun sendMarker(marker: HiveMarker) {
+        if (!isMeshRunning) {
+            Log.w(TAG, "Mesh not running, cannot send marker")
+            return
+        }
+
+        Log.i(TAG, "Broadcasting marker: uid=${marker.uid}, callsign=${marker.callsign} to ${connections.size} peripherals and ${connectedCentrals.size} centrals")
+
+        // Encode marker document: 0xAC marker + nodeId(4) + count(2) + marker data
+        val markerBytes = HiveMarker.encode(marker)
+        val documentBytes = ByteArray(1 + 4 + 2 + markerBytes.size)
+        var offset = 0
+
+        documentBytes[offset++] = MARKER_SECTION_MARKER
+        // Write nodeId (4 bytes LE)
+        documentBytes[offset++] = (nodeId and 0xFF).toByte()
+        documentBytes[offset++] = ((nodeId shr 8) and 0xFF).toByte()
+        documentBytes[offset++] = ((nodeId shr 16) and 0xFF).toByte()
+        documentBytes[offset++] = ((nodeId shr 24) and 0xFF).toByte()
+        // Write marker count (2 bytes LE)
+        documentBytes[offset++] = 1.toByte()  // Single marker
+        documentBytes[offset++] = 0.toByte()
+        // Copy marker data
+        markerBytes.copyInto(documentBytes, offset)
+
+        // Send to all connected peripherals
+        for ((address, gatt) in connections) {
+            writeDocumentToGatt(gatt, documentBytes)
+        }
+
+        // Send to all connected centrals
         notifyConnectedCentrals(documentBytes)
     }
 
@@ -1384,6 +1437,18 @@ class HiveBtle(
     }
 
     private fun handlePeerDocument(peer: HivePeer, data: ByteArray) {
+        // Check for marker document (0xAC)
+        if (data.isNotEmpty() && data[0] == MARKER_SECTION_MARKER) {
+            handlePeerMarkerDocument(peer, data)
+            return
+        }
+
+        // Check for delta document marker (0xB2)
+        if (HiveDeltaDocument.isDeltaDocument(data)) {
+            handlePeerDeltaDocument(peer, data)
+            return
+        }
+
         val document = HiveDocument.decode(data) ?: return
         val docNodeId = document.nodeId
 
@@ -1469,6 +1534,309 @@ class HiveBtle(
         notifyMeshUpdated()
     }
 
+    /**
+     * Handle an incoming marker document from a peer.
+     * Decodes markers and notifies listener.
+     */
+    private fun handlePeerMarkerDocument(peer: HivePeer, data: ByteArray) {
+        // Marker document format: marker(1) + nodeId(4) + count(2) + markers...
+        if (data.size < 7) {
+            Log.e(TAG, "Marker document too short: ${data.size} bytes")
+            return
+        }
+
+        var offset = 1  // Skip marker byte
+
+        // Read source nodeId (4 bytes LE)
+        val sourceNodeId = ((data[offset].toLong() and 0xFF)) or
+                ((data[offset + 1].toLong() and 0xFF) shl 8) or
+                ((data[offset + 2].toLong() and 0xFF) shl 16) or
+                ((data[offset + 3].toLong() and 0xFF) shl 24)
+        offset += 4
+
+        // Skip if from ourselves
+        if (sourceNodeId == nodeId) return
+
+        // Read marker count (2 bytes LE)
+        val markerCount = ((data[offset].toInt() and 0xFF)) or
+                ((data[offset + 1].toInt() and 0xFF) shl 8)
+        offset += 2
+
+        Log.i(TAG, "[MARKER-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId)}): $markerCount markers")
+
+        // Find the source peer (might be relayed)
+        val sourcePeer = peers[sourceNodeId] ?: peer
+
+        // Decode and notify for each marker
+        for (i in 0 until markerCount) {
+            val (marker, newOffset) = HiveMarker.decode(data, offset)
+            if (marker != null) {
+                Log.d(TAG, "[MARKER-RX] Marker #$i: uid=${marker.uid}, type=${marker.type}, callsign=${marker.callsign}")
+                handler.post {
+                    meshListener?.onMarkerSynced(sourcePeer, marker)
+                }
+                offset = newOffset
+            } else {
+                Log.e(TAG, "Failed to decode marker #$i at offset $offset")
+                break
+            }
+        }
+    }
+
+    /**
+     * Handle an incoming delta document from a peer.
+     * Applies operations incrementally to local state.
+     */
+    private fun handlePeerDeltaDocument(peer: HivePeer, data: ByteArray) {
+        val deltaDoc = HiveDeltaDocument.decode(data) ?: return
+        val docNodeId = deltaDoc.originNode
+
+        Log.d(TAG, "[DELTA-RX] From ${peer.displayName()} (origin=${String.format("%08X", docNodeId)}): ${deltaDoc.operations.size} ops")
+
+        // Skip if document is from ourselves
+        if (docNodeId == nodeId || docNodeId == 0L) return
+
+        // Find or create peer for this origin node
+        val targetPeer = peers[docNodeId] ?: peer.also {
+            if (docNodeId != peer.nodeId) {
+                // This is a relayed delta - create virtual peer for origin
+                val newPeer = HivePeer(
+                    nodeId = docNodeId,
+                    address = "",
+                    name = generateDeviceName(meshId, docNodeId),
+                    meshId = meshId,
+                    rssi = 0,
+                    isConnected = false,
+                    lastDocument = null,
+                    lastSeen = System.currentTimeMillis()
+                )
+                peers[docNodeId] = newPeer
+            }
+        }
+        peers[docNodeId]?.let { it.lastSeen = System.currentTimeMillis() }
+
+        // Apply each operation
+        for (op in deltaDoc.operations) {
+            when (op) {
+                is DeltaOperation.IncrementCounter -> {
+                    // Merge counter increment
+                    val existing = localCounter.find { it.nodeId == op.nodeId }
+                    if (existing != null) {
+                        val newCount = existing.count + op.amount
+                        val index = localCounter.indexOf(existing)
+                        localCounter[index] = GCounterEntry(op.nodeId, newCount)
+                    } else {
+                        localCounter.add(GCounterEntry(op.nodeId, op.amount))
+                    }
+                    Log.v(TAG, "  - IncrementCounter: node=${String.format("%08X", op.nodeId)}, +${op.amount}")
+                }
+
+                is DeltaOperation.UpdatePeripheral -> {
+                    // Update peer's peripheral state
+                    val currentPeer = peers[docNodeId]
+                    if (currentPeer != null) {
+                        val previousEvent = currentPeer.lastDocument?.peripheral?.lastEvent
+                        val previousEventType = previousEvent?.eventType ?: HiveEventType.NONE
+                        val previousEventTimestamp = previousEvent?.timestamp ?: 0L
+
+                        // Create a synthetic document with the updated peripheral
+                        val syntheticDoc = HiveDocument(
+                            version = 1,
+                            nodeId = docNodeId,
+                            counter = localCounter.toList(),
+                            peripheral = op.peripheral
+                        )
+                        currentPeer.lastDocument = syntheticDoc
+
+                        // Check for new events
+                        val currentEvent = op.peripheral.lastEvent
+                        val eventType = currentEvent?.eventType ?: HiveEventType.NONE
+                        val eventTimestamp = currentEvent?.timestamp ?: 0L
+                        val isNewEvent = eventType != HiveEventType.NONE && (
+                            eventType != previousEventType ||
+                            (eventType == previousEventType && eventTimestamp > previousEventTimestamp)
+                        )
+                        if (isNewEvent) {
+                            Log.i(TAG, "  - New event: $eventType")
+                            handler.post {
+                                meshListener?.onPeerEvent(currentPeer, eventType)
+                            }
+                        }
+
+                        // Notify document synced
+                        handler.post {
+                            meshListener?.onDocumentSynced(syntheticDoc)
+                        }
+                    }
+                    Log.v(TAG, "  - UpdatePeripheral: callsign=${op.peripheral.callsign}, loc=${op.peripheral.location != null}")
+                }
+
+                is DeltaOperation.SetEmergency -> {
+                    Log.i(TAG, "  - SetEmergency: source=${String.format("%08X", op.sourceNode)}")
+                    peers[op.sourceNode]?.let { emergencyPeer ->
+                        handler.post {
+                            meshListener?.onPeerEvent(emergencyPeer, HiveEventType.EMERGENCY)
+                        }
+                    }
+                }
+
+                is DeltaOperation.AckEmergency -> {
+                    Log.i(TAG, "  - AckEmergency: from=${String.format("%08X", op.nodeId)}")
+                    peers[op.nodeId]?.let { ackPeer ->
+                        handler.post {
+                            meshListener?.onPeerEvent(ackPeer, HiveEventType.ACK)
+                        }
+                    }
+                }
+
+                is DeltaOperation.ClearEmergency -> {
+                    Log.i(TAG, "  - ClearEmergency")
+                    // Clear emergency state - could notify listener
+                }
+
+                is DeltaOperation.UpdateLocation -> {
+                    // Field-level location update - apply to existing peripheral
+                    val currentPeer = peers[docNodeId]
+                    if (currentPeer != null) {
+                        val existingPeripheral = currentPeer.lastDocument?.peripheral
+                        val updatedLocation = HiveLocation(
+                            latitude = op.latitude,
+                            longitude = op.longitude,
+                            altitude = op.altitude
+                        )
+                        val updatedPeripheral = existingPeripheral?.copy(location = updatedLocation)
+                            ?: HivePeripheral(
+                                id = docNodeId,
+                                parentNode = docNodeId,
+                                peripheralType = HivePeripheralType.SOLDIER_SENSOR,
+                                callsign = "",
+                                health = HiveHealthStatus(0, null, 0, 0),
+                                lastEvent = null,
+                                location = updatedLocation,
+                                timestamp = deltaDoc.timestampMs
+                            )
+                        val syntheticDoc = HiveDocument(
+                            version = 1,
+                            nodeId = docNodeId,
+                            counter = localCounter.toList(),
+                            peripheral = updatedPeripheral
+                        )
+                        currentPeer.lastDocument = syntheticDoc
+                        handler.post { meshListener?.onDocumentSynced(syntheticDoc) }
+                    }
+                    Log.v(TAG, "  - UpdateLocation: lat=${op.latitude}, lon=${op.longitude}, alt=${op.altitude}")
+                }
+
+                is DeltaOperation.UpdateHealth -> {
+                    // Field-level health update - apply to existing peripheral
+                    val currentPeer = peers[docNodeId]
+                    if (currentPeer != null) {
+                        val existingPeripheral = currentPeer.lastDocument?.peripheral
+                        val updatedHealth = HiveHealthStatus(
+                            batteryPercent = op.batteryPercent,
+                            heartRate = op.heartRate,
+                            activityLevel = op.activityLevel,
+                            alerts = op.alerts
+                        )
+                        val updatedPeripheral = existingPeripheral?.copy(health = updatedHealth)
+                            ?: HivePeripheral(
+                                id = docNodeId,
+                                parentNode = docNodeId,
+                                peripheralType = HivePeripheralType.SOLDIER_SENSOR,
+                                callsign = "",
+                                health = updatedHealth,
+                                lastEvent = null,
+                                location = null,
+                                timestamp = deltaDoc.timestampMs
+                            )
+                        val syntheticDoc = HiveDocument(
+                            version = 1,
+                            nodeId = docNodeId,
+                            counter = localCounter.toList(),
+                            peripheral = updatedPeripheral
+                        )
+                        currentPeer.lastDocument = syntheticDoc
+                        handler.post { meshListener?.onDocumentSynced(syntheticDoc) }
+                    }
+                    Log.v(TAG, "  - UpdateHealth: bat=${op.batteryPercent}%, hr=${op.heartRate}, activity=${op.activityLevel}")
+                }
+
+                is DeltaOperation.UpdateCallsign -> {
+                    // Field-level callsign update - apply to existing peripheral
+                    val currentPeer = peers[docNodeId]
+                    if (currentPeer != null) {
+                        val existingPeripheral = currentPeer.lastDocument?.peripheral
+                        val updatedPeripheral = existingPeripheral?.copy(callsign = op.callsign)
+                            ?: HivePeripheral(
+                                id = docNodeId,
+                                parentNode = docNodeId,
+                                peripheralType = HivePeripheralType.SOLDIER_SENSOR,
+                                callsign = op.callsign,
+                                health = HiveHealthStatus(0, null, 0, 0),
+                                lastEvent = null,
+                                location = null,
+                                timestamp = deltaDoc.timestampMs
+                            )
+                        val syntheticDoc = HiveDocument(
+                            version = 1,
+                            nodeId = docNodeId,
+                            counter = localCounter.toList(),
+                            peripheral = updatedPeripheral
+                        )
+                        currentPeer.lastDocument = syntheticDoc
+                        handler.post { meshListener?.onDocumentSynced(syntheticDoc) }
+                    }
+                    Log.v(TAG, "  - UpdateCallsign: ${op.callsign}")
+                }
+
+                is DeltaOperation.UpdateEvent -> {
+                    // Field-level event update - apply and trigger callback
+                    val currentPeer = peers[docNodeId]
+                    if (currentPeer != null) {
+                        val existingPeripheral = currentPeer.lastDocument?.peripheral
+                        val previousEvent = existingPeripheral?.lastEvent
+                        val previousEventType = previousEvent?.eventType ?: HiveEventType.NONE
+                        val previousEventTimestamp = previousEvent?.timestamp ?: 0L
+
+                        val updatedEvent = HivePeripheralEvent(op.eventType, op.timestamp)
+                        val updatedPeripheral = existingPeripheral?.copy(lastEvent = updatedEvent)
+                            ?: HivePeripheral(
+                                id = docNodeId,
+                                parentNode = docNodeId,
+                                peripheralType = HivePeripheralType.SOLDIER_SENSOR,
+                                callsign = "",
+                                health = HiveHealthStatus(0, null, 0, 0),
+                                lastEvent = updatedEvent,
+                                location = null,
+                                timestamp = deltaDoc.timestampMs
+                            )
+                        val syntheticDoc = HiveDocument(
+                            version = 1,
+                            nodeId = docNodeId,
+                            counter = localCounter.toList(),
+                            peripheral = updatedPeripheral
+                        )
+                        currentPeer.lastDocument = syntheticDoc
+
+                        // Check for new events - trigger callback
+                        val isNewEvent = op.eventType != HiveEventType.NONE && (
+                            op.eventType != previousEventType ||
+                            (op.eventType == previousEventType && op.timestamp > previousEventTimestamp)
+                        )
+                        if (isNewEvent) {
+                            Log.i(TAG, "  - New event from delta: ${op.eventType}")
+                            handler.post { meshListener?.onPeerEvent(currentPeer, op.eventType) }
+                        }
+                        handler.post { meshListener?.onDocumentSynced(syntheticDoc) }
+                    }
+                    Log.v(TAG, "  - UpdateEvent: type=${op.eventType}, ts=${op.timestamp}")
+                }
+            }
+        }
+
+        notifyMeshUpdated()
+    }
+
     private fun mergeCounter(remoteCounter: List<GCounterEntry>) {
         for (entry in remoteCounter) {
             val existing = localCounter.find { it.nodeId == entry.nodeId }
@@ -1496,20 +1864,184 @@ class HiveBtle(
     private fun syncWithPeers() {
         if (connections.isEmpty() && connectedCentrals.isEmpty()) return
 
-        // Create sync document with persistent peripheral state (location, health, etc.)
-        // This ensures peers always receive our latest state, not just counter updates
-        val documentBytes = HiveDocument.encode(nodeId, localCounter, localPeripheral)
-
+        val now = System.currentTimeMillis()
+        val currentCounterValue = localCounter.sumOf { it.count }
         val hasLoc = localPeripheral?.location != null
-        Log.d(TAG, "syncWithPeers: ${documentBytes.size} bytes, hasPeripheral=${localPeripheral != null}, hasLocation=$hasLoc")
 
-        // Send to peripherals we connected to
+        // Send to peripherals we connected to (with per-peer delta logic)
         for ((address, gatt) in connections) {
-            writeDocumentToGatt(gatt, documentBytes)
+            val peerId = addressToNodeId[address] ?: continue
+            val documentBytes = buildSyncDocumentForPeer(peerId, now, currentCounterValue)
+            if (documentBytes != null) {
+                writeDocumentToGatt(gatt, documentBytes)
+            }
         }
 
-        // Send to centrals that connected to us
-        notifyConnectedCentrals(documentBytes)
+        // Send to centrals that connected to us (with per-peer delta logic)
+        for ((address, _) in connectedCentrals) {
+            val peerId = addressToNodeId[address] ?: continue
+            val documentBytes = buildSyncDocumentForPeer(peerId, now, currentCounterValue)
+            if (documentBytes != null) {
+                notifyCentral(address, documentBytes)
+            }
+        }
+
+        Log.d(TAG, "syncWithPeers: peers=${connections.size + connectedCentrals.size}, hasPeripheral=${localPeripheral != null}, hasLocation=$hasLoc")
+    }
+
+    /**
+     * Build sync document for a specific peer, using delta encoding when possible.
+     *
+     * Returns null if nothing has changed (skip sync entirely).
+     * Returns full document on first sync or every FULL_SYNC_INTERVAL syncs.
+     * Returns delta document otherwise.
+     */
+    private fun buildSyncDocumentForPeer(peerId: Long, now: Long, currentCounterValue: Long): ByteArray? {
+        val state = peerSyncState.getOrPut(peerId) { PeerSyncState() }
+
+        // Determine if we need a full sync
+        val needsFullSync = state.syncCount == 0 ||
+                            state.syncCount % FULL_SYNC_INTERVAL == 0
+
+        if (needsFullSync) {
+            // Full document sync
+            val documentBytes = HiveDocument.encode(nodeId, localCounter, localPeripheral)
+            state.lastSentTimestamp = now
+            state.lastSentPeripheral = localPeripheral?.copy()
+            state.lastSentCounterValue = currentCounterValue
+            state.syncCount++
+            Log.d(TAG, "[FULL] Peer ${String.format("%08X", peerId)}: ${documentBytes.size} bytes (sync #${state.syncCount})")
+            return documentBytes
+        }
+
+        // Check what changed since last sync to this peer
+        val operations = mutableListOf<DeltaOperation>()
+
+        // Check counter changes
+        if (currentCounterValue != state.lastSentCounterValue) {
+            val increment = currentCounterValue - state.lastSentCounterValue
+            if (increment > 0) {
+                operations.add(DeltaOperation.IncrementCounter(
+                    counterId = 0,
+                    nodeId = nodeId,
+                    amount = increment,
+                    timestamp = now
+                ))
+            }
+        }
+
+        // Check peripheral changes - emit field-level deltas for bandwidth efficiency
+        val currentPeripheral = localPeripheral
+        val lastPeripheral = state.lastSentPeripheral
+        if (currentPeripheral != null) {
+            // Check location change
+            if (currentPeripheral.location != lastPeripheral?.location) {
+                currentPeripheral.location?.let { loc ->
+                    operations.add(DeltaOperation.UpdateLocation(
+                        latitude = loc.latitude.toFloat(),
+                        longitude = loc.longitude.toFloat(),
+                        altitude = loc.altitude.toFloat()
+                    ))
+                }
+            }
+
+            // Check health changes
+            val lastHealth = lastPeripheral?.health
+            if (currentPeripheral.health.batteryPercent != lastHealth?.batteryPercent ||
+                currentPeripheral.health.heartRate != lastHealth?.heartRate ||
+                currentPeripheral.health.activityLevel != lastHealth?.activityLevel ||
+                currentPeripheral.health.alerts != lastHealth?.alerts) {
+                operations.add(DeltaOperation.UpdateHealth(
+                    batteryPercent = currentPeripheral.health.batteryPercent,
+                    heartRate = currentPeripheral.health.heartRate,
+                    activityLevel = currentPeripheral.health.activityLevel,
+                    alerts = currentPeripheral.health.alerts
+                ))
+            }
+
+            // Check callsign change
+            if (currentPeripheral.callsign != lastPeripheral?.callsign) {
+                operations.add(DeltaOperation.UpdateCallsign(currentPeripheral.callsign))
+            }
+
+            // Check event change
+            val lastEvent = lastPeripheral?.lastEvent
+            if (currentPeripheral.lastEvent != lastEvent) {
+                currentPeripheral.lastEvent?.let { event ->
+                    operations.add(DeltaOperation.UpdateEvent(
+                        eventType = event.eventType,
+                        timestamp = event.timestamp
+                    ))
+                }
+            }
+        }
+
+        // If nothing changed, skip this sync entirely
+        if (operations.isEmpty()) {
+            Log.v(TAG, "[SKIP] Peer ${String.format("%08X", peerId)}: no changes")
+            state.syncCount++
+            return null
+        }
+
+        // Build and encode delta document
+        val deltaDoc = HiveDeltaDocument(
+            originNode = nodeId,
+            timestampMs = now,
+            operations = operations
+        )
+        val deltaBytes = HiveDeltaDocument.encode(deltaDoc)
+
+        // Update sync state
+        state.lastSentTimestamp = now
+        state.lastSentPeripheral = currentPeripheral?.copy()
+        state.lastSentCounterValue = currentCounterValue
+        state.syncCount++
+
+        Log.d(TAG, "[DELTA] Peer ${String.format("%08X", peerId)}: ${deltaBytes.size} bytes, ${operations.size} ops (sync #${state.syncCount})")
+        return deltaBytes
+    }
+
+    /**
+     * Check if peripheral state has meaningfully changed.
+     */
+    private fun peripheralChanged(current: HivePeripheral?, last: HivePeripheral?): Boolean {
+        if (current == null && last == null) return false
+        if (current == null || last == null) return true
+
+        // Check location change (most common)
+        val locChanged = current.location != last.location
+
+        // Check health changes
+        val healthChanged = current.health.batteryPercent != last.health.batteryPercent ||
+                           current.health.heartRate != last.health.heartRate ||
+                           current.health.activityLevel != last.health.activityLevel
+
+        // Check event change
+        val eventChanged = current.lastEvent != last.lastEvent
+
+        // Check callsign change
+        val callsignChanged = current.callsign != last.callsign
+
+        return locChanged || healthChanged || eventChanged || callsignChanged
+    }
+
+    /**
+     * Notify a specific central device with document bytes.
+     */
+    private fun notifyCentral(address: String, documentBytes: ByteArray) {
+        val device = connectedCentrals[address] ?: return
+        val gattServer = this.gattServer ?: return
+        val service = gattServer.getService(HIVE_SERVICE_UUID) ?: return
+        val characteristic = service.getCharacteristic(HIVE_CHAR_DOCUMENT) ?: return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gattServer.notifyCharacteristicChanged(device, characteristic, false, documentBytes)
+        } else {
+            @Suppress("DEPRECATION")
+            characteristic.value = documentBytes
+            @Suppress("DEPRECATION")
+            gattServer.notifyCharacteristicChanged(device, characteristic, false)
+        }
     }
 
     private fun cleanupStalePeers() {
@@ -1823,6 +2355,13 @@ interface HiveMeshListener {
      * @param peer The disconnected peer
      */
     fun onPeerDisconnected(peer: HivePeer) {}
+
+    /**
+     * Called when a map marker is synced from a peer.
+     * @param peer The peer that sent the marker
+     * @param marker The marker data
+     */
+    fun onMarkerSynced(peer: HivePeer, marker: HiveMarker) {}
 }
 
 /**
@@ -2611,4 +3150,667 @@ data class HiveDocument(
      * Get the heart rate from peripheral health data.
      */
     fun heartRate(): Int? = peripheral?.health?.heartRate
+}
+
+// =============================================================================
+// MARKER SUPPORT
+// =============================================================================
+
+/**
+ * Marker section marker byte (0xAC).
+ * Used after peripheral section to encode map markers for mesh sync.
+ */
+const val MARKER_SECTION_MARKER: Byte = 0xAC.toByte()
+
+/**
+ * Compact marker format for BLE transmission (~84 bytes typical).
+ * Compatible with CotHiveTranslator.CompactMarker format.
+ */
+data class HiveMarker(
+    val uid: String,        // 36 bytes max (UUID)
+    val type: String,       // 12 bytes max (a-f-G-U-C)
+    val lat: Float,         // 4 bytes
+    val lon: Float,         // 4 bytes
+    val hae: Float,         // 4 bytes
+    val callsign: String,   // 16 bytes max
+    val time: Long          // 8 bytes
+) {
+    companion object {
+        private const val TAG = "HiveMarker"
+
+        /**
+         * Encode a marker to compact binary format.
+         */
+        fun encode(marker: HiveMarker): ByteArray {
+            val uidBytes = marker.uid.take(36).toByteArray(Charsets.UTF_8)
+            val typeBytes = marker.type.take(12).toByteArray(Charsets.UTF_8)
+            val csBytes = marker.callsign.take(16).toByteArray(Charsets.UTF_8)
+
+            // Simple length-prefixed encoding
+            val result = mutableListOf<Byte>()
+
+            // UID (length + bytes)
+            result.add(uidBytes.size.toByte())
+            result.addAll(uidBytes.toList())
+
+            // Type (length + bytes)
+            result.add(typeBytes.size.toByte())
+            result.addAll(typeBytes.toList())
+
+            // Lat/Lon/Hae as floats (12 bytes, big-endian for consistency)
+            result.addAll(floatToBytesLE(marker.lat).toList())
+            result.addAll(floatToBytesLE(marker.lon).toList())
+            result.addAll(floatToBytesLE(marker.hae).toList())
+
+            // Callsign (length + bytes)
+            result.add(csBytes.size.toByte())
+            result.addAll(csBytes.toList())
+
+            // Time (8 bytes, little-endian)
+            result.addAll(longToBytesLE(marker.time).toList())
+
+            return result.toByteArray()
+        }
+
+        /**
+         * Decode a marker from compact binary format.
+         */
+        fun decode(data: ByteArray, startOffset: Int = 0): Pair<HiveMarker?, Int> {
+            try {
+                var offset = startOffset
+
+                // UID
+                val uidLen = data[offset++].toInt() and 0xFF
+                if (offset + uidLen > data.size) return null to startOffset
+                val uid = String(data, offset, uidLen, Charsets.UTF_8)
+                offset += uidLen
+
+                // Type
+                val typeLen = data[offset++].toInt() and 0xFF
+                if (offset + typeLen > data.size) return null to startOffset
+                val type = String(data, offset, typeLen, Charsets.UTF_8)
+                offset += typeLen
+
+                // Lat/Lon/Hae (12 bytes)
+                if (offset + 12 > data.size) return null to startOffset
+                val lat = bytesToFloatLE(data.sliceArray(offset until offset + 4))
+                offset += 4
+                val lon = bytesToFloatLE(data.sliceArray(offset until offset + 4))
+                offset += 4
+                val hae = bytesToFloatLE(data.sliceArray(offset until offset + 4))
+                offset += 4
+
+                // Callsign
+                val csLen = data[offset++].toInt() and 0xFF
+                if (offset + csLen > data.size) return null to startOffset
+                val callsign = String(data, offset, csLen, Charsets.UTF_8)
+                offset += csLen
+
+                // Time (8 bytes)
+                if (offset + 8 > data.size) return null to startOffset
+                val time = bytesToLongLE(data.sliceArray(offset until offset + 8))
+                offset += 8
+
+                return HiveMarker(uid, type, lat, lon, hae, callsign, time) to offset
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to decode HiveMarker: ${e.message}")
+                return null to startOffset
+            }
+        }
+
+        private fun floatToBytesLE(f: Float): ByteArray {
+            val bits = java.lang.Float.floatToIntBits(f)
+            return byteArrayOf(
+                bits.toByte(),
+                (bits shr 8).toByte(),
+                (bits shr 16).toByte(),
+                (bits shr 24).toByte()
+            )
+        }
+
+        private fun bytesToFloatLE(bytes: ByteArray): Float {
+            val bits = ((bytes[0].toInt() and 0xFF)) or
+                    ((bytes[1].toInt() and 0xFF) shl 8) or
+                    ((bytes[2].toInt() and 0xFF) shl 16) or
+                    ((bytes[3].toInt() and 0xFF) shl 24)
+            return java.lang.Float.intBitsToFloat(bits)
+        }
+
+        private fun longToBytesLE(l: Long): ByteArray {
+            return byteArrayOf(
+                l.toByte(),
+                (l shr 8).toByte(),
+                (l shr 16).toByte(),
+                (l shr 24).toByte(),
+                (l shr 32).toByte(),
+                (l shr 40).toByte(),
+                (l shr 48).toByte(),
+                (l shr 56).toByte()
+            )
+        }
+
+        private fun bytesToLongLE(bytes: ByteArray): Long {
+            return ((bytes[0].toLong() and 0xFF)) or
+                    ((bytes[1].toLong() and 0xFF) shl 8) or
+                    ((bytes[2].toLong() and 0xFF) shl 16) or
+                    ((bytes[3].toLong() and 0xFF) shl 24) or
+                    ((bytes[4].toLong() and 0xFF) shl 32) or
+                    ((bytes[5].toLong() and 0xFF) shl 40) or
+                    ((bytes[6].toLong() and 0xFF) shl 48) or
+                    ((bytes[7].toLong() and 0xFF) shl 56)
+        }
+    }
+}
+
+// =============================================================================
+// DELTA DOCUMENT SUPPORT
+// =============================================================================
+
+/**
+ * Delta document marker byte (0xB2).
+ * Documents starting with this byte are delta-encoded for bandwidth efficiency.
+ */
+const val DELTA_DOCUMENT_MARKER: Byte = 0xB2.toByte()
+
+/**
+ * Full sync interval - send full document every N syncs for consistency.
+ */
+const val FULL_SYNC_INTERVAL: Int = 10
+
+/**
+ * Delta operation type constants (matching Rust wire format).
+ */
+object DeltaOpType {
+    const val INCREMENT_COUNTER: Byte = 0x01
+    const val UPDATE_PERIPHERAL: Byte = 0x02  // Full peripheral (legacy, avoid)
+    const val SET_EMERGENCY: Byte = 0x03
+    const val ACK_EMERGENCY: Byte = 0x04
+    const val CLEAR_EMERGENCY: Byte = 0x05
+
+    // Field-level delta operations (bandwidth efficient)
+    const val UPDATE_LOCATION: Byte = 0x10    // 12 bytes: lat(4) + lon(4) + alt(4)
+    const val UPDATE_HEALTH: Byte = 0x11      // 4 bytes: battery(1) + hr(1) + activity(1) + alerts(1)
+    const val UPDATE_CALLSIGN: Byte = 0x12    // 1-13 bytes: len(1) + callsign(0-12)
+    const val UPDATE_EVENT: Byte = 0x13       // 9 bytes: type(1) + timestamp(8)
+}
+
+/**
+ * Flags for delta document header.
+ */
+data class DeltaFlags(
+    val hasVectorClock: Boolean = false,
+    val isResponse: Boolean = false
+) {
+    fun toByte(): Byte {
+        var flags = 0
+        if (hasVectorClock) flags = flags or 0x01
+        if (isResponse) flags = flags or 0x02
+        return flags.toByte()
+    }
+
+    companion object {
+        fun fromByte(byte: Byte): DeltaFlags {
+            val b = byte.toInt() and 0xFF
+            return DeltaFlags(
+                hasVectorClock = (b and 0x01) != 0,
+                isResponse = (b and 0x02) != 0
+            )
+        }
+    }
+}
+
+/**
+ * Delta operation sealed class - represents a single change to sync.
+ */
+sealed class DeltaOperation {
+    abstract fun encode(): ByteArray
+
+    data class IncrementCounter(
+        val counterId: Byte,
+        val nodeId: Long,
+        val amount: Long,
+        val timestamp: Long
+    ) : DeltaOperation() {
+        override fun encode(): ByteArray {
+            val data = ByteArray(22)  // type(1) + counterId(1) + nodeId(4) + amount(8) + timestamp(8)
+            var offset = 0
+            data[offset++] = DeltaOpType.INCREMENT_COUNTER
+            data[offset++] = counterId
+            writeU32LE(data, offset, nodeId); offset += 4
+            writeU64LE(data, offset, amount); offset += 8
+            writeU64LE(data, offset, timestamp)
+            return data
+        }
+
+        companion object {
+            fun decode(data: ByteArray, offset: Int): Pair<IncrementCounter, Int>? {
+                if (data.size < offset + 21) return null
+                var pos = offset
+                val counterId = data[pos++]
+                val nodeId = readU32LE(data, pos); pos += 4
+                val amount = readU64LE(data, pos); pos += 8
+                val timestamp = readU64LE(data, pos); pos += 8
+                return IncrementCounter(counterId, nodeId, amount, timestamp) to pos
+            }
+        }
+    }
+
+    data class UpdatePeripheral(
+        val peripheral: HivePeripheral,
+        val timestamp: Long
+    ) : DeltaOperation() {
+        override fun encode(): ByteArray {
+            val peripheralBytes = HivePeripheral.encode(peripheral)
+            val data = ByteArray(1 + 8 + 2 + peripheralBytes.size)  // type(1) + timestamp(8) + len(2) + peripheral
+            var offset = 0
+            data[offset++] = DeltaOpType.UPDATE_PERIPHERAL
+            writeU64LE(data, offset, timestamp); offset += 8
+            writeU16LE(data, offset, peripheralBytes.size.toLong()); offset += 2
+            peripheralBytes.copyInto(data, offset)
+            return data
+        }
+
+        companion object {
+            fun decode(data: ByteArray, offset: Int): Pair<UpdatePeripheral, Int>? {
+                if (data.size < offset + 10) return null
+                var pos = offset
+                val timestamp = readU64LE(data, pos); pos += 8
+                val len = readU16LE(data, pos).toInt(); pos += 2
+                if (data.size < pos + len) return null
+                val peripheral = HivePeripheral.decode(data, pos) ?: return null
+                pos += len
+                return UpdatePeripheral(peripheral, timestamp) to pos
+            }
+        }
+    }
+
+    data class SetEmergency(
+        val sourceNode: Long,
+        val timestamp: Long,
+        val knownPeers: List<Long> = emptyList()
+    ) : DeltaOperation() {
+        override fun encode(): ByteArray {
+            val data = ByteArray(1 + 4 + 8 + 1 + knownPeers.size * 4)  // type(1) + source(4) + ts(8) + count(1) + peers
+            var offset = 0
+            data[offset++] = DeltaOpType.SET_EMERGENCY
+            writeU32LE(data, offset, sourceNode); offset += 4
+            writeU64LE(data, offset, timestamp); offset += 8
+            data[offset++] = knownPeers.size.toByte()
+            for (peer in knownPeers) {
+                writeU32LE(data, offset, peer); offset += 4
+            }
+            return data
+        }
+
+        companion object {
+            fun decode(data: ByteArray, offset: Int): Pair<SetEmergency, Int>? {
+                if (data.size < offset + 13) return null
+                var pos = offset
+                val sourceNode = readU32LE(data, pos); pos += 4
+                val timestamp = readU64LE(data, pos); pos += 8
+                val peerCount = data[pos++].toInt() and 0xFF
+                if (data.size < pos + peerCount * 4) return null
+                val knownPeers = mutableListOf<Long>()
+                repeat(peerCount) {
+                    knownPeers.add(readU32LE(data, pos)); pos += 4
+                }
+                return SetEmergency(sourceNode, timestamp, knownPeers) to pos
+            }
+        }
+    }
+
+    data class AckEmergency(
+        val nodeId: Long,
+        val emergencyTimestamp: Long
+    ) : DeltaOperation() {
+        override fun encode(): ByteArray {
+            val data = ByteArray(13)  // type(1) + nodeId(4) + timestamp(8)
+            var offset = 0
+            data[offset++] = DeltaOpType.ACK_EMERGENCY
+            writeU32LE(data, offset, nodeId); offset += 4
+            writeU64LE(data, offset, emergencyTimestamp)
+            return data
+        }
+
+        companion object {
+            fun decode(data: ByteArray, offset: Int): Pair<AckEmergency, Int>? {
+                if (data.size < offset + 12) return null
+                var pos = offset
+                val nodeId = readU32LE(data, pos); pos += 4
+                val emergencyTimestamp = readU64LE(data, pos); pos += 8
+                return AckEmergency(nodeId, emergencyTimestamp) to pos
+            }
+        }
+    }
+
+    data class ClearEmergency(
+        val emergencyTimestamp: Long
+    ) : DeltaOperation() {
+        override fun encode(): ByteArray {
+            val data = ByteArray(9)  // type(1) + timestamp(8)
+            var offset = 0
+            data[offset++] = DeltaOpType.CLEAR_EMERGENCY
+            writeU64LE(data, offset, emergencyTimestamp)
+            return data
+        }
+
+        companion object {
+            fun decode(data: ByteArray, offset: Int): Pair<ClearEmergency, Int>? {
+                if (data.size < offset + 8) return null
+                val emergencyTimestamp = readU64LE(data, offset)
+                return ClearEmergency(emergencyTimestamp) to (offset + 8)
+            }
+        }
+    }
+
+    // =========================================================================
+    // FIELD-LEVEL DELTA OPERATIONS (bandwidth efficient)
+    // =========================================================================
+
+    /**
+     * Update location only - 13 bytes total (type + lat + lon + alt as floats)
+     */
+    data class UpdateLocation(
+        val latitude: Float,
+        val longitude: Float,
+        val altitude: Float
+    ) : DeltaOperation() {
+        override fun encode(): ByteArray {
+            val data = ByteArray(13)  // type(1) + lat(4) + lon(4) + alt(4)
+            var offset = 0
+            data[offset++] = DeltaOpType.UPDATE_LOCATION
+            writeF32LE(data, offset, latitude); offset += 4
+            writeF32LE(data, offset, longitude); offset += 4
+            writeF32LE(data, offset, altitude)
+            return data
+        }
+
+        companion object {
+            fun decode(data: ByteArray, offset: Int): Pair<UpdateLocation, Int>? {
+                if (data.size < offset + 12) return null
+                var pos = offset
+                val lat = readF32LE(data, pos); pos += 4
+                val lon = readF32LE(data, pos); pos += 4
+                val alt = readF32LE(data, pos); pos += 4
+                return UpdateLocation(lat, lon, alt) to pos
+            }
+        }
+    }
+
+    /**
+     * Update health status only - 5 bytes total (type + battery + hr + activity + alerts)
+     */
+    data class UpdateHealth(
+        val batteryPercent: Int,
+        val heartRate: Int?,
+        val activityLevel: Int,
+        val alerts: Int
+    ) : DeltaOperation() {
+        override fun encode(): ByteArray {
+            val data = ByteArray(5)  // type(1) + battery(1) + hr(1) + activity(1) + alerts(1)
+            data[0] = DeltaOpType.UPDATE_HEALTH
+            data[1] = batteryPercent.toByte()
+            data[2] = (heartRate ?: 0).toByte()
+            data[3] = activityLevel.toByte()
+            data[4] = alerts.toByte()
+            return data
+        }
+
+        companion object {
+            fun decode(data: ByteArray, offset: Int): Pair<UpdateHealth, Int>? {
+                if (data.size < offset + 4) return null
+                val battery = data[offset].toInt() and 0xFF
+                val hr = data[offset + 1].toInt() and 0xFF
+                val activity = data[offset + 2].toInt() and 0xFF
+                val alerts = data[offset + 3].toInt() and 0xFF
+                return UpdateHealth(battery, if (hr > 0) hr else null, activity, alerts) to (offset + 4)
+            }
+        }
+    }
+
+    /**
+     * Update callsign only - 2-14 bytes total (type + len + callsign)
+     */
+    data class UpdateCallsign(
+        val callsign: String
+    ) : DeltaOperation() {
+        override fun encode(): ByteArray {
+            val bytes = callsign.take(12).toByteArray(Charsets.UTF_8)
+            val data = ByteArray(2 + bytes.size)  // type(1) + len(1) + callsign
+            data[0] = DeltaOpType.UPDATE_CALLSIGN
+            data[1] = bytes.size.toByte()
+            bytes.copyInto(data, 2)
+            return data
+        }
+
+        companion object {
+            fun decode(data: ByteArray, offset: Int): Pair<UpdateCallsign, Int>? {
+                if (data.size < offset + 1) return null
+                val len = data[offset].toInt() and 0xFF
+                if (data.size < offset + 1 + len) return null
+                val callsign = String(data, offset + 1, len, Charsets.UTF_8)
+                return UpdateCallsign(callsign) to (offset + 1 + len)
+            }
+        }
+    }
+
+    /**
+     * Update event only - 10 bytes total (type + eventType + timestamp)
+     */
+    data class UpdateEvent(
+        val eventType: HiveEventType,
+        val timestamp: Long
+    ) : DeltaOperation() {
+        override fun encode(): ByteArray {
+            val data = ByteArray(10)  // type(1) + eventType(1) + timestamp(8)
+            var offset = 0
+            data[offset++] = DeltaOpType.UPDATE_EVENT
+            data[offset++] = eventType.value.toByte()
+            writeU64LE(data, offset, timestamp)
+            return data
+        }
+
+        companion object {
+            fun decode(data: ByteArray, offset: Int): Pair<UpdateEvent, Int>? {
+                if (data.size < offset + 9) return null
+                val eventValue = data[offset].toInt() and 0xFF
+                val eventType = HiveEventType.entries.find { it.value == eventValue } ?: HiveEventType.NONE
+                val timestamp = readU64LE(data, offset + 1)
+                return UpdateEvent(eventType, timestamp) to (offset + 9)
+            }
+        }
+    }
+}
+
+// Float read/write helpers for location deltas
+private fun readF32LE(data: ByteArray, offset: Int): Float {
+    val bits = ((data[offset].toInt() and 0xFF) or
+                ((data[offset + 1].toInt() and 0xFF) shl 8) or
+                ((data[offset + 2].toInt() and 0xFF) shl 16) or
+                ((data[offset + 3].toInt() and 0xFF) shl 24))
+    return Float.fromBits(bits)
+}
+
+private fun writeF32LE(data: ByteArray, offset: Int, value: Float) {
+    val bits = value.toRawBits()
+    data[offset] = (bits and 0xFF).toByte()
+    data[offset + 1] = ((bits shr 8) and 0xFF).toByte()
+    data[offset + 2] = ((bits shr 16) and 0xFF).toByte()
+    data[offset + 3] = ((bits shr 24) and 0xFF).toByte()
+}
+
+/**
+ * HIVE Delta Document format for bandwidth-efficient sync.
+ *
+ * Wire format (0xB2):
+ * - marker: 1 byte (0xB2)
+ * - flags: 1 byte
+ * - origin_node: 4 bytes (LE)
+ * - timestamp_ms: 8 bytes (LE)
+ * - op_count: 2 bytes (LE)
+ * - operations: variable
+ */
+data class HiveDeltaDocument(
+    val originNode: Long,
+    val timestampMs: Long,
+    val flags: DeltaFlags = DeltaFlags(),
+    val operations: List<DeltaOperation>
+) {
+    companion object {
+        private const val TAG = "HiveDeltaDocument"
+
+        /**
+         * Check if data is a delta document (starts with 0xB2 marker).
+         */
+        fun isDeltaDocument(data: ByteArray): Boolean {
+            return data.isNotEmpty() && data[0] == DELTA_DOCUMENT_MARKER
+        }
+
+        /**
+         * Decode a delta document from raw bytes.
+         */
+        fun decode(data: ByteArray): HiveDeltaDocument? {
+            if (data.size < 16) {  // marker(1) + flags(1) + origin(4) + timestamp(8) + opcount(2)
+                Log.e(TAG, "Delta document too short: ${data.size} bytes")
+                return null
+            }
+
+            try {
+                var offset = 0
+
+                // Check marker
+                if (data[offset++] != DELTA_DOCUMENT_MARKER) {
+                    Log.e(TAG, "Invalid delta marker")
+                    return null
+                }
+
+                // Read flags
+                val flags = DeltaFlags.fromByte(data[offset++])
+
+                // Read header
+                val originNode = readU32LE(data, offset); offset += 4
+                val timestampMs = readU64LE(data, offset); offset += 8
+
+                // Read operation count
+                val opCount = readU16LE(data, offset).toInt(); offset += 2
+
+                Log.d(TAG, "Delta: origin=${String.format("%08X", originNode)}, ts=$timestampMs, ops=$opCount")
+
+                // Parse operations
+                val operations = mutableListOf<DeltaOperation>()
+                for (i in 0 until opCount) {
+                    if (offset >= data.size) break
+                    val opType = data[offset++]
+                    val result: Pair<DeltaOperation, Int>? = when (opType) {
+                        DeltaOpType.INCREMENT_COUNTER -> DeltaOperation.IncrementCounter.decode(data, offset)
+                        DeltaOpType.UPDATE_PERIPHERAL -> DeltaOperation.UpdatePeripheral.decode(data, offset)
+                        DeltaOpType.SET_EMERGENCY -> DeltaOperation.SetEmergency.decode(data, offset)
+                        DeltaOpType.ACK_EMERGENCY -> DeltaOperation.AckEmergency.decode(data, offset)
+                        DeltaOpType.CLEAR_EMERGENCY -> DeltaOperation.ClearEmergency.decode(data, offset)
+                        // Field-level delta operations
+                        DeltaOpType.UPDATE_LOCATION -> DeltaOperation.UpdateLocation.decode(data, offset)
+                        DeltaOpType.UPDATE_HEALTH -> DeltaOperation.UpdateHealth.decode(data, offset)
+                        DeltaOpType.UPDATE_CALLSIGN -> DeltaOperation.UpdateCallsign.decode(data, offset)
+                        DeltaOpType.UPDATE_EVENT -> DeltaOperation.UpdateEvent.decode(data, offset)
+                        else -> {
+                            Log.w(TAG, "Unknown delta op type: $opType")
+                            null
+                        }
+                    }
+                    if (result != null) {
+                        operations.add(result.first)
+                        offset = result.second
+                    }
+                }
+
+                return HiveDeltaDocument(originNode, timestampMs, flags, operations)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to decode delta document", e)
+                return null
+            }
+        }
+
+        /**
+         * Encode a delta document to bytes.
+         */
+        fun encode(doc: HiveDeltaDocument): ByteArray {
+            // Calculate size
+            val operationBytes = doc.operations.map { it.encode() }
+            val totalOpSize = operationBytes.sumOf { it.size }
+            val headerSize = 1 + 1 + 4 + 8 + 2  // marker + flags + origin + timestamp + opcount
+            val data = ByteArray(headerSize + totalOpSize)
+
+            var offset = 0
+            data[offset++] = DELTA_DOCUMENT_MARKER
+            data[offset++] = doc.flags.toByte()
+            writeU32LE(data, offset, doc.originNode); offset += 4
+            writeU64LE(data, offset, doc.timestampMs); offset += 8
+            writeU16LE(data, offset, doc.operations.size.toLong()); offset += 2
+
+            for (opBytes in operationBytes) {
+                opBytes.copyInto(data, offset)
+                offset += opBytes.size
+            }
+
+            return data
+        }
+    }
+}
+
+/**
+ * Per-peer sync state for delta tracking.
+ */
+data class PeerSyncState(
+    var lastSentTimestamp: Long = 0,
+    var lastSentPeripheral: HivePeripheral? = null,
+    var lastSentCounterValue: Long = 0,
+    var syncCount: Int = 0
+)
+
+// Helper functions for byte operations (module-level for delta classes)
+private fun readU16LE(data: ByteArray, offset: Int): Long {
+    return ((data[offset].toLong() and 0xFF) or
+            ((data[offset + 1].toLong() and 0xFF) shl 8))
+}
+
+private fun readU32LE(data: ByteArray, offset: Int): Long {
+    return ((data[offset].toLong() and 0xFF) or
+            ((data[offset + 1].toLong() and 0xFF) shl 8) or
+            ((data[offset + 2].toLong() and 0xFF) shl 16) or
+            ((data[offset + 3].toLong() and 0xFF) shl 24))
+}
+
+private fun readU64LE(data: ByteArray, offset: Int): Long {
+    return ((data[offset].toLong() and 0xFF) or
+            ((data[offset + 1].toLong() and 0xFF) shl 8) or
+            ((data[offset + 2].toLong() and 0xFF) shl 16) or
+            ((data[offset + 3].toLong() and 0xFF) shl 24) or
+            ((data[offset + 4].toLong() and 0xFF) shl 32) or
+            ((data[offset + 5].toLong() and 0xFF) shl 40) or
+            ((data[offset + 6].toLong() and 0xFF) shl 48) or
+            ((data[offset + 7].toLong() and 0xFF) shl 56))
+}
+
+private fun writeU16LE(data: ByteArray, offset: Int, value: Long) {
+    data[offset] = (value and 0xFF).toByte()
+    data[offset + 1] = ((value shr 8) and 0xFF).toByte()
+}
+
+private fun writeU32LE(data: ByteArray, offset: Int, value: Long) {
+    data[offset] = (value and 0xFF).toByte()
+    data[offset + 1] = ((value shr 8) and 0xFF).toByte()
+    data[offset + 2] = ((value shr 16) and 0xFF).toByte()
+    data[offset + 3] = ((value shr 24) and 0xFF).toByte()
+}
+
+private fun writeU64LE(data: ByteArray, offset: Int, value: Long) {
+    data[offset] = (value and 0xFF).toByte()
+    data[offset + 1] = ((value shr 8) and 0xFF).toByte()
+    data[offset + 2] = ((value shr 16) and 0xFF).toByte()
+    data[offset + 3] = ((value shr 24) and 0xFF).toByte()
+    data[offset + 4] = ((value shr 32) and 0xFF).toByte()
+    data[offset + 5] = ((value shr 40) and 0xFF).toByte()
+    data[offset + 6] = ((value shr 48) and 0xFF).toByte()
+    data[offset + 7] = ((value shr 56) and 0xFF).toByte()
 }

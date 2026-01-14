@@ -2034,6 +2034,178 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetPeerDeltaStat
     }
 }
 
+// ==================== Indirect Peer API ====================
+
+/// Get all indirect (multi-hop) peers
+///
+/// Returns encoded list of indirect peers. Each peer is encoded as:
+/// [node_id: 4][min_hops: 1][via_peer_count: 1][via_peers: N * (node_id: 4, hops: 1)]
+/// [discovered_at: 8][last_seen_ms: 8][messages_received: 4][callsign_len: 1][callsign: N]
+///
+/// The list is prefixed with a count: [count: 4][peers...]
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetIndirectPeers<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let peers = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).map(|m| m.get_indirect_peers())
+    } else {
+        None
+    };
+
+    match peers {
+        Some(indirect_peers) => {
+            let mut buf = Vec::new();
+            // Write count
+            buf.extend_from_slice(&(indirect_peers.len() as u32).to_le_bytes());
+
+            for peer in indirect_peers {
+                // node_id (4 bytes)
+                buf.extend_from_slice(&peer.node_id.as_u32().to_le_bytes());
+                // min_hops (1 byte)
+                buf.push(peer.min_hops);
+                // via_peer_count (1 byte)
+                buf.push(peer.via_peers.len() as u8);
+                // via_peers (N * 5 bytes each)
+                for (&via_id, &hops) in &peer.via_peers {
+                    buf.extend_from_slice(&via_id.as_u32().to_le_bytes());
+                    buf.push(hops);
+                }
+                // discovered_at (8 bytes)
+                buf.extend_from_slice(&peer.discovered_at.to_le_bytes());
+                // last_seen_ms (8 bytes)
+                buf.extend_from_slice(&peer.last_seen_ms.to_le_bytes());
+                // messages_received (4 bytes)
+                buf.extend_from_slice(&peer.messages_received.to_le_bytes());
+                // callsign (length-prefixed)
+                match &peer.callsign {
+                    Some(cs) => {
+                        let cs_bytes = cs.as_bytes();
+                        buf.push(cs_bytes.len() as u8);
+                        buf.extend_from_slice(cs_bytes);
+                    }
+                    None => buf.push(0),
+                }
+            }
+
+            env.byte_array_from_slice(&buf)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get the degree (hop count) for a specific peer
+///
+/// Returns:
+/// - 0 for direct peers
+/// - 1-3 for indirect peers (1-hop, 2-hop, 3-hop)
+/// - -1 if peer is not known
+///
+/// JNI Signature: (JJ)I
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetPeerDegree(
+    _env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    peer_node_id: jlong,
+) -> jint {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            let peer_id = crate::NodeId::new(peer_node_id as u32);
+            if let Some(degree) = mesh.get_peer_degree(peer_id) {
+                return degree.hops() as jint;
+            }
+        }
+    }
+    -1 // Not found
+}
+
+/// Get full state counts including indirect peers
+///
+/// Returns encoded counts:
+/// [discovered: 4][connecting: 4][connected: 4][degraded: 4]
+/// [disconnecting: 4][disconnected: 4][lost: 4]
+/// [one_hop: 4][two_hop: 4][three_hop: 4]
+///
+/// Total: 40 bytes
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetFullStateCounts<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let counts = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).map(|m| m.get_full_state_counts())
+    } else {
+        None
+    };
+
+    match counts {
+        Some(c) => {
+            let mut buf = Vec::with_capacity(40);
+            // Direct peer counts
+            buf.extend_from_slice(&(c.direct.discovered as u32).to_le_bytes());
+            buf.extend_from_slice(&(c.direct.connecting as u32).to_le_bytes());
+            buf.extend_from_slice(&(c.direct.connected as u32).to_le_bytes());
+            buf.extend_from_slice(&(c.direct.degraded as u32).to_le_bytes());
+            buf.extend_from_slice(&(c.direct.disconnecting as u32).to_le_bytes());
+            buf.extend_from_slice(&(c.direct.disconnected as u32).to_le_bytes());
+            buf.extend_from_slice(&(c.direct.lost as u32).to_le_bytes());
+            // Indirect peer counts
+            buf.extend_from_slice(&(c.one_hop as u32).to_le_bytes());
+            buf.extend_from_slice(&(c.two_hop as u32).to_le_bytes());
+            buf.extend_from_slice(&(c.three_hop as u32).to_le_bytes());
+
+            env.byte_array_from_slice(&buf)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get the number of indirect peers
+///
+/// JNI Signature: (J)I
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetIndirectPeerCount(
+    _env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jint {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            return mesh.indirect_peer_count() as jint;
+        }
+    }
+    0
+}
+
+/// Check if a peer is known (either direct or indirect)
+///
+/// JNI Signature: (JJ)Z
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeIsPeerKnown(
+    _env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    peer_node_id: jlong,
+) -> jboolean {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            let peer_id = crate::NodeId::new(peer_node_id as u32);
+            return if mesh.is_peer_known(peer_id) { 1 } else { 0 };
+        }
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests {
     // JNI tests require Android runtime environment

@@ -206,6 +206,22 @@ class HiveMesh(
 
         @JvmStatic
         private external fun nativeGetPeerDeltaStats(handle: Long, peerNodeId: Long): ByteArray
+
+        // Indirect Peers methods
+        @JvmStatic
+        private external fun nativeGetIndirectPeers(handle: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeGetPeerDegree(handle: Long, nodeId: Long): Int
+
+        @JvmStatic
+        private external fun nativeGetFullStateCounts(handle: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeGetIndirectPeerCount(handle: Long): Int
+
+        @JvmStatic
+        private external fun nativeIsPeerKnown(handle: Long, nodeId: Long): Boolean
     }
 
     /** Native handle returned by nativeCreate */
@@ -654,6 +670,77 @@ class HiveMesh(
         return PeerDeltaStats.decode(data)
     }
 
+    // ========================================================================
+    // Indirect Peers API (Multi-Hop Mesh Topology)
+    // ========================================================================
+
+    /**
+     * Get all indirect peers (peers reachable via relay hops).
+     *
+     * Indirect peers are discovered through relay messages - when we receive
+     * a message from peer A with origin B, we know B is reachable via A.
+     * This method returns all such indirectly reachable peers.
+     *
+     * @return List of indirect peers with routing information
+     */
+    fun getIndirectPeers(): List<IndirectPeer> {
+        checkNotDestroyed()
+        val data = nativeGetIndirectPeers(handle)
+        return IndirectPeer.decodeList(data)
+    }
+
+    /**
+     * Get the degree (hop count) for a specific peer.
+     *
+     * - 0 = Direct peer (BLE connection)
+     * - 1 = One-hop peer (reachable via one relay)
+     * - 2 = Two-hop peer (reachable via two relays)
+     * - 3 = Three-hop peer (reachable via three relays)
+     *
+     * @param nodeId The peer's node ID (32-bit)
+     * @return Hop count (0-3), or null if peer is unknown
+     */
+    fun getPeerDegree(nodeId: Long): Int? {
+        checkNotDestroyed()
+        val result = nativeGetPeerDegree(handle, nodeId)
+        return if (result < 0) null else result
+    }
+
+    /**
+     * Get full peer counts including both direct and indirect peers.
+     *
+     * This provides a complete view of the mesh topology as seen from this node,
+     * including counts of peers at each hop distance.
+     *
+     * @return FullStateCounts with direct and indirect peer counts
+     */
+    fun getFullStateCounts(): FullStateCounts? {
+        checkNotDestroyed()
+        val data = nativeGetFullStateCounts(handle)
+        return FullStateCounts.decode(data)
+    }
+
+    /**
+     * Get the count of indirect peers (multi-hop peers).
+     *
+     * @return Number of peers reachable via relay hops
+     */
+    fun getIndirectPeerCount(): Int {
+        checkNotDestroyed()
+        return nativeGetIndirectPeerCount(handle)
+    }
+
+    /**
+     * Check if a peer is known (either direct or indirect).
+     *
+     * @param nodeId The peer's node ID (32-bit)
+     * @return true if the peer is tracked (direct or indirect)
+     */
+    fun isPeerKnown(nodeId: Long): Boolean {
+        checkNotDestroyed()
+        return nativeIsPeerKnown(handle, nodeId)
+    }
+
     private fun checkNotDestroyed() {
         if (isDestroyed) {
             throw IllegalStateException("HiveMesh has been destroyed")
@@ -1065,6 +1152,155 @@ data class PeerDeltaStats(
                 bytesSent = buffer.long,
                 bytesReceived = buffer.long,
                 syncCount = buffer.int
+            )
+        }
+    }
+}
+
+/**
+ * Information about an indirect peer (reachable via relay hops).
+ *
+ * Indirect peers are discovered through relay messages. When we receive a
+ * message from peer A with origin B (where B != A), we learn that B is
+ * reachable via A. This class tracks all such indirectly reachable peers
+ * and the routes to reach them.
+ */
+data class IndirectPeer(
+    /** The indirect peer's node ID (32-bit) */
+    val nodeId: Long,
+    /** Minimum hop count to reach this peer */
+    val minHops: Int,
+    /** Direct peers through which we can reach this peer (via_peer_id -> hop_count) */
+    val viaPeers: Map<Long, Int>,
+    /** Timestamp when this peer was first discovered (ms since epoch) */
+    val discoveredAt: Long,
+    /** Last time we received data from/about this peer (ms since epoch) */
+    val lastSeenMs: Long,
+    /** Number of messages received from this peer */
+    val messagesReceived: Int,
+    /** Optional callsign if learned from documents */
+    val callsign: String?
+) {
+    companion object {
+        /**
+         * Decode indirect peer from native byte format (streaming from buffer).
+         *
+         * Format: [node_id: 4][min_hops: 1][via_peers_count: 1]
+         *         [[via_peer_id: 4][hop_count: 1]...]
+         *         [discovered_at: 8][last_seen_ms: 8][messages_received: 4]
+         *         [callsign_len: 1][callsign: N]
+         */
+        fun decodeFromBuffer(buffer: ByteBuffer): IndirectPeer? {
+            if (buffer.remaining() < 26) return null // Minimum size without via_peers
+
+            val nodeId = buffer.int.toLong() and 0xFFFFFFFFL
+            val minHops = buffer.get().toInt() and 0xFF
+            val viaPeersCount = buffer.get().toInt() and 0xFF
+
+            val viaPeers = mutableMapOf<Long, Int>()
+            repeat(viaPeersCount) {
+                if (buffer.remaining() < 5) return null
+                val viaPeerId = buffer.int.toLong() and 0xFFFFFFFFL
+                val hopCount = buffer.get().toInt() and 0xFF
+                viaPeers[viaPeerId] = hopCount
+            }
+
+            if (buffer.remaining() < 21) return null
+
+            val discoveredAt = buffer.long
+            val lastSeenMs = buffer.long
+            val messagesReceived = buffer.int
+
+            val callsignLen = buffer.get().toInt() and 0xFF
+            val callsign = if (callsignLen > 0 && buffer.remaining() >= callsignLen) {
+                val callsignBytes = ByteArray(callsignLen)
+                buffer.get(callsignBytes)
+                String(callsignBytes, Charsets.UTF_8)
+            } else null
+
+            return IndirectPeer(
+                nodeId = nodeId,
+                minHops = minHops,
+                viaPeers = viaPeers,
+                discoveredAt = discoveredAt,
+                lastSeenMs = lastSeenMs,
+                messagesReceived = messagesReceived,
+                callsign = callsign
+            )
+        }
+
+        /**
+         * Decode a list of indirect peers from native byte format.
+         *
+         * Format: [count: 4][peer1][peer2]... (peers are NOT length-prefixed)
+         */
+        fun decodeList(data: ByteArray): List<IndirectPeer> {
+            if (data.size < 4) return emptyList()
+
+            val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+            val count = buffer.int
+
+            val result = mutableListOf<IndirectPeer>()
+            repeat(count) {
+                decodeFromBuffer(buffer)?.let { result.add(it) } ?: return result
+            }
+            return result
+        }
+    }
+}
+
+/**
+ * Complete peer count summary including direct and indirect peers.
+ *
+ * Provides a full view of the mesh topology as seen from this node.
+ */
+data class FullStateCounts(
+    /** Counts of direct peers by connection state */
+    val direct: StateCountSummary,
+    /** Number of one-hop indirect peers */
+    val oneHop: Int,
+    /** Number of two-hop indirect peers */
+    val twoHop: Int,
+    /** Number of three-hop indirect peers */
+    val threeHop: Int
+) {
+    /** Total number of indirect peers */
+    val totalIndirect: Int get() = oneHop + twoHop + threeHop
+
+    /** Total number of known peers (direct + indirect) */
+    val totalKnown: Int get() = direct.total + totalIndirect
+
+    companion object {
+        /**
+         * Decode from native byte format.
+         *
+         * Format: [direct: 28 bytes (StateCountSummary)][one_hop: 4][two_hop: 4][three_hop: 4]
+         */
+        fun decode(data: ByteArray): FullStateCounts? {
+            if (data.size < 40) return null
+
+            val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+
+            // Decode direct counts (StateCountSummary format)
+            val direct = StateCountSummary(
+                discovered = buffer.int,
+                connecting = buffer.int,
+                connected = buffer.int,
+                degraded = buffer.int,
+                disconnecting = buffer.int,
+                disconnected = buffer.int,
+                lost = buffer.int
+            )
+
+            val oneHop = buffer.int
+            val twoHop = buffer.int
+            val threeHop = buffer.int
+
+            return FullStateCounts(
+                direct = direct,
+                oneHop = oneHop,
+                twoHop = twoHop,
+                threeHop = threeHop
             )
         }
     }

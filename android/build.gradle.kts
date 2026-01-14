@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.0.9"
+version = "0.0.10"  // Added delta-only transmission for bandwidth efficiency
 
 android {
     namespace = "com.revolveteam.hive"

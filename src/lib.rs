@@ -221,8 +221,9 @@ pub use hive_mesh::{DataReceivedResult, HiveMesh, HiveMeshConfig, RelayDecision}
 pub use observer::{CollectingObserver, ObserverManager};
 pub use observer::{DisconnectReason as HiveDisconnectReason, HiveEvent, HiveObserver};
 pub use peer::{
-    ConnectionState, ConnectionStateGraph, HivePeer, PeerConnectionState, PeerManagerConfig,
-    SignalStrength, StateCountSummary,
+    ConnectionState, ConnectionStateGraph, FullStateCountSummary, HivePeer, IndirectPeer,
+    PeerConnectionState, PeerDegree, PeerManagerConfig, SignalStrength, StateCountSummary,
+    MAX_TRACKED_DEGREE,
 };
 pub use peer_manager::PeerManager;
 // Phase 1: Mesh-wide encryption

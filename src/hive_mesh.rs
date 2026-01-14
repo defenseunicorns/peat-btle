@@ -63,7 +63,8 @@ use crate::document_sync::DocumentSync;
 use crate::gossip::{GossipStrategy, RandomFanout};
 use crate::observer::{DisconnectReason, HiveEvent, HiveObserver, SecurityViolationKind};
 use crate::peer::{
-    ConnectionStateGraph, HivePeer, PeerConnectionState, PeerManagerConfig, StateCountSummary,
+    ConnectionStateGraph, FullStateCountSummary, HivePeer, IndirectPeer, PeerConnectionState,
+    PeerDegree, PeerManagerConfig, StateCountSummary,
 };
 use crate::peer_manager::PeerManager;
 use crate::relay::{
@@ -542,11 +543,30 @@ impl HiveMesh {
     pub fn process_relay_envelope(
         &self,
         data: &[u8],
-        _source_peer: NodeId,
+        source_peer: NodeId,
         now_ms: u64,
     ) -> Option<RelayDecision> {
         // Parse envelope
         let envelope = RelayEnvelope::decode(data)?;
+
+        // Update indirect peer graph if origin differs from source
+        // This means the message was relayed through source_peer from origin_node
+        if envelope.origin_node != source_peer && envelope.origin_node != self.node_id() {
+            let is_new = self
+                .connection_graph
+                .lock()
+                .unwrap()
+                .on_relay_received(source_peer, envelope.origin_node, envelope.hop_count, now_ms);
+
+            if is_new {
+                log::debug!(
+                    "Discovered indirect peer {:08X} via {:08X} ({} hops)",
+                    envelope.origin_node.as_u32(),
+                    source_peer.as_u32(),
+                    envelope.hop_count
+                );
+            }
+        }
 
         // Check deduplication
         if !self.mark_message_seen(envelope.message_id, envelope.origin_node, now_ms) {
@@ -2161,6 +2181,64 @@ impl HiveMesh {
     /// Get summary counts of peers in each connection state
     pub fn get_connection_state_counts(&self) -> StateCountSummary {
         self.connection_graph.lock().unwrap().state_counts()
+    }
+
+    // ==================== Indirect Peer Methods ====================
+
+    /// Get all indirect (multi-hop) peers
+    ///
+    /// Returns peers discovered via relay messages that are not directly
+    /// connected via BLE. Each indirect peer includes the minimum hop count
+    /// and the direct peers through which they can be reached.
+    pub fn get_indirect_peers(&self) -> Vec<IndirectPeer> {
+        self.connection_graph
+            .lock()
+            .unwrap()
+            .get_indirect_peers_owned()
+    }
+
+    /// Get the degree (hop count) for a specific peer
+    ///
+    /// Returns:
+    /// - `Some(PeerDegree::Direct)` for directly connected BLE peers
+    /// - `Some(PeerDegree::OneHop/TwoHop/ThreeHop)` for indirect peers
+    /// - `None` if peer is not known
+    pub fn get_peer_degree(&self, node_id: NodeId) -> Option<PeerDegree> {
+        self.connection_graph.lock().unwrap().peer_degree(node_id)
+    }
+
+    /// Get full state counts including indirect peers
+    ///
+    /// Returns counts of direct peers by connection state plus counts
+    /// of indirect peers by hop count (1-hop, 2-hop, 3-hop).
+    pub fn get_full_state_counts(&self) -> FullStateCountSummary {
+        self.connection_graph.lock().unwrap().full_state_counts()
+    }
+
+    /// Get all paths to reach an indirect peer
+    ///
+    /// Returns a list of (via_peer_id, hop_count) pairs showing all
+    /// known routes to the specified peer.
+    pub fn get_paths_to_peer(&self, node_id: NodeId) -> Vec<(NodeId, u8)> {
+        self.connection_graph.lock().unwrap().get_paths_to(node_id)
+    }
+
+    /// Check if a node is known (either direct or indirect)
+    pub fn is_peer_known(&self, node_id: NodeId) -> bool {
+        self.connection_graph.lock().unwrap().is_known(node_id)
+    }
+
+    /// Get number of indirect peers
+    pub fn indirect_peer_count(&self) -> usize {
+        self.connection_graph.lock().unwrap().indirect_peer_count()
+    }
+
+    /// Cleanup stale indirect peers
+    ///
+    /// Removes indirect peers that haven't been seen within the timeout.
+    /// Returns the list of removed peer IDs.
+    pub fn cleanup_indirect_peers(&self, now_ms: u64) -> Vec<NodeId> {
+        self.connection_graph.lock().unwrap().cleanup_indirect(now_ms)
     }
 
     /// Get total counter value
