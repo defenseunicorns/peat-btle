@@ -117,7 +117,7 @@ echo ""
 STATUS_MSG="fmt: ${FMT_STATUS}, clippy: ${CLIPPY_STATUS}, tests: ${TESTS_STATUS}, examples: ${EXAMPLES_STATUS}"
 
 # Report results to patch if this is a patch trigger
-if [ -n "$GOA_PATCH_ID" ]; then
+if [ -n "${GOA_PATCH_ID:-}" ]; then
     if [ $HAS_FAILURE -eq 0 ]; then
         echo "=== CI passed, accepting patch ==="
         rad patch review "$GOA_PATCH_ID" --accept -m "CI passed - ${STATUS_MSG}"
