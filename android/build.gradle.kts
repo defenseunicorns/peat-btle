@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.0.10"  // Added delta-only transmission for bandwidth efficiency
+version = "0.0.11"  // Added chat message support (0xAD)
 
 android {
     namespace = "com.revolveteam.hive"

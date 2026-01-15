@@ -1271,6 +1271,49 @@ class HiveBtle(
     }
 
     /**
+     * Send a chat message to all connected peers.
+     *
+     * The chat will be broadcast to all connected peripherals and centrals.
+     * Each receiving peer will trigger onChatReceived on its listener.
+     *
+     * @param chat The chat message to send
+     */
+    fun sendChat(chat: HiveChat) {
+        if (!isMeshRunning) {
+            Log.w(TAG, "Mesh not running, cannot send chat")
+            return
+        }
+
+        Log.i(TAG, "[CHAT] Broadcasting: '${chat.message}' from ${chat.sender} to ${connections.size} peripherals and ${connectedCentrals.size} centrals")
+
+        // Encode chat document (includes marker byte)
+        val chatBytes = HiveChat.encode(chat)
+
+        // Send to all connected peripherals
+        for ((address, gatt) in connections) {
+            writeDocumentToGatt(gatt, chatBytes)
+        }
+
+        // Send to all connected centrals
+        notifyConnectedCentrals(chatBytes)
+    }
+
+    /**
+     * Convenience overload to send a chat message with just sender and message.
+     *
+     * @param sender The sender's callsign (max 16 chars)
+     * @param message The message text (max 140 chars)
+     */
+    fun sendChat(sender: String, message: String) {
+        sendChat(HiveChat(
+            sender = sender.take(HiveChat.MAX_SENDER_LENGTH),
+            message = message.take(HiveChat.MAX_MESSAGE_LENGTH),
+            timestamp = System.currentTimeMillis(),
+            originNode = nodeId
+        ))
+    }
+
+    /**
      * Get the current list of peers in the mesh.
      */
     fun getPeers(): List<HivePeer> = peers.values.toList()
@@ -1449,6 +1492,12 @@ class HiveBtle(
         // Check for marker document (0xAC)
         if (data.isNotEmpty() && data[0] == MARKER_SECTION_MARKER) {
             handlePeerMarkerDocument(peer, data)
+            return
+        }
+
+        // Check for chat document (0xAD)
+        if (data.isNotEmpty() && data[0] == CHAT_SECTION_MARKER) {
+            handlePeerChatDocument(peer, data)
             return
         }
 
@@ -1683,6 +1732,35 @@ class HiveBtle(
         }
 
         // Forward marker document to other connected peers
+        forwardDocumentToOtherPeers(sourceNodeId, data, peer.address)
+    }
+
+    /**
+     * Handle an incoming chat document from a peer.
+     * Decodes the chat message, notifies listener, and forwards to other peers.
+     */
+    private fun handlePeerChatDocument(peer: HivePeer, data: ByteArray) {
+        val chat = HiveChat.decode(data) ?: run {
+            Log.e(TAG, "[CHAT-RX] Failed to decode chat message")
+            return
+        }
+
+        val sourceNodeId = chat.originNode
+
+        // Skip if from ourselves
+        if (sourceNodeId == nodeId) return
+
+        Log.i(TAG, "[CHAT-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId)}): '${chat.sender}' says '${chat.message}'")
+
+        // Find the source peer (might be relayed)
+        val sourcePeer = peers[sourceNodeId] ?: peer
+
+        // Notify listener
+        handler.post {
+            meshListener?.onChatReceived(chat, sourcePeer)
+        }
+
+        // Forward chat document to other connected peers
         forwardDocumentToOtherPeers(sourceNodeId, data, peer.address)
     }
 
@@ -2468,6 +2546,13 @@ interface HiveMeshListener {
      * @param marker The marker data
      */
     fun onMarkerSynced(peer: HivePeer, marker: HiveMarker) {}
+
+    /**
+     * Called when a chat message is received from a mesh peer.
+     * @param chat The received chat message
+     * @param fromPeer The peer that relayed this message (may differ from chat.originNode for multi-hop)
+     */
+    fun onChatReceived(chat: HiveChat, fromPeer: HivePeer) {}
 }
 
 /**
@@ -3404,6 +3489,153 @@ data class HiveMarker(
                     ((bytes[5].toLong() and 0xFF) shl 40) or
                     ((bytes[6].toLong() and 0xFF) shl 48) or
                     ((bytes[7].toLong() and 0xFF) shl 56)
+        }
+    }
+}
+
+// =============================================================================
+// CHAT DOCUMENT SUPPORT
+// =============================================================================
+
+/**
+ * Chat document marker byte (0xAD).
+ * Documents starting with this byte contain chat messages.
+ */
+const val CHAT_SECTION_MARKER: Byte = 0xAD.toByte()
+
+/**
+ * Chat message format for BLE transmission (typically 30-180 bytes).
+ *
+ * Wire format:
+ * - marker:     1 byte  (0xAD)
+ * - flags:      1 byte  (bit 0: is_broadcast, bit 1: requires_ack)
+ * - originNode: 4 bytes (LE)
+ * - timestamp:  8 bytes (LE)
+ * - senderLen:  1 byte
+ * - sender:     N bytes (max 16)
+ * - msgLen:     1 byte
+ * - message:    N bytes (max 140)
+ */
+data class HiveChat(
+    val sender: String,         // Sender callsign (max 16 chars)
+    val message: String,        // Message text (max 140 chars)
+    val timestamp: Long,        // Epoch milliseconds
+    val originNode: Long,       // Sender's node ID
+    val isBroadcast: Boolean = true,
+    val requiresAck: Boolean = false
+) {
+    companion object {
+        private const val TAG = "HiveChat"
+        const val MAX_SENDER_LENGTH = 16
+        const val MAX_MESSAGE_LENGTH = 140
+
+        /**
+         * Encode a chat message to binary format.
+         */
+        fun encode(chat: HiveChat): ByteArray {
+            val senderBytes = chat.sender.take(MAX_SENDER_LENGTH).toByteArray(Charsets.UTF_8)
+            val messageBytes = chat.message.take(MAX_MESSAGE_LENGTH).toByteArray(Charsets.UTF_8)
+
+            val result = mutableListOf<Byte>()
+
+            // Marker byte (0xAD)
+            result.add(CHAT_SECTION_MARKER)
+
+            // Flags
+            var flags: Byte = 0
+            if (chat.isBroadcast) flags = (flags.toInt() or 0x01).toByte()
+            if (chat.requiresAck) flags = (flags.toInt() or 0x02).toByte()
+            result.add(flags)
+
+            // Origin node (4 bytes LE)
+            result.add(chat.originNode.toByte())
+            result.add((chat.originNode shr 8).toByte())
+            result.add((chat.originNode shr 16).toByte())
+            result.add((chat.originNode shr 24).toByte())
+
+            // Timestamp (8 bytes LE)
+            result.add(chat.timestamp.toByte())
+            result.add((chat.timestamp shr 8).toByte())
+            result.add((chat.timestamp shr 16).toByte())
+            result.add((chat.timestamp shr 24).toByte())
+            result.add((chat.timestamp shr 32).toByte())
+            result.add((chat.timestamp shr 40).toByte())
+            result.add((chat.timestamp shr 48).toByte())
+            result.add((chat.timestamp shr 56).toByte())
+
+            // Sender (length + bytes)
+            result.add(senderBytes.size.toByte())
+            result.addAll(senderBytes.toList())
+
+            // Message (length + bytes)
+            result.add(messageBytes.size.toByte())
+            result.addAll(messageBytes.toList())
+
+            return result.toByteArray()
+        }
+
+        /**
+         * Decode a chat message from binary format.
+         */
+        fun decode(data: ByteArray, startOffset: Int = 0): HiveChat? {
+            try {
+                var offset = startOffset
+
+                // Check marker
+                if (data[offset] != CHAT_SECTION_MARKER) {
+                    Log.w(TAG, "Invalid chat marker: ${data[offset]}")
+                    return null
+                }
+                offset++
+
+                // Flags
+                val flags = data[offset++].toInt() and 0xFF
+                val isBroadcast = (flags and 0x01) != 0
+                val requiresAck = (flags and 0x02) != 0
+
+                // Origin node (4 bytes LE)
+                if (offset + 4 > data.size) return null
+                val originNode = ((data[offset].toLong() and 0xFF)) or
+                        ((data[offset + 1].toLong() and 0xFF) shl 8) or
+                        ((data[offset + 2].toLong() and 0xFF) shl 16) or
+                        ((data[offset + 3].toLong() and 0xFF) shl 24)
+                offset += 4
+
+                // Timestamp (8 bytes LE)
+                if (offset + 8 > data.size) return null
+                val timestamp = ((data[offset].toLong() and 0xFF)) or
+                        ((data[offset + 1].toLong() and 0xFF) shl 8) or
+                        ((data[offset + 2].toLong() and 0xFF) shl 16) or
+                        ((data[offset + 3].toLong() and 0xFF) shl 24) or
+                        ((data[offset + 4].toLong() and 0xFF) shl 32) or
+                        ((data[offset + 5].toLong() and 0xFF) shl 40) or
+                        ((data[offset + 6].toLong() and 0xFF) shl 48) or
+                        ((data[offset + 7].toLong() and 0xFF) shl 56)
+                offset += 8
+
+                // Sender
+                val senderLen = data[offset++].toInt() and 0xFF
+                if (offset + senderLen > data.size) return null
+                val sender = String(data, offset, senderLen, Charsets.UTF_8)
+                offset += senderLen
+
+                // Message
+                val msgLen = data[offset++].toInt() and 0xFF
+                if (offset + msgLen > data.size) return null
+                val message = String(data, offset, msgLen, Charsets.UTF_8)
+
+                return HiveChat(
+                    sender = sender,
+                    message = message,
+                    timestamp = timestamp,
+                    originNode = originNode,
+                    isBroadcast = isBroadcast,
+                    requiresAck = requiresAck
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to decode HiveChat: ${e.message}")
+                return null
+            }
         }
     }
 }
