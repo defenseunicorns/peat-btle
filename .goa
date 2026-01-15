@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Goa CI script for hive-btle
 # Triggered when changes are detected on the Radicle repo
 #
