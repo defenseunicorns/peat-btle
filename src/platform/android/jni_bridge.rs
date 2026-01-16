@@ -1249,7 +1249,7 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeBuildDocument<'l
 ///
 /// Returns the document bytes to broadcast, or empty array if the message was a duplicate.
 ///
-/// JNI Signature: (JLjava/lang/String;Ljava/lang/String;)[B
+/// JNI Signature: (JLjava/lang/String;Ljava/lang/String;J)[B
 #[no_mangle]
 pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendChat<'local>(
     mut env: JNIEnv<'local>,
@@ -1257,6 +1257,7 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendChat<'local>
     handle: jlong,
     sender: JString<'local>,
     text: JString<'local>,
+    timestamp: jlong,
 ) -> JByteArray<'local> {
     let sender_str: String = match env.get_string(&sender) {
         Ok(s) => s.into(),
@@ -1270,7 +1271,7 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendChat<'local>
     let doc_bytes = if let Ok(storage) = get_mesh_storage().lock() {
         storage
             .get(&handle)
-            .and_then(|m| m.send_chat(&sender_str, &text_str))
+            .and_then(|m| m.send_chat(&sender_str, &text_str, timestamp as u64))
     } else {
         None
     };
@@ -1287,7 +1288,7 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendChat<'local>
 ///
 /// Returns the document bytes to broadcast, or empty array if the message was a duplicate.
 ///
-/// JNI Signature: (JLjava/lang/String;Ljava/lang/String;JJ)[B
+/// JNI Signature: (JLjava/lang/String;Ljava/lang/String;JJJ)[B
 #[no_mangle]
 pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendChatReply<'local>(
     mut env: JNIEnv<'local>,
@@ -1297,6 +1298,7 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendChatReply<'l
     text: JString<'local>,
     reply_to_node: jlong,
     reply_to_timestamp: jlong,
+    timestamp: jlong,
 ) -> JByteArray<'local> {
     let sender_str: String = match env.get_string(&sender) {
         Ok(s) => s.into(),
@@ -1314,6 +1316,7 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendChatReply<'l
                 &text_str,
                 reply_to_node as u32,
                 reply_to_timestamp as u64,
+                timestamp as u64,
             )
         })
     } else {
@@ -1383,8 +1386,10 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetAllChatMessag
     }
     json.push(']');
 
-    env.new_string(&json)
-        .unwrap_or_else(|_| env.new_string("[]").expect("Failed to create empty array string"))
+    env.new_string(&json).unwrap_or_else(|_| {
+        env.new_string("[]")
+            .expect("Failed to create empty array string")
+    })
 }
 
 /// Get chat messages since a timestamp as a JSON array string
@@ -1423,8 +1428,10 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetChatMessagesS
     }
     json.push(']');
 
-    env.new_string(&json)
-        .unwrap_or_else(|_| env.new_string("[]").expect("Failed to create empty array string"))
+    env.new_string(&json).unwrap_or_else(|_| {
+        env.new_string("[]")
+            .expect("Failed to create empty array string")
+    })
 }
 
 /// Called when a BLE device is discovered

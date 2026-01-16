@@ -42,7 +42,9 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-use crate::sync::crdt::{ChatCRDT, EmergencyEvent, EventType, GCounter, Peripheral, PeripheralEvent};
+use crate::sync::crdt::{
+    ChatCRDT, EmergencyEvent, EventType, GCounter, Peripheral, PeripheralEvent,
+};
 use crate::NodeId;
 
 /// Marker byte indicating extended section with peripheral data

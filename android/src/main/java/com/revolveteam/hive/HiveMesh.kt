@@ -225,7 +225,7 @@ class HiveMesh(
 
         // Chat CRDT methods
         @JvmStatic
-        private external fun nativeSendChat(handle: Long, sender: String, text: String): ByteArray
+        private external fun nativeSendChat(handle: Long, sender: String, text: String, timestamp: Long): ByteArray
 
         @JvmStatic
         private external fun nativeSendChatReply(
@@ -233,7 +233,8 @@ class HiveMesh(
             sender: String,
             text: String,
             replyToNode: Long,
-            replyToTimestamp: Long
+            replyToTimestamp: Long,
+            timestamp: Long
         ): ByteArray
 
         @JvmStatic
@@ -342,11 +343,12 @@ class HiveMesh(
      *
      * @param sender The sender's callsign (max 12 chars)
      * @param text The message text (max 128 chars)
+     * @param timestamp The message timestamp (milliseconds since epoch)
      * @return Encoded document bytes to send to peers, or empty array if duplicate
      */
-    fun sendChat(sender: String, text: String): ByteArray {
+    fun sendChat(sender: String, text: String, timestamp: Long): ByteArray {
         checkNotDestroyed()
-        return nativeSendChat(handle, sender, text)
+        return nativeSendChat(handle, sender, text, timestamp)
     }
 
     /**
@@ -358,16 +360,18 @@ class HiveMesh(
      * @param text The message text (max 128 chars)
      * @param replyToNode Origin node of the message being replied to
      * @param replyToTimestamp Timestamp of the message being replied to
+     * @param timestamp The message timestamp (milliseconds since epoch)
      * @return Encoded document bytes to send to peers, or empty array if duplicate
      */
     fun sendChatReply(
         sender: String,
         text: String,
         replyToNode: Long,
-        replyToTimestamp: Long
+        replyToTimestamp: Long,
+        timestamp: Long
     ): ByteArray {
         checkNotDestroyed()
-        return nativeSendChatReply(handle, sender, text, replyToNode, replyToTimestamp)
+        return nativeSendChatReply(handle, sender, text, replyToNode, replyToTimestamp, timestamp)
     }
 
     /**

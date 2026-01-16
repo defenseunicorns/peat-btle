@@ -1381,8 +1381,8 @@ impl HiveMesh {
     ///
     /// Returns the encrypted document bytes if the message was new,
     /// or None if it was a duplicate.
-    pub fn send_chat(&self, sender: &str, text: &str) -> Option<Vec<u8>> {
-        if self.document_sync.add_chat_message(sender, text) {
+    pub fn send_chat(&self, sender: &str, text: &str, timestamp: u64) -> Option<Vec<u8>> {
+        if self.document_sync.add_chat_message(sender, text, timestamp) {
             Some(self.encrypt_document(&self.build_document()))
         } else {
             None
@@ -1402,11 +1402,15 @@ impl HiveMesh {
         text: &str,
         reply_to_node: u32,
         reply_to_timestamp: u64,
+        timestamp: u64,
     ) -> Option<Vec<u8>> {
-        if self
-            .document_sync
-            .add_chat_reply(sender, text, reply_to_node, reply_to_timestamp)
-        {
+        if self.document_sync.add_chat_reply(
+            sender,
+            text,
+            reply_to_node,
+            reply_to_timestamp,
+            timestamp,
+        ) {
             Some(self.encrypt_document(&self.build_document()))
         } else {
             None

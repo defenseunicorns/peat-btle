@@ -1200,7 +1200,9 @@ impl ChatCRDT {
 
     /// Get messages newer than a given timestamp
     pub fn messages_since(&self, since_timestamp: u64) -> impl Iterator<Item = &ChatMessage> {
-        self.messages.values().filter(move |m| m.timestamp > since_timestamp)
+        self.messages
+            .values()
+            .filter(move |m| m.timestamp > since_timestamp)
     }
 
     /// Get the number of messages
@@ -1288,7 +1290,11 @@ impl ChatCRDT {
 
     /// Get the encoded size of this CRDT
     pub fn encoded_size(&self) -> usize {
-        2 + self.messages.values().map(|m| m.encode().len()).sum::<usize>()
+        2 + self
+            .messages
+            .values()
+            .map(|m| m.encode().len())
+            .sum::<usize>()
     }
 }
 

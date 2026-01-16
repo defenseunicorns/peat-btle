@@ -996,8 +996,8 @@ class HiveBtle(
                                 _mesh?.onBleConnected(identifier = address, nowMs = now)
                             }
 
-                            // Handle document content
-                            handlePeerDocumentInternal(peer, document)
+                            // Handle document content (pass raw bytes for CRDT merge)
+                            handlePeerDocumentInternal(peer, document, value, address)
                         }
                     } else {
                         Log.w(TAG, "Failed to decode document from $address")
@@ -1360,17 +1360,20 @@ class HiveBtle(
         Log.i(TAG, "[CHAT-CRDT] Sending: '${chat.message}' from ${chat.sender}")
 
         // Use CRDT-based chat - stores message locally and returns document to broadcast
+        // Pass the timestamp from the HiveChat to ensure consistency between caller and CRDT
         val docBytes = if (chat.isReply()) {
             mesh.sendChatReply(
                 chat.sender.take(12),  // CRDT max sender is 12 chars
                 chat.message.take(128), // CRDT max text is 128 chars
                 chat.replyToNode,
-                chat.replyToTimestamp
+                chat.replyToTimestamp,
+                chat.timestamp
             )
         } else {
             mesh.sendChat(
                 chat.sender.take(12),
-                chat.message.take(128)
+                chat.message.take(128),
+                chat.timestamp
             )
         }
 
@@ -1733,6 +1736,35 @@ class HiveBtle(
 
         // Merge counters (CRDT merge)
         mergeCounter(document.counter)
+
+        // Merge document into native CRDT (includes chat messages)
+        // Track chat count before merge to detect new messages
+        val chatCountBefore = _mesh?.chatCount() ?: 0
+        if (rawBytes != null && rawBytes.isNotEmpty() && sourceAddress != null) {
+            val result = _mesh?.onBleDataReceived(sourceAddress, rawBytes)
+            if (result != null) {
+                Log.v(TAG, "[CRDT-MERGE] From ${peer.displayName()}: counterChanged=${result.counterChanged}, total=${result.totalCount}")
+            }
+        }
+
+        // Check for new chat messages after CRDT merge
+        val chatCountAfter = _mesh?.chatCount() ?: 0
+        if (chatCountAfter > chatCountBefore) {
+            val newChatCount = chatCountAfter - chatCountBefore
+            Log.i(TAG, "[CHAT-CRDT] $newChatCount new chat message(s) after merge")
+            // Get recent messages (last 5 minutes to catch any we might have missed)
+            val recentChats = getChatMessagesSince(System.currentTimeMillis() - 300_000)
+            // Notify listener for new messages from other nodes
+            val sourcePeer = peer
+            for (chat in recentChats.takeLast(newChatCount)) {
+                if (chat.originNode != nodeId) { // Don't notify for our own messages
+                    Log.i(TAG, "[CHAT-CRDT] New message from ${chat.sender}: ${chat.message}")
+                    handler.post {
+                        meshListener?.onChatReceived(chat, sourcePeer)
+                    }
+                }
+            }
+        }
 
         // Check for new events - trigger if event type changed OR same type with newer timestamp
         val currentEvent = document.peripheral?.lastEvent
