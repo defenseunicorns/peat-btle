@@ -56,7 +56,7 @@ use spin::RwLock;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use crate::document::{HiveDocument, MergeResult};
-use crate::sync::crdt::{EmergencyEvent, EventType, GCounter, Peripheral, PeripheralType};
+use crate::sync::crdt::{ChatCRDT, ChatMessage, EmergencyEvent, EventType, GCounter, Peripheral, PeripheralType};
 use crate::NodeId;
 
 /// Document synchronization manager for HIVE-Lite nodes
@@ -84,6 +84,9 @@ pub struct DocumentSync {
     /// Active emergency event with ACK tracking (CRDT)
     emergency: RwLock<Option<EmergencyEvent>>,
 
+    /// Chat CRDT for mesh-wide messaging
+    chat: RwLock<Option<ChatCRDT>>,
+
     /// Document version (monotonically increasing)
     version: AtomicU32,
 }
@@ -99,6 +102,7 @@ impl DocumentSync {
             counter: RwLock::new(GCounter::new()),
             peripheral: RwLock::new(peripheral),
             emergency: RwLock::new(None),
+            chat: RwLock::new(None),
             version: AtomicU32::new(1),
         }
     }
@@ -112,6 +116,7 @@ impl DocumentSync {
             counter: RwLock::new(GCounter::new()),
             peripheral: RwLock::new(peripheral),
             emergency: RwLock::new(None),
+            chat: RwLock::new(None),
             version: AtomicU32::new(1),
         }
     }
@@ -330,6 +335,110 @@ impl DocumentSync {
         emergency.as_ref().map(|e| e.all_acked()).unwrap_or(true)
     }
 
+    // ==================== Chat Methods ====================
+
+    /// Add a chat message to the local CRDT
+    ///
+    /// Returns true if the message was new (not a duplicate).
+    pub fn add_chat_message(&self, sender: &str, text: &str) -> bool {
+        let timestamp = self.current_timestamp();
+        let mut chat = self.chat.write().unwrap();
+
+        let our_chat = chat.get_or_insert_with(ChatCRDT::new);
+        let msg = ChatMessage::new(self.node_id.as_u32(), timestamp, sender, text);
+
+        if our_chat.add_message(msg) {
+            self.bump_version();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Add a chat reply to the local CRDT
+    ///
+    /// Returns true if the message was new.
+    pub fn add_chat_reply(
+        &self,
+        sender: &str,
+        text: &str,
+        reply_to_node: u32,
+        reply_to_timestamp: u64,
+    ) -> bool {
+        let timestamp = self.current_timestamp();
+        let mut chat = self.chat.write().unwrap();
+
+        let our_chat = chat.get_or_insert_with(ChatCRDT::new);
+        let mut msg = ChatMessage::new(self.node_id.as_u32(), timestamp, sender, text);
+        msg.set_reply_to(reply_to_node, reply_to_timestamp);
+
+        if our_chat.add_message(msg) {
+            self.bump_version();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Get the number of chat messages
+    pub fn chat_count(&self) -> usize {
+        self.chat
+            .read()
+            .unwrap()
+            .as_ref()
+            .map_or(0, |c| c.len())
+    }
+
+    /// Get chat messages newer than a timestamp
+    ///
+    /// Returns a vector of (origin_node, timestamp, sender, text) tuples.
+    pub fn chat_messages_since(&self, since_timestamp: u64) -> Vec<(u32, u64, String, String)> {
+        let chat = self.chat.read().unwrap();
+        chat.as_ref()
+            .map(|c| {
+                c.messages_since(since_timestamp)
+                    .map(|m| {
+                        (
+                            m.origin_node,
+                            m.timestamp,
+                            m.sender().to_string(),
+                            m.text().to_string(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Get all chat messages
+    ///
+    /// Returns a vector of (origin_node, timestamp, sender, text) tuples.
+    pub fn all_chat_messages(&self) -> Vec<(u32, u64, String, String)> {
+        self.chat_messages_since(0)
+    }
+
+    /// Get a snapshot of the chat CRDT
+    pub fn chat_snapshot(&self) -> Option<ChatCRDT> {
+        self.chat.read().unwrap().clone()
+    }
+
+    /// Get the current timestamp (milliseconds)
+    fn current_timestamp(&self) -> u64 {
+        #[cfg(feature = "std")]
+        {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0)
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            // For no_std, caller should provide timestamp or use monotonic counter
+            self.version.load(Ordering::Relaxed) as u64
+        }
+    }
+
     // ==================== Delta Document Support ====================
 
     /// Get all counter entries for delta document building
@@ -370,6 +479,7 @@ impl DocumentSync {
             counter,
             peripheral: Some(peripheral),
             emergency,
+            chat: self.chat.read().unwrap().clone(),
         };
 
         doc.encode()
@@ -409,7 +519,25 @@ impl DocumentSync {
             false
         };
 
-        if counter_changed || emergency_changed {
+        // Merge chat CRDT
+        let chat_changed = if let Some(ref received_chat) = received.chat {
+            if !received_chat.is_empty() {
+                let mut chat = self.chat.write().unwrap();
+                match &mut *chat {
+                    Some(ref mut our_chat) => our_chat.merge(received_chat),
+                    None => {
+                        *chat = Some(received_chat.clone());
+                        true
+                    }
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if counter_changed || emergency_changed || chat_changed {
             self.bump_version();
         }
 
@@ -424,6 +552,7 @@ impl DocumentSync {
             event,
             counter_changed,
             emergency_changed,
+            chat_changed,
             total_count: self.total_count(),
         })
     }

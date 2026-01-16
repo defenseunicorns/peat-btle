@@ -75,8 +75,8 @@ pub trait GossipStrategy: Send + Sync {
     /// Returns `true` if the merge result indicates new information
     /// that should be propagated to other peers.
     fn should_forward(&self, result: &MergeResult) -> bool {
-        // Default: forward if counter or emergency state changed
-        result.counter_changed || result.emergency_changed
+        // Default: forward if counter, emergency, or chat state changed
+        result.counter_changed || result.emergency_changed || result.chat_changed
     }
 
     /// Get the name of this strategy (for logging/debugging)
@@ -526,6 +526,7 @@ mod tests {
             event: None,
             counter_changed: true,
             emergency_changed: false,
+            chat_changed: false,
             total_count: 10,
         };
         assert!(strategy.should_forward(&result));
@@ -536,6 +537,7 @@ mod tests {
             event: None,
             counter_changed: false,
             emergency_changed: true,
+            chat_changed: false,
             total_count: 10,
         };
         assert!(strategy.should_forward(&result));
@@ -546,6 +548,7 @@ mod tests {
             event: None,
             counter_changed: false,
             emergency_changed: false,
+            chat_changed: false,
             total_count: 10,
         };
         assert!(!strategy.should_forward(&result));

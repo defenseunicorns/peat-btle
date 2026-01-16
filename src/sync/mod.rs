@@ -122,8 +122,9 @@ pub mod protocol;
 
 pub use batch::{BatchAccumulator, BatchConfig, OperationBatch};
 pub use crdt::{
-    CrdtOperation, EventType, GCounter, HealthStatus, LwwRegister, Peripheral, PeripheralEvent,
-    PeripheralType, Position, Timestamp,
+    ChatCRDT, ChatMessage, CrdtOperation, EventType, GCounter, HealthStatus, LwwRegister,
+    Peripheral, PeripheralEvent, PeripheralType, Position, Timestamp,
+    CHAT_MAX_MESSAGES, CHAT_MAX_SENDER_LEN, CHAT_MAX_TEXT_LEN,
 };
 pub use delta::{DeltaEncoder, DeltaStats, PeerSyncState, VectorClock};
 pub use delta_document::{DeltaDocument, DeltaFlags, Operation, DELTA_DOCUMENT_MARKER};

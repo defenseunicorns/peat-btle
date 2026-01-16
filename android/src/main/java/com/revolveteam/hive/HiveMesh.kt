@@ -222,6 +222,28 @@ class HiveMesh(
 
         @JvmStatic
         private external fun nativeIsPeerKnown(handle: Long, nodeId: Long): Boolean
+
+        // Chat CRDT methods
+        @JvmStatic
+        private external fun nativeSendChat(handle: Long, sender: String, text: String): ByteArray
+
+        @JvmStatic
+        private external fun nativeSendChatReply(
+            handle: Long,
+            sender: String,
+            text: String,
+            replyToNode: Long,
+            replyToTimestamp: Long
+        ): ByteArray
+
+        @JvmStatic
+        private external fun nativeChatCount(handle: Long): Int
+
+        @JvmStatic
+        private external fun nativeGetAllChatMessages(handle: Long): String
+
+        @JvmStatic
+        private external fun nativeGetChatMessagesSince(handle: Long, sinceTimestamp: Long): String
     }
 
     /** Native handle returned by nativeCreate */
@@ -308,6 +330,83 @@ class HiveMesh(
     fun buildDocument(): ByteArray {
         checkNotDestroyed()
         return nativeBuildDocument(handle)
+    }
+
+    // ==================== Chat CRDT Methods ====================
+
+    /**
+     * Send a chat message via CRDT.
+     *
+     * Adds the message to the local chat CRDT and returns the document bytes
+     * to broadcast. The message is automatically deduplicated across the mesh.
+     *
+     * @param sender The sender's callsign (max 12 chars)
+     * @param text The message text (max 128 chars)
+     * @return Encoded document bytes to send to peers, or empty array if duplicate
+     */
+    fun sendChat(sender: String, text: String): ByteArray {
+        checkNotDestroyed()
+        return nativeSendChat(handle, sender, text)
+    }
+
+    /**
+     * Send a chat reply via CRDT.
+     *
+     * Adds a reply message to the local chat CRDT with reference to the original message.
+     *
+     * @param sender The sender's callsign (max 12 chars)
+     * @param text The message text (max 128 chars)
+     * @param replyToNode Origin node of the message being replied to
+     * @param replyToTimestamp Timestamp of the message being replied to
+     * @return Encoded document bytes to send to peers, or empty array if duplicate
+     */
+    fun sendChatReply(
+        sender: String,
+        text: String,
+        replyToNode: Long,
+        replyToTimestamp: Long
+    ): ByteArray {
+        checkNotDestroyed()
+        return nativeSendChatReply(handle, sender, text, replyToNode, replyToTimestamp)
+    }
+
+    /**
+     * Get the number of chat messages in the local CRDT.
+     *
+     * @return Number of messages stored locally
+     */
+    fun chatCount(): Int {
+        checkNotDestroyed()
+        return nativeChatCount(handle)
+    }
+
+    /**
+     * Get all chat messages from the local CRDT.
+     *
+     * Returns a JSON array string of chat message objects with fields:
+     * - originNode: Long - sender's node ID
+     * - timestamp: Long - message timestamp
+     * - sender: String - sender's callsign
+     * - text: String - message text
+     *
+     * @return JSON array string of chat messages
+     */
+    fun getAllChatMessages(): String {
+        checkNotDestroyed()
+        return nativeGetAllChatMessages(handle)
+    }
+
+    /**
+     * Get chat messages since a given timestamp.
+     *
+     * Returns only messages newer than the specified timestamp.
+     *
+     * @param sinceTimestamp Only return messages with timestamp > this value
+     * @return JSON array string of chat messages
+     */
+    fun getChatMessagesSince(sinceTimestamp: Long): String {
+        checkNotDestroyed()
+        return nativeGetChatMessagesSince(handle, sinceTimestamp)
     }
 
     /**

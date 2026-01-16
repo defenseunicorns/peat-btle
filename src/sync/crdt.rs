@@ -895,6 +895,403 @@ impl Peripheral {
     }
 }
 
+// ============================================================================
+// ChatCRDT - Add-only set of chat messages for mesh-wide messaging
+// ============================================================================
+
+/// Maximum message text length in bytes
+pub const CHAT_MAX_TEXT_LEN: usize = 128;
+
+/// Maximum sender name length in bytes
+pub const CHAT_MAX_SENDER_LEN: usize = 12;
+
+/// Maximum number of messages to retain in the CRDT
+///
+/// Older messages are pruned to keep memory bounded on embedded devices.
+pub const CHAT_MAX_MESSAGES: usize = 32;
+
+/// A single chat message in the mesh
+///
+/// Messages are uniquely identified by `(origin_node, timestamp)`.
+/// This allows deduplication across mesh sync while preserving message ordering.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChatMessage {
+    /// Node that originated this message
+    pub origin_node: u32,
+    /// Timestamp when message was created (ms since epoch)
+    pub timestamp: u64,
+    /// Sender name/callsign (up to 12 bytes)
+    sender: [u8; CHAT_MAX_SENDER_LEN],
+    sender_len: u8,
+    /// Message text (up to 128 bytes)
+    text: [u8; CHAT_MAX_TEXT_LEN],
+    text_len: u8,
+    /// Whether this is a broadcast message (vs directed)
+    pub is_broadcast: bool,
+    /// Whether ACK is requested
+    pub requires_ack: bool,
+    /// Reply-to: origin node of the message being replied to (0 = not a reply)
+    pub reply_to_node: u32,
+    /// Reply-to: timestamp of the message being replied to (0 = not a reply)
+    pub reply_to_timestamp: u64,
+}
+
+impl Default for ChatMessage {
+    fn default() -> Self {
+        Self {
+            origin_node: 0,
+            timestamp: 0,
+            sender: [0u8; CHAT_MAX_SENDER_LEN],
+            sender_len: 0,
+            text: [0u8; CHAT_MAX_TEXT_LEN],
+            text_len: 0,
+            is_broadcast: true,
+            requires_ack: false,
+            reply_to_node: 0,
+            reply_to_timestamp: 0,
+        }
+    }
+}
+
+impl ChatMessage {
+    /// Create a new chat message
+    pub fn new(origin_node: u32, timestamp: u64, sender: &str, text: &str) -> Self {
+        let mut msg = Self {
+            origin_node,
+            timestamp,
+            ..Default::default()
+        };
+        msg.set_sender(sender);
+        msg.set_text(text);
+        msg
+    }
+
+    /// Set the sender name (truncated to 12 bytes)
+    pub fn set_sender(&mut self, sender: &str) {
+        let bytes = sender.as_bytes();
+        let len = bytes.len().min(CHAT_MAX_SENDER_LEN);
+        self.sender[..len].copy_from_slice(&bytes[..len]);
+        self.sender_len = len as u8;
+    }
+
+    /// Get the sender name as a string
+    pub fn sender(&self) -> &str {
+        core::str::from_utf8(&self.sender[..self.sender_len as usize]).unwrap_or("")
+    }
+
+    /// Set the message text (truncated to 128 bytes)
+    pub fn set_text(&mut self, text: &str) {
+        let bytes = text.as_bytes();
+        let len = bytes.len().min(CHAT_MAX_TEXT_LEN);
+        self.text[..len].copy_from_slice(&bytes[..len]);
+        self.text_len = len as u8;
+    }
+
+    /// Get the message text as a string
+    pub fn text(&self) -> &str {
+        core::str::from_utf8(&self.text[..self.text_len as usize]).unwrap_or("")
+    }
+
+    /// Set reply-to information
+    pub fn set_reply_to(&mut self, node: u32, timestamp: u64) {
+        self.reply_to_node = node;
+        self.reply_to_timestamp = timestamp;
+    }
+
+    /// Check if this is a reply to another message
+    pub fn is_reply(&self) -> bool {
+        self.reply_to_node != 0 || self.reply_to_timestamp != 0
+    }
+
+    /// Get the unique message ID (combines origin_node and timestamp)
+    ///
+    /// Format: `(origin_node as u64) << 32 | (timestamp & 0xFFFFFFFF)`
+    /// This provides a sortable key where messages from same node are ordered by time.
+    pub fn message_id(&self) -> u64 {
+        ((self.origin_node as u64) << 32) | (self.timestamp & 0xFFFFFFFF)
+    }
+
+    /// Encode to bytes for transmission
+    ///
+    /// Wire format:
+    /// ```text
+    /// origin_node:       4 bytes (LE)
+    /// timestamp:         8 bytes (LE)
+    /// sender_len:        1 byte
+    /// sender:            sender_len bytes
+    /// text_len:          1 byte
+    /// text:              text_len bytes
+    /// flags:             1 byte (bit 0: is_broadcast, bit 1: requires_ack)
+    /// reply_to_node:     4 bytes (LE)
+    /// reply_to_timestamp: 8 bytes (LE)
+    /// ```
+    pub fn encode(&self) -> Vec<u8> {
+        let size = 4 + 8 + 1 + self.sender_len as usize + 1 + self.text_len as usize + 1 + 4 + 8;
+        let mut buf = Vec::with_capacity(size);
+
+        buf.extend_from_slice(&self.origin_node.to_le_bytes());
+        buf.extend_from_slice(&self.timestamp.to_le_bytes());
+        buf.push(self.sender_len);
+        buf.extend_from_slice(&self.sender[..self.sender_len as usize]);
+        buf.push(self.text_len);
+        buf.extend_from_slice(&self.text[..self.text_len as usize]);
+
+        let mut flags = 0u8;
+        if self.is_broadcast {
+            flags |= 0x01;
+        }
+        if self.requires_ack {
+            flags |= 0x02;
+        }
+        buf.push(flags);
+
+        buf.extend_from_slice(&self.reply_to_node.to_le_bytes());
+        buf.extend_from_slice(&self.reply_to_timestamp.to_le_bytes());
+
+        buf
+    }
+
+    /// Decode from bytes
+    pub fn decode(data: &[u8]) -> Option<(Self, usize)> {
+        if data.len() < 14 {
+            // Minimum: 4 + 8 + 1 + 0 + 1 + 0 + 0 (no reply fields in old format)
+            return None;
+        }
+
+        let origin_node = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        let timestamp = u64::from_le_bytes([
+            data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+        ]);
+
+        let sender_len = data[12] as usize;
+        if sender_len > CHAT_MAX_SENDER_LEN || data.len() < 13 + sender_len + 1 {
+            return None;
+        }
+
+        let mut sender = [0u8; CHAT_MAX_SENDER_LEN];
+        sender[..sender_len].copy_from_slice(&data[13..13 + sender_len]);
+
+        let text_offset = 13 + sender_len;
+        let text_len = data[text_offset] as usize;
+        if text_len > CHAT_MAX_TEXT_LEN || data.len() < text_offset + 1 + text_len + 1 {
+            return None;
+        }
+
+        let mut text = [0u8; CHAT_MAX_TEXT_LEN];
+        text[..text_len].copy_from_slice(&data[text_offset + 1..text_offset + 1 + text_len]);
+
+        let flags_offset = text_offset + 1 + text_len;
+        let flags = data[flags_offset];
+        let is_broadcast = flags & 0x01 != 0;
+        let requires_ack = flags & 0x02 != 0;
+
+        // Reply-to fields (optional for backward compat)
+        let mut reply_to_node = 0u32;
+        let mut reply_to_timestamp = 0u64;
+        let mut total_len = flags_offset + 1;
+
+        if data.len() >= flags_offset + 1 + 12 {
+            reply_to_node = u32::from_le_bytes([
+                data[flags_offset + 1],
+                data[flags_offset + 2],
+                data[flags_offset + 3],
+                data[flags_offset + 4],
+            ]);
+            reply_to_timestamp = u64::from_le_bytes([
+                data[flags_offset + 5],
+                data[flags_offset + 6],
+                data[flags_offset + 7],
+                data[flags_offset + 8],
+                data[flags_offset + 9],
+                data[flags_offset + 10],
+                data[flags_offset + 11],
+                data[flags_offset + 12],
+            ]);
+            total_len = flags_offset + 13;
+        }
+
+        Some((
+            Self {
+                origin_node,
+                timestamp,
+                sender,
+                sender_len: sender_len as u8,
+                text,
+                text_len: text_len as u8,
+                is_broadcast,
+                requires_ack,
+                reply_to_node,
+                reply_to_timestamp,
+            },
+            total_len,
+        ))
+    }
+}
+
+/// Chat CRDT - Add-only set of messages
+///
+/// Implements add-only set semantics where messages are identified by
+/// `(origin_node, timestamp)`. Once a message is added, it cannot be removed
+/// (tombstone-free design optimized for mesh networks).
+///
+/// ## CRDT Semantics
+///
+/// - **Merge**: Union of all messages from both sets
+/// - **Identity**: `(origin_node, timestamp)` - duplicates are ignored
+/// - **Ordering**: Messages are stored sorted by message_id for efficient iteration
+/// - **Pruning**: Oldest messages are removed when exceeding `CHAT_MAX_MESSAGES`
+///
+/// ## Wire Format
+///
+/// ```text
+/// num_messages: 2 bytes (LE)
+/// messages[N]:  variable (see ChatMessage::encode)
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct ChatCRDT {
+    /// Messages indexed by message_id for deduplication
+    messages: BTreeMap<u64, ChatMessage>,
+}
+
+impl ChatCRDT {
+    /// Create a new empty chat CRDT
+    pub fn new() -> Self {
+        Self {
+            messages: BTreeMap::new(),
+        }
+    }
+
+    /// Add a message to the chat
+    ///
+    /// Returns `true` if the message was new (not a duplicate)
+    pub fn add_message(&mut self, message: ChatMessage) -> bool {
+        let id = message.message_id();
+        if self.messages.contains_key(&id) {
+            return false;
+        }
+
+        self.messages.insert(id, message);
+        self.prune_if_needed();
+        true
+    }
+
+    /// Create and add a new message
+    pub fn send_message(
+        &mut self,
+        origin_node: u32,
+        timestamp: u64,
+        sender: &str,
+        text: &str,
+    ) -> bool {
+        let msg = ChatMessage::new(origin_node, timestamp, sender, text);
+        self.add_message(msg)
+    }
+
+    /// Get a message by its ID
+    pub fn get_message(&self, origin_node: u32, timestamp: u64) -> Option<&ChatMessage> {
+        let id = ((origin_node as u64) << 32) | (timestamp & 0xFFFFFFFF);
+        self.messages.get(&id)
+    }
+
+    /// Get all messages, ordered by message_id
+    pub fn messages(&self) -> impl Iterator<Item = &ChatMessage> {
+        self.messages.values()
+    }
+
+    /// Get messages newer than a given timestamp
+    pub fn messages_since(&self, since_timestamp: u64) -> impl Iterator<Item = &ChatMessage> {
+        self.messages.values().filter(move |m| m.timestamp > since_timestamp)
+    }
+
+    /// Get the number of messages
+    pub fn len(&self) -> usize {
+        self.messages.len()
+    }
+
+    /// Check if there are no messages
+    pub fn is_empty(&self) -> bool {
+        self.messages.is_empty()
+    }
+
+    /// Get the newest message timestamp (if any)
+    pub fn newest_timestamp(&self) -> Option<u64> {
+        self.messages.values().map(|m| m.timestamp).max()
+    }
+
+    /// Merge with another ChatCRDT
+    ///
+    /// Returns `true` if any new messages were added
+    pub fn merge(&mut self, other: &ChatCRDT) -> bool {
+        let mut changed = false;
+        for (id, msg) in &other.messages {
+            if !self.messages.contains_key(id) {
+                self.messages.insert(*id, msg.clone());
+                changed = true;
+            }
+        }
+        if changed {
+            self.prune_if_needed();
+        }
+        changed
+    }
+
+    /// Prune oldest messages if we exceed the limit
+    fn prune_if_needed(&mut self) {
+        while self.messages.len() > CHAT_MAX_MESSAGES {
+            // Remove the entry with the lowest timestamp
+            if let Some(&oldest_id) = self.messages.keys().next() {
+                self.messages.remove(&oldest_id);
+            }
+        }
+    }
+
+    /// Encode to bytes for transmission
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // Number of messages
+        buf.extend_from_slice(&(self.messages.len() as u16).to_le_bytes());
+
+        // Each message
+        for msg in self.messages.values() {
+            buf.extend_from_slice(&msg.encode());
+        }
+
+        buf
+    }
+
+    /// Decode from bytes
+    pub fn decode(data: &[u8]) -> Option<Self> {
+        if data.len() < 2 {
+            return None;
+        }
+
+        let num_messages = u16::from_le_bytes([data[0], data[1]]) as usize;
+        let mut messages = BTreeMap::new();
+        let mut offset = 2;
+
+        for _ in 0..num_messages {
+            if offset >= data.len() {
+                break;
+            }
+            if let Some((msg, len)) = ChatMessage::decode(&data[offset..]) {
+                let id = msg.message_id();
+                messages.insert(id, msg);
+                offset += len;
+            } else {
+                break;
+            }
+        }
+
+        Some(Self { messages })
+    }
+
+    /// Get the encoded size of this CRDT
+    pub fn encoded_size(&self) -> usize {
+        2 + self.messages.values().map(|m| m.encode().len()).sum::<usize>()
+    }
+}
+
 /// CRDT operation types for sync
 #[derive(Debug, Clone)]
 pub enum CrdtOperation {
@@ -1570,5 +1967,225 @@ mod tests {
         let mut data = vec![0u8; 16];
         data[12] = 5; // claims 5 ack entries
         assert!(EmergencyEvent::decode(&data).is_none());
+    }
+
+    // ============================================================================
+    // ChatMessage Tests
+    // ============================================================================
+
+    #[test]
+    fn test_chat_message_new() {
+        let msg = ChatMessage::new(0x12345678, 1000, "ALPHA-1", "Hello mesh!");
+        assert_eq!(msg.origin_node, 0x12345678);
+        assert_eq!(msg.timestamp, 1000);
+        assert_eq!(msg.sender(), "ALPHA-1");
+        assert_eq!(msg.text(), "Hello mesh!");
+        assert!(msg.is_broadcast);
+        assert!(!msg.requires_ack);
+        assert!(!msg.is_reply());
+    }
+
+    #[test]
+    fn test_chat_message_reply_to() {
+        let mut msg = ChatMessage::new(0x12345678, 2000, "BRAVO", "Roger that");
+        msg.set_reply_to(0xAABBCCDD, 1500);
+
+        assert!(msg.is_reply());
+        assert_eq!(msg.reply_to_node, 0xAABBCCDD);
+        assert_eq!(msg.reply_to_timestamp, 1500);
+    }
+
+    #[test]
+    fn test_chat_message_truncation() {
+        // Test sender truncation (max 12 bytes)
+        let msg = ChatMessage::new(0x1, 1000, "VERY_LONG_CALLSIGN", "Hi");
+        assert_eq!(msg.sender(), "VERY_LONG_CA"); // 12 chars
+
+        // Test text truncation (max 128 bytes)
+        let long_text = "A".repeat(200);
+        let msg = ChatMessage::new(0x1, 1000, "X", &long_text);
+        assert_eq!(msg.text().len(), 128);
+    }
+
+    #[test]
+    fn test_chat_message_id() {
+        let msg = ChatMessage::new(0x12345678, 0xABCDEF01, "X", "Y");
+        let id = msg.message_id();
+        // ID = (origin << 32) | (timestamp & 0xFFFFFFFF)
+        assert_eq!(id, (0x12345678u64 << 32) | 0xABCDEF01);
+    }
+
+    #[test]
+    fn test_chat_message_encode_decode() {
+        let mut msg = ChatMessage::new(0x12345678, 1234567890, "CHARLIE", "Test message");
+        msg.is_broadcast = true;
+        msg.requires_ack = true;
+        msg.set_reply_to(0xAABBCCDD, 1234567000);
+
+        let encoded = msg.encode();
+        let (decoded, len) = ChatMessage::decode(&encoded).unwrap();
+
+        assert_eq!(len, encoded.len());
+        assert_eq!(decoded.origin_node, 0x12345678);
+        assert_eq!(decoded.timestamp, 1234567890);
+        assert_eq!(decoded.sender(), "CHARLIE");
+        assert_eq!(decoded.text(), "Test message");
+        assert!(decoded.is_broadcast);
+        assert!(decoded.requires_ack);
+        assert_eq!(decoded.reply_to_node, 0xAABBCCDD);
+        assert_eq!(decoded.reply_to_timestamp, 1234567000);
+    }
+
+    #[test]
+    fn test_chat_message_decode_minimal() {
+        // Message with empty sender and text
+        let msg = ChatMessage::new(0x1, 1000, "", "");
+        let encoded = msg.encode();
+        let (decoded, _) = ChatMessage::decode(&encoded).unwrap();
+        assert_eq!(decoded.sender(), "");
+        assert_eq!(decoded.text(), "");
+    }
+
+    // ============================================================================
+    // ChatCRDT Tests
+    // ============================================================================
+
+    #[test]
+    fn test_chat_crdt_new() {
+        let chat = ChatCRDT::new();
+        assert!(chat.is_empty());
+        assert_eq!(chat.len(), 0);
+    }
+
+    #[test]
+    fn test_chat_crdt_add_message() {
+        let mut chat = ChatCRDT::new();
+
+        let msg = ChatMessage::new(0x12345678, 1000, "ALPHA", "Hello");
+        assert!(chat.add_message(msg.clone()));
+        assert_eq!(chat.len(), 1);
+
+        // Duplicate should be rejected
+        assert!(!chat.add_message(msg));
+        assert_eq!(chat.len(), 1);
+    }
+
+    #[test]
+    fn test_chat_crdt_send_message() {
+        let mut chat = ChatCRDT::new();
+
+        assert!(chat.send_message(0x1, 1000, "ALPHA", "First"));
+        assert!(chat.send_message(0x2, 1001, "BRAVO", "Second"));
+        assert_eq!(chat.len(), 2);
+
+        // Same node, same timestamp = duplicate
+        assert!(!chat.send_message(0x1, 1000, "ALPHA", "Duplicate"));
+        assert_eq!(chat.len(), 2);
+    }
+
+    #[test]
+    fn test_chat_crdt_get_message() {
+        let mut chat = ChatCRDT::new();
+        chat.send_message(0x12345678, 1000, "ALPHA", "Test");
+
+        let msg = chat.get_message(0x12345678, 1000);
+        assert!(msg.is_some());
+        assert_eq!(msg.unwrap().text(), "Test");
+
+        // Non-existent message
+        assert!(chat.get_message(0x99999999, 1000).is_none());
+    }
+
+    #[test]
+    fn test_chat_crdt_merge() {
+        let mut chat1 = ChatCRDT::new();
+        let mut chat2 = ChatCRDT::new();
+
+        chat1.send_message(0x1, 1000, "ALPHA", "From 1");
+        chat2.send_message(0x2, 1001, "BRAVO", "From 2");
+
+        // Merge chat2 into chat1
+        let changed = chat1.merge(&chat2);
+        assert!(changed);
+        assert_eq!(chat1.len(), 2);
+
+        // Merge again - no changes
+        let changed = chat1.merge(&chat2);
+        assert!(!changed);
+        assert_eq!(chat1.len(), 2);
+    }
+
+    #[test]
+    fn test_chat_crdt_merge_duplicates() {
+        let mut chat1 = ChatCRDT::new();
+        let mut chat2 = ChatCRDT::new();
+
+        // Both have the same message
+        chat1.send_message(0x1, 1000, "ALPHA", "Same message");
+        chat2.send_message(0x1, 1000, "ALPHA", "Same message");
+
+        // Merge should not create duplicates
+        chat1.merge(&chat2);
+        assert_eq!(chat1.len(), 1);
+    }
+
+    #[test]
+    fn test_chat_crdt_pruning() {
+        let mut chat = ChatCRDT::new();
+
+        // Add more than CHAT_MAX_MESSAGES
+        for i in 0..(CHAT_MAX_MESSAGES + 10) {
+            chat.send_message(i as u32, i as u64, "X", "Y");
+        }
+
+        // Should be pruned to max
+        assert_eq!(chat.len(), CHAT_MAX_MESSAGES);
+
+        // Oldest messages should be removed
+        // (first 10 should be gone)
+        assert!(chat.get_message(0, 0).is_none());
+        assert!(chat.get_message(9, 9).is_none());
+        // Newer messages should remain
+        assert!(chat.get_message(10, 10).is_some());
+    }
+
+    #[test]
+    fn test_chat_crdt_encode_decode() {
+        let mut chat = ChatCRDT::new();
+        chat.send_message(0x12345678, 1000, "ALPHA", "First message");
+        chat.send_message(0xAABBCCDD, 2000, "BRAVO", "Second message");
+
+        let encoded = chat.encode();
+        let decoded = ChatCRDT::decode(&encoded).unwrap();
+
+        assert_eq!(decoded.len(), 2);
+        assert!(decoded.get_message(0x12345678, 1000).is_some());
+        assert!(decoded.get_message(0xAABBCCDD, 2000).is_some());
+    }
+
+    #[test]
+    fn test_chat_crdt_messages_since() {
+        let mut chat = ChatCRDT::new();
+        chat.send_message(0x1, 1000, "A", "Old");
+        chat.send_message(0x2, 2000, "B", "Mid");
+        chat.send_message(0x3, 3000, "C", "New");
+
+        let recent: Vec<_> = chat.messages_since(1500).collect();
+        assert_eq!(recent.len(), 2);
+    }
+
+    #[test]
+    fn test_chat_crdt_newest_timestamp() {
+        let mut chat = ChatCRDT::new();
+        assert!(chat.newest_timestamp().is_none());
+
+        chat.send_message(0x1, 1000, "A", "1");
+        assert_eq!(chat.newest_timestamp(), Some(1000));
+
+        chat.send_message(0x2, 3000, "B", "2");
+        assert_eq!(chat.newest_timestamp(), Some(3000));
+
+        chat.send_message(0x3, 2000, "C", "3"); // older timestamp
+        assert_eq!(chat.newest_timestamp(), Some(3000));
     }
 }

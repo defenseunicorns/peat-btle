@@ -1372,6 +1372,66 @@ impl HiveMesh {
         self.document_sync.all_peers_acked()
     }
 
+    // ==================== Chat Methods ====================
+
+    /// Send a chat message
+    ///
+    /// Adds the message to the local CRDT and returns the document bytes
+    /// to broadcast to all peers. If encryption is enabled, the document is encrypted.
+    ///
+    /// Returns the encrypted document bytes if the message was new,
+    /// or None if it was a duplicate.
+    pub fn send_chat(&self, sender: &str, text: &str) -> Option<Vec<u8>> {
+        if self.document_sync.add_chat_message(sender, text) {
+            Some(self.encrypt_document(&self.build_document()))
+        } else {
+            None
+        }
+    }
+
+    /// Send a chat reply
+    ///
+    /// Adds the reply to the local CRDT with reply-to information and returns
+    /// the document bytes to broadcast. If encryption is enabled, the document is encrypted.
+    ///
+    /// Returns the encrypted document bytes if the message was new,
+    /// or None if it was a duplicate.
+    pub fn send_chat_reply(
+        &self,
+        sender: &str,
+        text: &str,
+        reply_to_node: u32,
+        reply_to_timestamp: u64,
+    ) -> Option<Vec<u8>> {
+        if self
+            .document_sync
+            .add_chat_reply(sender, text, reply_to_node, reply_to_timestamp)
+        {
+            Some(self.encrypt_document(&self.build_document()))
+        } else {
+            None
+        }
+    }
+
+    /// Get the number of chat messages in the local CRDT
+    pub fn chat_count(&self) -> usize {
+        self.document_sync.chat_count()
+    }
+
+    /// Get chat messages newer than a timestamp
+    ///
+    /// Returns a vector of (origin_node, timestamp, sender, text) tuples.
+    pub fn chat_messages_since(&self, since_timestamp: u64) -> Vec<(u32, u64, String, String)> {
+        self.document_sync.chat_messages_since(since_timestamp)
+    }
+
+    /// Get all chat messages
+    ///
+    /// Returns a vector of (origin_node, timestamp, sender, text) tuples.
+    pub fn all_chat_messages(&self) -> Vec<(u32, u64, String, String)> {
+        self.document_sync.all_chat_messages()
+    }
+
     // ==================== BLE Callbacks (Platform -> Mesh) ====================
 
     /// Called when a BLE device is discovered

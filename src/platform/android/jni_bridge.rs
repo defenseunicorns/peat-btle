@@ -1243,6 +1243,190 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeBuildDocument<'l
     }
 }
 
+// ==================== Chat Methods ====================
+
+/// Send a chat message
+///
+/// Returns the document bytes to broadcast, or empty array if the message was a duplicate.
+///
+/// JNI Signature: (JLjava/lang/String;Ljava/lang/String;)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendChat<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    sender: JString<'local>,
+    text: JString<'local>,
+) -> JByteArray<'local> {
+    let sender_str: String = match env.get_string(&sender) {
+        Ok(s) => s.into(),
+        Err(_) => return env.new_byte_array(0).expect("Failed to create byte array"),
+    };
+    let text_str: String = match env.get_string(&text) {
+        Ok(s) => s.into(),
+        Err(_) => return env.new_byte_array(0).expect("Failed to create byte array"),
+    };
+
+    let doc_bytes = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .and_then(|m| m.send_chat(&sender_str, &text_str))
+    } else {
+        None
+    };
+
+    match doc_bytes {
+        Some(bytes) => env
+            .byte_array_from_slice(&bytes)
+            .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array")),
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Send a chat reply
+///
+/// Returns the document bytes to broadcast, or empty array if the message was a duplicate.
+///
+/// JNI Signature: (JLjava/lang/String;Ljava/lang/String;JJ)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSendChatReply<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    sender: JString<'local>,
+    text: JString<'local>,
+    reply_to_node: jlong,
+    reply_to_timestamp: jlong,
+) -> JByteArray<'local> {
+    let sender_str: String = match env.get_string(&sender) {
+        Ok(s) => s.into(),
+        Err(_) => return env.new_byte_array(0).expect("Failed to create byte array"),
+    };
+    let text_str: String = match env.get_string(&text) {
+        Ok(s) => s.into(),
+        Err(_) => return env.new_byte_array(0).expect("Failed to create byte array"),
+    };
+
+    let doc_bytes = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).and_then(|m| {
+            m.send_chat_reply(
+                &sender_str,
+                &text_str,
+                reply_to_node as u32,
+                reply_to_timestamp as u64,
+            )
+        })
+    } else {
+        None
+    };
+
+    match doc_bytes {
+        Some(bytes) => env
+            .byte_array_from_slice(&bytes)
+            .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array")),
+        None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Get the number of chat messages in the local CRDT
+///
+/// JNI Signature: (J)I
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeChatCount<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jint {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .map(|m| m.chat_count() as jint)
+            .unwrap_or(0)
+    } else {
+        0
+    }
+}
+
+/// Get all chat messages as a JSON array string
+///
+/// Returns JSON array of objects with fields: originNode, timestamp, sender, text
+///
+/// JNI Signature: (J)Ljava/lang/String;
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetAllChatMessages<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JString<'local> {
+    let messages = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .map(|m| m.all_chat_messages())
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    // Build JSON array string manually (to avoid serde dependency for JNI)
+    let mut json = String::from("[");
+    for (i, (origin_node, timestamp, sender, text)) in messages.iter().enumerate() {
+        if i > 0 {
+            json.push(',');
+        }
+        // Escape JSON strings
+        let escaped_sender = sender.replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped_text = text.replace('\\', "\\\\").replace('"', "\\\"");
+        json.push_str(&format!(
+            r#"{{"originNode":{},"timestamp":{},"sender":"{}","text":"{}"}}"#,
+            origin_node, timestamp, escaped_sender, escaped_text
+        ));
+    }
+    json.push(']');
+
+    env.new_string(&json)
+        .unwrap_or_else(|_| env.new_string("[]").expect("Failed to create empty array string"))
+}
+
+/// Get chat messages since a timestamp as a JSON array string
+///
+/// Returns JSON array of objects with fields: originNode, timestamp, sender, text
+///
+/// JNI Signature: (JJ)Ljava/lang/String;
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetChatMessagesSince<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    since_timestamp: jlong,
+) -> JString<'local> {
+    let messages = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .map(|m| m.chat_messages_since(since_timestamp as u64))
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    // Build JSON array string manually
+    let mut json = String::from("[");
+    for (i, (origin_node, timestamp, sender, text)) in messages.iter().enumerate() {
+        if i > 0 {
+            json.push(',');
+        }
+        let escaped_sender = sender.replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped_text = text.replace('\\', "\\\\").replace('"', "\\\"");
+        json.push_str(&format!(
+            r#"{{"originNode":{},"timestamp":{},"sender":"{}","text":"{}"}}"#,
+            origin_node, timestamp, escaped_sender, escaped_text
+        ));
+    }
+    json.push(']');
+
+    env.new_string(&json)
+        .unwrap_or_else(|_| env.new_string("[]").expect("Failed to create empty array string"))
+}
+
 /// Called when a BLE device is discovered
 ///
 /// JNI Signature: (JLjava/lang/String;Ljava/lang/String;ILjava/lang/String;J)Z

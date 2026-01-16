@@ -42,7 +42,7 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-use crate::sync::crdt::{EmergencyEvent, EventType, GCounter, Peripheral, PeripheralEvent};
+use crate::sync::crdt::{ChatCRDT, EmergencyEvent, EventType, GCounter, Peripheral, PeripheralEvent};
 use crate::NodeId;
 
 /// Marker byte indicating extended section with peripheral data
@@ -50,6 +50,18 @@ pub const EXTENDED_MARKER: u8 = 0xAB;
 
 /// Marker byte indicating emergency event section
 pub const EMERGENCY_MARKER: u8 = 0xAC;
+
+/// Marker byte indicating chat CRDT section
+///
+/// Used to include persisted chat messages in the document for CRDT sync.
+///
+/// ```text
+/// marker:   1 byte (0xAD)
+/// reserved: 1 byte (0x00)
+/// len:      2 bytes (LE) - length of chat CRDT data
+/// chat:     variable - ChatCRDT encoded data
+/// ```
+pub const CHAT_MARKER: u8 = 0xAD;
 
 /// Marker byte indicating encrypted document (mesh-wide)
 ///
@@ -150,7 +162,8 @@ pub const MAX_DOCUMENT_SIZE: usize = 512;
 /// A HIVE document for mesh synchronization
 ///
 /// Contains header information, a CRDT G-Counter for tracking mesh activity,
-/// optional peripheral data for events, and optional emergency event with ACK tracking.
+/// optional peripheral data for events, optional emergency event with ACK tracking,
+/// and optional chat CRDT for mesh-wide messaging.
 #[derive(Debug, Clone)]
 pub struct HiveDocument {
     /// Document version (incremented on each change)
@@ -167,6 +180,13 @@ pub struct HiveDocument {
 
     /// Optional active emergency event with distributed ACK tracking
     pub emergency: Option<EmergencyEvent>,
+
+    /// Optional chat CRDT for mesh-wide messaging
+    ///
+    /// Contains persisted chat messages that sync across the mesh using
+    /// add-only set semantics. Messages are identified by (origin_node, timestamp)
+    /// and automatically deduplicated during merge.
+    pub chat: Option<ChatCRDT>,
 }
 
 impl Default for HiveDocument {
@@ -177,6 +197,7 @@ impl Default for HiveDocument {
             counter: GCounter::new(),
             peripheral: None,
             emergency: None,
+            chat: None,
         }
     }
 }
@@ -190,6 +211,7 @@ impl HiveDocument {
             counter: GCounter::new(),
             peripheral: None,
             emergency: None,
+            chat: None,
         }
     }
 
@@ -202,6 +224,12 @@ impl HiveDocument {
     /// Create with an initial emergency event
     pub fn with_emergency(mut self, emergency: EmergencyEvent) -> Self {
         self.emergency = Some(emergency);
+        self
+    }
+
+    /// Create with an initial chat CRDT
+    pub fn with_chat(mut self, chat: ChatCRDT) -> Self {
+        self.chat = Some(chat);
         self
     }
 
@@ -272,6 +300,80 @@ impl HiveDocument {
         self.emergency.is_some()
     }
 
+    // --- Chat CRDT methods ---
+
+    /// Get the chat CRDT (if any)
+    pub fn get_chat(&self) -> Option<&ChatCRDT> {
+        self.chat.as_ref()
+    }
+
+    /// Get mutable reference to the chat CRDT, creating it if needed
+    pub fn get_or_create_chat(&mut self) -> &mut ChatCRDT {
+        if self.chat.is_none() {
+            self.chat = Some(ChatCRDT::new());
+        }
+        self.chat.as_mut().unwrap()
+    }
+
+    /// Add a chat message to the document
+    ///
+    /// Returns true if the message was new (not a duplicate)
+    pub fn add_chat_message(
+        &mut self,
+        origin_node: u32,
+        timestamp: u64,
+        sender: &str,
+        text: &str,
+    ) -> bool {
+        use crate::sync::crdt::ChatMessage;
+
+        let mut msg = ChatMessage::new(origin_node, timestamp, sender, text);
+        msg.is_broadcast = true;
+
+        let chat = self.get_or_create_chat();
+        if chat.add_message(msg) {
+            self.increment_counter();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Add a chat message with reply-to information
+    pub fn add_chat_reply(
+        &mut self,
+        origin_node: u32,
+        timestamp: u64,
+        sender: &str,
+        text: &str,
+        reply_to_node: u32,
+        reply_to_timestamp: u64,
+    ) -> bool {
+        use crate::sync::crdt::ChatMessage;
+
+        let mut msg = ChatMessage::new(origin_node, timestamp, sender, text);
+        msg.is_broadcast = true;
+        msg.set_reply_to(reply_to_node, reply_to_timestamp);
+
+        let chat = self.get_or_create_chat();
+        if chat.add_message(msg) {
+            self.increment_counter();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if the document has any chat messages
+    pub fn has_chat(&self) -> bool {
+        self.chat.as_ref().is_some_and(|c| !c.is_empty())
+    }
+
+    /// Get the number of chat messages
+    pub fn chat_count(&self) -> usize {
+        self.chat.as_ref().map_or(0, |c| c.len())
+    }
+
     /// Merge with another document using CRDT semantics
     ///
     /// Returns true if our state changed (useful for triggering re-broadcast)
@@ -300,6 +402,23 @@ impl HiveDocument {
             }
         }
 
+        // Merge chat CRDT
+        if let Some(ref other_chat) = other.chat {
+            match &mut self.chat {
+                Some(ref mut our_chat) => {
+                    if our_chat.merge(other_chat) {
+                        changed = true;
+                    }
+                }
+                None => {
+                    if !other_chat.is_empty() {
+                        self.chat = Some(other_chat.clone());
+                        changed = true;
+                    }
+                }
+            }
+        }
+
         if changed {
             self.increment_version();
         }
@@ -321,6 +440,11 @@ impl HiveDocument {
         let counter_data = self.counter.encode();
         let peripheral_data = self.peripheral.as_ref().map(|p| p.encode());
         let emergency_data = self.emergency.as_ref().map(|e| e.encode());
+        let chat_data = self
+            .chat
+            .as_ref()
+            .filter(|c| !c.is_empty())
+            .map(|c| c.encode());
 
         // Calculate total size
         let mut size = 8 + counter_data.len(); // header + counter
@@ -329,6 +453,9 @@ impl HiveDocument {
         }
         if let Some(ref edata) = emergency_data {
             size += 4 + edata.len(); // marker + reserved + len + emergency
+        }
+        if let Some(ref cdata) = chat_data {
+            size += 4 + cdata.len(); // marker + reserved + len + chat
         }
 
         let mut buf = Vec::with_capacity(size);
@@ -354,6 +481,14 @@ impl HiveDocument {
             buf.push(0); // reserved
             buf.extend_from_slice(&(edata.len() as u16).to_le_bytes());
             buf.extend_from_slice(&edata);
+        }
+
+        // Chat section (if chat has messages)
+        if let Some(cdata) = chat_data {
+            buf.push(CHAT_MARKER);
+            buf.push(0); // reserved
+            buf.extend_from_slice(&(cdata.len() as u16).to_le_bytes());
+            buf.extend_from_slice(&cdata);
         }
 
         buf
@@ -389,8 +524,9 @@ impl HiveDocument {
 
         let mut peripheral = None;
         let mut emergency = None;
+        let mut chat = None;
 
-        // Parse extended sections (can have peripheral and/or emergency)
+        // Parse extended sections (can have peripheral, emergency, and/or chat)
         while offset < data.len() {
             let marker = data[offset];
 
@@ -425,6 +561,21 @@ impl HiveDocument {
                 emergency =
                     EmergencyEvent::decode(&data[section_start..section_start + section_len]);
                 offset = section_start + section_len;
+            } else if marker == CHAT_MARKER {
+                // Parse chat section
+                if data.len() < offset + 4 {
+                    break;
+                }
+                let _reserved = data[offset + 1];
+                let section_len = u16::from_le_bytes([data[offset + 2], data[offset + 3]]) as usize;
+
+                let section_start = offset + 4;
+                if data.len() < section_start + section_len {
+                    break;
+                }
+
+                chat = ChatCRDT::decode(&data[section_start..section_start + section_len]);
+                offset = section_start + section_len;
             } else {
                 // Unknown marker, stop parsing
                 break;
@@ -437,6 +588,7 @@ impl HiveDocument {
             counter,
             peripheral,
             emergency,
+            chat,
         })
     }
 
@@ -461,7 +613,12 @@ impl HiveDocument {
         let counter_size = 4 + self.counter.node_count_total() * 12;
         let peripheral_size = self.peripheral.as_ref().map_or(0, |p| 4 + p.encode().len());
         let emergency_size = self.emergency.as_ref().map_or(0, |e| 4 + e.encode().len());
-        8 + counter_size + peripheral_size + emergency_size
+        let chat_size = self
+            .chat
+            .as_ref()
+            .filter(|c| !c.is_empty())
+            .map_or(0, |c| 4 + c.encoded_size());
+        8 + counter_size + peripheral_size + emergency_size + chat_size
     }
 
     /// Check if the document exceeds the target size for single-packet transmission
@@ -493,6 +650,9 @@ pub struct MergeResult {
 
     /// Whether the emergency state changed (new emergency or ACK updates)
     pub emergency_changed: bool,
+
+    /// Whether chat messages changed (new messages received)
+    pub chat_changed: bool,
 
     /// Updated total count after merge
     pub total_count: u64,
@@ -610,6 +770,7 @@ mod tests {
             event: Some(emergency_event),
             counter_changed: true,
             emergency_changed: false,
+            chat_changed: false,
             total_count: 10,
         };
 
@@ -622,6 +783,7 @@ mod tests {
             event: Some(ack_event),
             counter_changed: false,
             emergency_changed: false,
+            chat_changed: false,
             total_count: 10,
         };
 
@@ -658,5 +820,128 @@ mod tests {
         }
         assert!(doc.encoded_size() < TARGET_DOCUMENT_SIZE);
         assert!(!doc.exceeds_max_size());
+    }
+
+    // ============================================================================
+    // Chat CRDT Document Tests
+    // ============================================================================
+
+    #[test]
+    fn test_document_add_chat_message() {
+        let node_id = NodeId::new(0x12345678);
+        let mut doc = HiveDocument::new(node_id);
+
+        assert!(!doc.has_chat());
+        assert_eq!(doc.chat_count(), 0);
+
+        // Add a message
+        assert!(doc.add_chat_message(0x12345678, 1000, "ALPHA", "Hello mesh!"));
+        assert!(doc.has_chat());
+        assert_eq!(doc.chat_count(), 1);
+
+        // Duplicate should be rejected
+        assert!(!doc.add_chat_message(0x12345678, 1000, "ALPHA", "Hello mesh!"));
+        assert_eq!(doc.chat_count(), 1);
+
+        // Different message should be accepted
+        assert!(doc.add_chat_message(0x12345678, 2000, "ALPHA", "Second message"));
+        assert_eq!(doc.chat_count(), 2);
+    }
+
+    #[test]
+    fn test_document_add_chat_reply() {
+        let node_id = NodeId::new(0x12345678);
+        let mut doc = HiveDocument::new(node_id);
+
+        // Add original message
+        doc.add_chat_message(0xAABBCCDD, 1000, "BRAVO", "Need assistance");
+
+        // Add reply
+        assert!(doc.add_chat_reply(
+            0x12345678,
+            2000,
+            "ALPHA",
+            "Copy that",
+            0xAABBCCDD, // reply to node
+            1000        // reply to timestamp
+        ));
+
+        assert_eq!(doc.chat_count(), 2);
+
+        // Verify reply-to info
+        let chat = doc.get_chat().unwrap();
+        let reply = chat.get_message(0x12345678, 2000).unwrap();
+        assert!(reply.is_reply());
+        assert_eq!(reply.reply_to_node, 0xAABBCCDD);
+        assert_eq!(reply.reply_to_timestamp, 1000);
+    }
+
+    #[test]
+    fn test_document_encode_decode_with_chat() {
+        let node_id = NodeId::new(0x12345678);
+        let mut doc = HiveDocument::new(node_id);
+
+        doc.add_chat_message(0x12345678, 1000, "ALPHA", "First message");
+        doc.add_chat_message(0xAABBCCDD, 2000, "BRAVO", "Second message");
+
+        let encoded = doc.encode();
+        let decoded = HiveDocument::decode(&encoded).unwrap();
+
+        assert!(decoded.has_chat());
+        assert_eq!(decoded.chat_count(), 2);
+
+        let chat = decoded.get_chat().unwrap();
+        let msg1 = chat.get_message(0x12345678, 1000).unwrap();
+        assert_eq!(msg1.sender(), "ALPHA");
+        assert_eq!(msg1.text(), "First message");
+
+        let msg2 = chat.get_message(0xAABBCCDD, 2000).unwrap();
+        assert_eq!(msg2.sender(), "BRAVO");
+        assert_eq!(msg2.text(), "Second message");
+    }
+
+    #[test]
+    fn test_document_merge_with_chat() {
+        let node1 = NodeId::new(0x11111111);
+        let node2 = NodeId::new(0x22222222);
+
+        let mut doc1 = HiveDocument::new(node1);
+        doc1.add_chat_message(0x11111111, 1000, "ALPHA", "From node 1");
+
+        let mut doc2 = HiveDocument::new(node2);
+        doc2.add_chat_message(0x22222222, 2000, "BRAVO", "From node 2");
+
+        // Merge doc2 into doc1
+        let changed = doc1.merge(&doc2);
+        assert!(changed);
+        assert_eq!(doc1.chat_count(), 2);
+
+        // Merge again - no changes
+        let changed = doc1.merge(&doc2);
+        assert!(!changed);
+
+        // Verify both messages present
+        let chat = doc1.get_chat().unwrap();
+        assert!(chat.get_message(0x11111111, 1000).is_some());
+        assert!(chat.get_message(0x22222222, 2000).is_some());
+    }
+
+    #[test]
+    fn test_document_chat_encoded_size() {
+        let node_id = NodeId::new(0x12345678);
+        let mut doc = HiveDocument::new(node_id);
+
+        let base_size = doc.encoded_size();
+
+        // Add a message
+        doc.add_chat_message(0x12345678, 1000, "ALPHA", "Test");
+
+        // Size should increase
+        let with_chat_size = doc.encoded_size();
+        assert!(with_chat_size > base_size);
+
+        // Encoded size should match actual encoded length
+        let encoded = doc.encode();
+        assert_eq!(doc.encoded_size(), encoded.len());
     }
 }

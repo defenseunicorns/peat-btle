@@ -859,7 +859,73 @@ class HiveBtle(
                     val hexData = value.joinToString(" ") { String.format("%02X", it) }
                     Log.d(TAG, "Received data: $hexData")
 
-                    // Parse the document
+                    // Check for special document markers first
+                    if (value.isNotEmpty() && value[0] == CHAT_SECTION_MARKER) {
+                        // Chat document (0xAD) - find/create peer and handle
+                        val chat = HiveChat.decode(value)
+                        if (chat != null) {
+                            val sourceNodeId = chat.originNode
+                            if (sourceNodeId != nodeId && sourceNodeId != 0L) {
+                                var peer = peers.values.find { it.address == address }
+                                    ?: peers[sourceNodeId]
+                                    ?: run {
+                                        // Create peer for incoming chat
+                                        val now = System.currentTimeMillis()
+                                        val newPeer = HivePeer(
+                                            nodeId = sourceNodeId,
+                                            address = address,
+                                            name = generateDeviceName(meshId, sourceNodeId),
+                                            meshId = meshId,
+                                            rssi = 0,
+                                            isConnected = true,
+                                            lastDocument = null,
+                                            lastSeen = now
+                                        )
+                                        peers[sourceNodeId] = newPeer
+                                        addressToNodeId[address] = sourceNodeId
+                                        Log.i(TAG, "Added peer from chat write: ${newPeer.displayName()}")
+                                        newPeer
+                                    }
+                                handlePeerChatDocument(peer, value)
+                            }
+                        } else {
+                            Log.w(TAG, "Failed to decode chat document from $address")
+                        }
+                        if (responseNeeded) {
+                            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                        }
+                        return
+                    }
+
+                    if (value.isNotEmpty() && value[0] == MARKER_SECTION_MARKER) {
+                        // Marker document (0xAC) - find peer by address and handle
+                        val peer = peers.values.find { it.address == address }
+                        if (peer != null) {
+                            handlePeerMarkerDocument(peer, value)
+                        } else {
+                            Log.w(TAG, "Received marker from unknown peer $address")
+                        }
+                        if (responseNeeded) {
+                            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                        }
+                        return
+                    }
+
+                    if (HiveDeltaDocument.isDeltaDocument(value)) {
+                        // Delta document (0xB2) - find peer by address and handle
+                        val peer = peers.values.find { it.address == address }
+                        if (peer != null) {
+                            handlePeerDeltaDocument(peer, value)
+                        } else {
+                            Log.w(TAG, "Received delta from unknown peer $address")
+                        }
+                        if (responseNeeded) {
+                            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                        }
+                        return
+                    }
+
+                    // Parse the document (regular HiveDocument format)
                     val document = HiveDocument.decode(value)
                     if (document != null) {
                         Log.i(TAG, "Received document from ${String.format("%08X", document.nodeId)}, event=${document.currentEventType()}")
@@ -1271,10 +1337,11 @@ class HiveBtle(
     }
 
     /**
-     * Send a chat message to all connected peers.
+     * Send a chat message to all connected peers via CRDT.
      *
-     * The chat will be broadcast to all connected peripherals and centrals.
-     * Each receiving peer will trigger onChatReceived on its listener.
+     * The chat message is stored in the local CRDT and the updated document
+     * is broadcast to all connected peripherals and centrals.
+     * Messages are automatically deduplicated across the mesh.
      *
      * @param chat The chat message to send
      */
@@ -1284,33 +1351,117 @@ class HiveBtle(
             return
         }
 
-        Log.i(TAG, "[CHAT] Broadcasting: '${chat.message}' from ${chat.sender} to ${connections.size} peripherals and ${connectedCentrals.size} centrals")
-
-        // Encode chat document (includes marker byte)
-        val chatBytes = HiveChat.encode(chat)
-
-        // Send to all connected peripherals
-        for ((address, gatt) in connections) {
-            writeDocumentToGatt(gatt, chatBytes)
+        val mesh = _mesh
+        if (mesh == null) {
+            Log.w(TAG, "Mesh not initialized, cannot send chat")
+            return
         }
 
-        // Send to all connected centrals
-        notifyConnectedCentrals(chatBytes)
+        Log.i(TAG, "[CHAT-CRDT] Sending: '${chat.message}' from ${chat.sender}")
+
+        // Use CRDT-based chat - stores message locally and returns document to broadcast
+        val docBytes = if (chat.isReply()) {
+            mesh.sendChatReply(
+                chat.sender.take(12),  // CRDT max sender is 12 chars
+                chat.message.take(128), // CRDT max text is 128 chars
+                chat.replyToNode,
+                chat.replyToTimestamp
+            )
+        } else {
+            mesh.sendChat(
+                chat.sender.take(12),
+                chat.message.take(128)
+            )
+        }
+
+        if (docBytes.isEmpty()) {
+            Log.d(TAG, "[CHAT-CRDT] Message was duplicate, not broadcasting")
+            return
+        }
+
+        Log.i(TAG, "[CHAT-CRDT] Broadcasting ${docBytes.size} bytes to ${connections.size} peripherals and ${connectedCentrals.size} centrals")
+
+        // Send document to all connected peripherals
+        for ((address, gatt) in connections) {
+            writeDocumentToGatt(gatt, docBytes)
+        }
+
+        // Send document to all connected centrals
+        notifyConnectedCentrals(docBytes)
     }
 
     /**
      * Convenience overload to send a chat message with just sender and message.
      *
-     * @param sender The sender's callsign (max 16 chars)
-     * @param message The message text (max 140 chars)
+     * @param sender The sender's callsign (max 12 chars)
+     * @param message The message text (max 128 chars)
      */
     fun sendChat(sender: String, message: String) {
         sendChat(HiveChat(
-            sender = sender.take(HiveChat.MAX_SENDER_LENGTH),
-            message = message.take(HiveChat.MAX_MESSAGE_LENGTH),
+            sender = sender.take(12),  // CRDT max is 12
+            message = message.take(128),  // CRDT max is 128
             timestamp = System.currentTimeMillis(),
             originNode = nodeId
         ))
+    }
+
+    /**
+     * Get the number of chat messages stored in the local CRDT.
+     *
+     * @return Number of messages, or 0 if mesh not initialized
+     */
+    fun getChatCount(): Int {
+        return _mesh?.chatCount() ?: 0
+    }
+
+    /**
+     * Get all chat messages from the local CRDT.
+     *
+     * @return List of HiveChat messages, or empty list if mesh not initialized
+     */
+    fun getAllChatMessages(): List<HiveChat> {
+        val mesh = _mesh ?: return emptyList()
+        val json = mesh.getAllChatMessages()
+        return parseChatMessagesJson(json)
+    }
+
+    /**
+     * Get chat messages received since a given timestamp.
+     *
+     * @param sinceTimestamp Only return messages newer than this timestamp
+     * @return List of HiveChat messages, or empty list if mesh not initialized
+     */
+    fun getChatMessagesSince(sinceTimestamp: Long): List<HiveChat> {
+        val mesh = _mesh ?: return emptyList()
+        val json = mesh.getChatMessagesSince(sinceTimestamp)
+        return parseChatMessagesJson(json)
+    }
+
+    /**
+     * Parse chat messages from JSON array string returned by native code.
+     * Uses Android's built-in org.json for robust parsing.
+     */
+    private fun parseChatMessagesJson(json: String): List<HiveChat> {
+        if (json == "[]") return emptyList()
+
+        return try {
+            val result = mutableListOf<HiveChat>()
+            val jsonArray = org.json.JSONArray(json)
+
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                result.add(HiveChat(
+                    sender = obj.getString("sender"),
+                    message = obj.getString("text"),
+                    timestamp = obj.getLong("timestamp"),
+                    originNode = obj.getLong("originNode")
+                ))
+            }
+            result
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse chat messages JSON: $json", e)
+            emptyList()
+        }
     }
 
     /**
@@ -1738,6 +1889,7 @@ class HiveBtle(
     /**
      * Handle an incoming chat document from a peer.
      * Decodes the chat message, notifies listener, and forwards to other peers.
+     * Uses deduplication to prevent displaying/forwarding the same message twice.
      */
     private fun handlePeerChatDocument(peer: HivePeer, data: ByteArray) {
         val chat = HiveChat.decode(data) ?: run {
@@ -1750,6 +1902,19 @@ class HiveBtle(
         // Skip if from ourselves
         if (sourceNodeId == nodeId) return
 
+        // Deduplication check - prevent processing same message twice (from multi-hop relay)
+        val contentHash = data.contentHashCode().toLong()
+        val messageHash = (sourceNodeId shl 32) or (contentHash and 0xFFFFFFFFL)
+        val now = System.currentTimeMillis()
+        synchronized(seenMessagesLock) {
+            val lastSeen = seenMessages[messageHash]
+            if (lastSeen != null && (now - lastSeen) < 30_000) {
+                Log.v(TAG, "[CHAT-RX] Skipping duplicate chat from ${String.format("%08X", sourceNodeId)}")
+                return
+            }
+            seenMessages[messageHash] = now
+        }
+
         Log.i(TAG, "[CHAT-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId)}): '${chat.sender}' says '${chat.message}'")
 
         // Find the source peer (might be relayed)
@@ -1760,8 +1925,36 @@ class HiveBtle(
             meshListener?.onChatReceived(chat, sourcePeer)
         }
 
-        // Forward chat document to other connected peers
-        forwardDocumentToOtherPeers(sourceNodeId, data, peer.address)
+        // Forward chat document to other connected peers (no separate dedup needed - already marked as seen)
+        forwardChatToOtherPeers(sourceNodeId, data, peer.address)
+    }
+
+    /**
+     * Forward a chat document to all connected peers except the source.
+     * Deduplication is already handled in handlePeerChatDocument.
+     */
+    private fun forwardChatToOtherPeers(originNodeId: Long, rawBytes: ByteArray, sourceAddress: String?) {
+        var forwardCount = 0
+
+        // Forward to peripherals (devices we connected to)
+        for ((address, gatt) in connections) {
+            if (address == sourceAddress) continue
+            writeDocumentToGatt(gatt, rawBytes)
+            forwardCount++
+            Log.v(TAG, "[CHAT-RELAY] Sent to peripheral $address")
+        }
+
+        // Forward to centrals (devices that connected to us) using batch notify
+        val centralsToNotify = connectedCentrals.keys.filter { it != sourceAddress }
+        if (centralsToNotify.isNotEmpty()) {
+            notifySpecificCentrals(centralsToNotify, rawBytes)
+            forwardCount += centralsToNotify.size
+            Log.v(TAG, "[CHAT-RELAY] Notified ${centralsToNotify.size} centrals")
+        }
+
+        if (forwardCount > 0) {
+            Log.d(TAG, "[CHAT-RELAY] Forwarded to $forwardCount peers")
+        }
     }
 
     /**
@@ -3515,6 +3708,10 @@ const val CHAT_SECTION_MARKER: Byte = 0xAD.toByte()
  * - sender:     N bytes (max 16)
  * - msgLen:     1 byte
  * - message:    N bytes (max 140)
+ * - replyToNode: 4 bytes (LE) - originNode of message being replied to (0 = not a reply)
+ * - replyToTimestamp: 8 bytes (LE) - timestamp of message being replied to
+ *
+ * Message ID is implicitly (originNode, timestamp) which uniquely identifies each message.
  */
 data class HiveChat(
     val sender: String,         // Sender callsign (max 16 chars)
@@ -3522,12 +3719,32 @@ data class HiveChat(
     val timestamp: Long,        // Epoch milliseconds
     val originNode: Long,       // Sender's node ID
     val isBroadcast: Boolean = true,
-    val requiresAck: Boolean = false
+    val requiresAck: Boolean = false,
+    val replyToNode: Long = 0,  // originNode of message being replied to (0 = not a reply)
+    val replyToTimestamp: Long = 0  // timestamp of message being replied to
 ) {
+    /**
+     * Check if this message is a reply to another message.
+     */
+    fun isReply(): Boolean = replyToNode != 0L || replyToTimestamp != 0L
+
+    /**
+     * Get the message ID as a string for display/logging.
+     * Format: "XXXXXXXX:timestamp"
+     */
+    fun messageIdString(): String = "${String.format("%08X", originNode)}:$timestamp"
+
+    /**
+     * Get the ID of the message being replied to as a string.
+     */
+    fun replyToIdString(): String? = if (isReply()) "${String.format("%08X", replyToNode)}:$replyToTimestamp" else null
+
     companion object {
         private const val TAG = "HiveChat"
-        const val MAX_SENDER_LENGTH = 16
-        const val MAX_MESSAGE_LENGTH = 140
+        /** Maximum sender length (12 chars for CRDT compatibility) */
+        const val MAX_SENDER_LENGTH = 12
+        /** Maximum message length (128 chars for CRDT compatibility) */
+        const val MAX_MESSAGE_LENGTH = 128
 
         /**
          * Encode a chat message to binary format.
@@ -3570,6 +3787,22 @@ data class HiveChat(
             // Message (length + bytes)
             result.add(messageBytes.size.toByte())
             result.addAll(messageBytes.toList())
+
+            // ReplyTo node (4 bytes LE) - for threading support
+            result.add(chat.replyToNode.toByte())
+            result.add((chat.replyToNode shr 8).toByte())
+            result.add((chat.replyToNode shr 16).toByte())
+            result.add((chat.replyToNode shr 24).toByte())
+
+            // ReplyTo timestamp (8 bytes LE)
+            result.add(chat.replyToTimestamp.toByte())
+            result.add((chat.replyToTimestamp shr 8).toByte())
+            result.add((chat.replyToTimestamp shr 16).toByte())
+            result.add((chat.replyToTimestamp shr 24).toByte())
+            result.add((chat.replyToTimestamp shr 32).toByte())
+            result.add((chat.replyToTimestamp shr 40).toByte())
+            result.add((chat.replyToTimestamp shr 48).toByte())
+            result.add((chat.replyToTimestamp shr 56).toByte())
 
             return result.toByteArray()
         }
@@ -3623,6 +3856,32 @@ data class HiveChat(
                 val msgLen = data[offset++].toInt() and 0xFF
                 if (offset + msgLen > data.size) return null
                 val message = String(data, offset, msgLen, Charsets.UTF_8)
+                offset += msgLen
+
+                // ReplyTo fields (optional, for backward compatibility)
+                var replyToNode: Long = 0
+                var replyToTimestamp: Long = 0
+
+                // Check if there's enough data for replyToNode (4 bytes)
+                if (offset + 4 <= data.size) {
+                    replyToNode = ((data[offset].toLong() and 0xFF)) or
+                            ((data[offset + 1].toLong() and 0xFF) shl 8) or
+                            ((data[offset + 2].toLong() and 0xFF) shl 16) or
+                            ((data[offset + 3].toLong() and 0xFF) shl 24)
+                    offset += 4
+
+                    // Check if there's enough data for replyToTimestamp (8 bytes)
+                    if (offset + 8 <= data.size) {
+                        replyToTimestamp = ((data[offset].toLong() and 0xFF)) or
+                                ((data[offset + 1].toLong() and 0xFF) shl 8) or
+                                ((data[offset + 2].toLong() and 0xFF) shl 16) or
+                                ((data[offset + 3].toLong() and 0xFF) shl 24) or
+                                ((data[offset + 4].toLong() and 0xFF) shl 32) or
+                                ((data[offset + 5].toLong() and 0xFF) shl 40) or
+                                ((data[offset + 6].toLong() and 0xFF) shl 48) or
+                                ((data[offset + 7].toLong() and 0xFF) shl 56)
+                    }
+                }
 
                 return HiveChat(
                     sender = sender,
@@ -3630,7 +3889,9 @@ data class HiveChat(
                     timestamp = timestamp,
                     originNode = originNode,
                     isBroadcast = isBroadcast,
-                    requiresAck = requiresAck
+                    requiresAck = requiresAck,
+                    replyToNode = replyToNode,
+                    replyToTimestamp = replyToTimestamp
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to decode HiveChat: ${e.message}")
