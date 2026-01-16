@@ -490,6 +490,10 @@ class HiveMesh(
     ): DataReceivedResult? {
         checkNotDestroyed()
         val resultBytes = nativeOnBleDataReceived(handle, identifier, data, nowMs)
+        Log.d(TAG, "[JNI-DEBUG] onBleDataReceived: identifier=$identifier, dataSize=${data.size}, resultSize=${resultBytes.size}")
+        if (resultBytes.size < 15) {
+            Log.w(TAG, "[JNI-DEBUG] Native returned insufficient data: ${resultBytes.size} bytes (need 15)")
+        }
         return DataReceivedResult.decode(resultBytes)
     }
 

@@ -1372,7 +1372,9 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetAllChatMessag
 
     // Build JSON array string manually (to avoid serde dependency for JNI)
     let mut json = String::from("[");
-    for (i, (origin_node, timestamp, sender, text)) in messages.iter().enumerate() {
+    for (i, (origin_node, timestamp, sender, text, reply_to_node, reply_to_timestamp)) in
+        messages.iter().enumerate()
+    {
         if i > 0 {
             json.push(',');
         }
@@ -1380,8 +1382,8 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetAllChatMessag
         let escaped_sender = sender.replace('\\', "\\\\").replace('"', "\\\"");
         let escaped_text = text.replace('\\', "\\\\").replace('"', "\\\"");
         json.push_str(&format!(
-            r#"{{"originNode":{},"timestamp":{},"sender":"{}","text":"{}"}}"#,
-            origin_node, timestamp, escaped_sender, escaped_text
+            r#"{{"originNode":{},"timestamp":{},"sender":"{}","text":"{}","replyToNode":{},"replyToTimestamp":{}}}"#,
+            origin_node, timestamp, escaped_sender, escaped_text, reply_to_node, reply_to_timestamp
         ));
     }
     json.push(']');
@@ -1394,7 +1396,7 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetAllChatMessag
 
 /// Get chat messages since a timestamp as a JSON array string
 ///
-/// Returns JSON array of objects with fields: originNode, timestamp, sender, text
+/// Returns JSON array of objects with fields: originNode, timestamp, sender, text, replyToNode, replyToTimestamp
 ///
 /// JNI Signature: (JJ)Ljava/lang/String;
 #[no_mangle]
@@ -1415,15 +1417,17 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetChatMessagesS
 
     // Build JSON array string manually
     let mut json = String::from("[");
-    for (i, (origin_node, timestamp, sender, text)) in messages.iter().enumerate() {
+    for (i, (origin_node, timestamp, sender, text, reply_to_node, reply_to_timestamp)) in
+        messages.iter().enumerate()
+    {
         if i > 0 {
             json.push(',');
         }
         let escaped_sender = sender.replace('\\', "\\\\").replace('"', "\\\"");
         let escaped_text = text.replace('\\', "\\\\").replace('"', "\\\"");
         json.push_str(&format!(
-            r#"{{"originNode":{},"timestamp":{},"sender":"{}","text":"{}"}}"#,
-            origin_node, timestamp, escaped_sender, escaped_text
+            r#"{{"originNode":{},"timestamp":{},"sender":"{}","text":"{}","replyToNode":{},"replyToTimestamp":{}}}"#,
+            origin_node, timestamp, escaped_sender, escaped_text, reply_to_node, reply_to_timestamp
         ));
     }
     json.push(']');

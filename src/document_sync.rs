@@ -388,8 +388,11 @@ impl DocumentSync {
 
     /// Get chat messages newer than a timestamp
     ///
-    /// Returns a vector of (origin_node, timestamp, sender, text) tuples.
-    pub fn chat_messages_since(&self, since_timestamp: u64) -> Vec<(u32, u64, String, String)> {
+    /// Returns a vector of (origin_node, timestamp, sender, text, reply_to_node, reply_to_timestamp) tuples.
+    pub fn chat_messages_since(
+        &self,
+        since_timestamp: u64,
+    ) -> Vec<(u32, u64, String, String, u32, u64)> {
         let chat = self.chat.read().unwrap();
         chat.as_ref()
             .map(|c| {
@@ -400,6 +403,8 @@ impl DocumentSync {
                             m.timestamp,
                             m.sender().to_string(),
                             m.text().to_string(),
+                            m.reply_to_node,
+                            m.reply_to_timestamp,
                         )
                     })
                     .collect()
@@ -409,8 +414,8 @@ impl DocumentSync {
 
     /// Get all chat messages
     ///
-    /// Returns a vector of (origin_node, timestamp, sender, text) tuples.
-    pub fn all_chat_messages(&self) -> Vec<(u32, u64, String, String)> {
+    /// Returns a vector of (origin_node, timestamp, sender, text, reply_to_node, reply_to_timestamp) tuples.
+    pub fn all_chat_messages(&self) -> Vec<(u32, u64, String, String, u32, u64)> {
         self.chat_messages_since(0)
     }
 

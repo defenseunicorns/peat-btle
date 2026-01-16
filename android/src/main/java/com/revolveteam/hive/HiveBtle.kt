@@ -982,17 +982,16 @@ class HiveBtle(
                                 // address than scan address due to BLE address randomization
                                 addressToNodeId[address] = sourceNodeId
 
-                                // Update HiveMesh - peer is now connected via incoming GATT
-                                // If address changed, re-discover with new address first
-                                if (peer.address != address) {
-                                    _mesh?.onBleDiscovered(
-                                        identifier = address,
-                                        name = peer.name,
-                                        rssi = 0,
-                                        deviceMeshId = meshId,
-                                        nowMs = now
-                                    )
-                                }
+                                // Update HiveMesh - ALWAYS re-discover to ensure native peer_manager knows this peer
+                                // (Kotlin peers map survives across mesh recreation, but native peer_manager is fresh)
+                                val discoveredPeer = _mesh?.onBleDiscovered(
+                                    identifier = address,
+                                    name = peer.name,
+                                    rssi = 0,
+                                    deviceMeshId = meshId,
+                                    nowMs = now
+                                )
+                                Log.d(TAG, "[GATT-SERVER] Re-discovered existing peer: ${peer.displayName()}, result=${discoveredPeer != null}")
                                 _mesh?.onBleConnected(identifier = address, nowMs = now)
                             }
 
@@ -1457,7 +1456,10 @@ class HiveBtle(
                     sender = obj.getString("sender"),
                     message = obj.getString("text"),
                     timestamp = obj.getLong("timestamp"),
-                    originNode = obj.getLong("originNode")
+                    originNode = obj.getLong("originNode"),
+                    // Parse replyTo fields if present (for ACK threading)
+                    replyToNode = obj.optLong("replyToNode", 0L),
+                    replyToTimestamp = obj.optLong("replyToTimestamp", 0L)
                 ))
             }
             result
@@ -1737,14 +1739,36 @@ class HiveBtle(
         // Merge counters (CRDT merge)
         mergeCounter(document.counter)
 
+        // Ensure native mesh knows about this peer before CRDT merge
+        // (Kotlin peers map survives across mesh recreation, but native peer_manager is fresh)
+        // Use proper HIVE name format that Rust peer_manager expects
+        val hiveName = generateDeviceName(meshId, peer.nodeId)
+        if (sourceAddress != null && _mesh != null) {
+            val now = System.currentTimeMillis()
+            val discoveredPeer = _mesh?.onBleDiscovered(
+                identifier = sourceAddress,
+                name = hiveName,
+                rssi = 0,
+                deviceMeshId = meshId,
+                nowMs = now
+            )
+            Log.d(TAG, "[CRDT-REGISTER] onBleDiscovered(addr=$sourceAddress, name=$hiveName, meshId=$meshId) -> ${discoveredPeer != null}")
+            _mesh?.onBleConnected(identifier = sourceAddress, nowMs = now)
+        }
+
         // Merge document into native CRDT (includes chat messages)
         // Track chat count before merge to detect new messages
         val chatCountBefore = _mesh?.chatCount() ?: 0
+        Log.d(TAG, "[CRDT-DEBUG] rawBytes=${rawBytes?.size}, sourceAddress=$sourceAddress, _mesh=${_mesh != null}, chatCountBefore=$chatCountBefore")
         if (rawBytes != null && rawBytes.isNotEmpty() && sourceAddress != null) {
             val result = _mesh?.onBleDataReceived(sourceAddress, rawBytes)
             if (result != null) {
-                Log.v(TAG, "[CRDT-MERGE] From ${peer.displayName()}: counterChanged=${result.counterChanged}, total=${result.totalCount}")
+                Log.i(TAG, "[CRDT-MERGE] From ${peer.displayName()}: counterChanged=${result.counterChanged}, total=${result.totalCount}")
+            } else {
+                Log.w(TAG, "[CRDT-MERGE] onBleDataReceived returned null - native peer_manager may not know this peer")
             }
+        } else {
+            Log.w(TAG, "[CRDT-SKIP] Missing data: rawBytes=${rawBytes?.size}, sourceAddress=$sourceAddress")
         }
 
         // Check for new chat messages after CRDT merge

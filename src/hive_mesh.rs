@@ -1424,15 +1424,18 @@ impl HiveMesh {
 
     /// Get chat messages newer than a timestamp
     ///
-    /// Returns a vector of (origin_node, timestamp, sender, text) tuples.
-    pub fn chat_messages_since(&self, since_timestamp: u64) -> Vec<(u32, u64, String, String)> {
+    /// Returns a vector of (origin_node, timestamp, sender, text, reply_to_node, reply_to_timestamp) tuples.
+    pub fn chat_messages_since(
+        &self,
+        since_timestamp: u64,
+    ) -> Vec<(u32, u64, String, String, u32, u64)> {
         self.document_sync.chat_messages_since(since_timestamp)
     }
 
     /// Get all chat messages
     ///
-    /// Returns a vector of (origin_node, timestamp, sender, text) tuples.
-    pub fn all_chat_messages(&self) -> Vec<(u32, u64, String, String)> {
+    /// Returns a vector of (origin_node, timestamp, sender, text, reply_to_node, reply_to_timestamp) tuples.
+    pub fn all_chat_messages(&self) -> Vec<(u32, u64, String, String, u32, u64)> {
         self.document_sync.all_chat_messages()
     }
 
