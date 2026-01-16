@@ -2281,8 +2281,8 @@ class HiveBtle(
                             state.syncCount % FULL_SYNC_INTERVAL == 0
 
         if (needsFullSync) {
-            // Full document sync
-            val documentBytes = HiveDocument.encode(nodeId, localCounter, localPeripheral)
+            // Full document sync - use native builder which includes chat CRDT
+            val documentBytes = _mesh?.buildDocument() ?: return null
             state.lastSentTimestamp = now
             state.lastSentPeripheral = localPeripheral?.copy()
             state.lastSentCounterValue = currentCounterValue
