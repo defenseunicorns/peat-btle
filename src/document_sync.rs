@@ -458,13 +458,17 @@ impl DocumentSync {
         let peripheral = self.peripheral.read().unwrap().clone();
         let emergency = self.emergency.read().unwrap().clone();
 
+        // Use for_sync() to limit chat messages in the document
+        // This prevents exceeding BLE MTU limits while keeping full history locally
+        let chat = self.chat.read().unwrap().as_ref().map(|c| c.for_sync());
+
         let doc = HiveDocument {
             version: self.version.load(Ordering::Relaxed),
             node_id: self.node_id,
             counter,
             peripheral: Some(peripheral),
             emergency,
-            chat: self.chat.read().unwrap().clone(),
+            chat,
         };
 
         doc.encode()

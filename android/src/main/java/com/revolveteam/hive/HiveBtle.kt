@@ -1781,11 +1781,14 @@ class HiveBtle(
             // Notify listener for new messages from other nodes
             val sourcePeer = peer
             for (chat in recentChats.takeLast(newChatCount)) {
+                Log.d(TAG, "[CHAT-CRDT] Checking: originNode=${String.format("%08X", chat.originNode)}, ourNodeId=${String.format("%08X", nodeId)}, match=${chat.originNode == nodeId}")
                 if (chat.originNode != nodeId) { // Don't notify for our own messages
                     Log.i(TAG, "[CHAT-CRDT] New message from ${chat.sender}: ${chat.message}")
                     handler.post {
                         meshListener?.onChatReceived(chat, sourcePeer)
                     }
+                } else {
+                    Log.d(TAG, "[CHAT-CRDT] Skipping own message from ${chat.sender}")
                 }
             }
         }
@@ -2467,13 +2470,24 @@ class HiveBtle(
         val service = gattServer.getService(HIVE_SERVICE_UUID) ?: return
         val characteristic = service.getCharacteristic(HIVE_CHAR_DOCUMENT) ?: return
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            gattServer.notifyCharacteristicChanged(device, characteristic, false, documentBytes)
-        } else {
-            @Suppress("DEPRECATION")
-            characteristic.value = documentBytes
-            @Suppress("DEPRECATION")
-            gattServer.notifyCharacteristicChanged(device, characteristic, false)
+        // BLE notifications have max size (typically 512 bytes, can be higher with MTU negotiation)
+        // Skip notification if document is too large to prevent crash
+        if (documentBytes.size > 512) {
+            Log.w(TAG, "Document too large for BLE notification: ${documentBytes.size} bytes (max 512), skipping notify to $address")
+            return
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gattServer.notifyCharacteristicChanged(device, characteristic, false, documentBytes)
+            } else {
+                @Suppress("DEPRECATION")
+                characteristic.value = documentBytes
+                @Suppress("DEPRECATION")
+                gattServer.notifyCharacteristicChanged(device, characteristic, false)
+            }
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "Failed to notify central $address: ${e.message} (doc size: ${documentBytes.size})")
         }
     }
 

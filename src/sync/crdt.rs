@@ -910,6 +910,13 @@ pub const CHAT_MAX_SENDER_LEN: usize = 12;
 /// Older messages are pruned to keep memory bounded on embedded devices.
 pub const CHAT_MAX_MESSAGES: usize = 32;
 
+/// Maximum number of chat messages to include in sync documents
+///
+/// BLE GATT notifications have a limited MTU (typically 512 bytes).
+/// To avoid exceeding this limit, sync documents only include the
+/// most recent messages. The full history is kept in the local CRDT.
+pub const CHAT_SYNC_LIMIT: usize = 8;
+
 /// A single chat message in the mesh
 ///
 /// Messages are uniquely identified by `(origin_node, timestamp)`.
@@ -1295,6 +1302,31 @@ impl ChatCRDT {
             .values()
             .map(|m| m.encode().len())
             .sum::<usize>()
+    }
+
+    /// Create a copy limited to the most recent messages for sync
+    ///
+    /// Returns a new ChatCRDT containing only the N most recent messages,
+    /// where N is `CHAT_SYNC_LIMIT`. This is used when building sync documents
+    /// to avoid exceeding BLE MTU limits.
+    ///
+    /// The local CRDT retains all messages up to `CHAT_MAX_MESSAGES`.
+    pub fn for_sync(&self) -> Self {
+        if self.messages.len() <= CHAT_SYNC_LIMIT {
+            return self.clone();
+        }
+
+        // BTreeMap is ordered by key (message_id), and message_id encodes
+        // timestamp in lower bits, so we take from the end for newest
+        let messages: BTreeMap<u64, ChatMessage> = self
+            .messages
+            .iter()
+            .rev()
+            .take(CHAT_SYNC_LIMIT)
+            .map(|(&k, v)| (k, v.clone()))
+            .collect();
+
+        Self { messages }
     }
 }
 
