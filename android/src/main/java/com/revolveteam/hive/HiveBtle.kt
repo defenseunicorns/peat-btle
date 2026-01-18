@@ -44,6 +44,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import android.os.Handler
 import android.os.Looper
+import java.util.Collections
 
 /**
  * Main entry point for HIVE BLE operations on Android.
@@ -357,6 +358,8 @@ class HiveBtle(
     private val peers = ConcurrentHashMap<Long, HivePeer>() // nodeId -> peer
     private val addressToNodeId = ConcurrentHashMap<String, Long>() // address -> nodeId
     private val peerSyncState = ConcurrentHashMap<Long, PeerSyncState>() // nodeId -> sync state for delta tracking
+    // Track processed chat messages to avoid duplicate notifications (key = "originNode:timestamp")
+    private val processedChatMessages = Collections.synchronizedSet(mutableSetOf<String>())
     private var meshListener: HiveMeshListener? = null
     private val handler = Handler(Looper.getMainLooper())
     private var localDocument: HiveDocument? = null
@@ -1775,20 +1778,48 @@ class HiveBtle(
         val chatCountAfter = _mesh?.chatCount() ?: 0
         if (chatCountAfter > chatCountBefore) {
             val newChatCount = chatCountAfter - chatCountBefore
-            Log.i(TAG, "[CHAT-CRDT] $newChatCount new chat message(s) after merge")
-            // Get recent messages (last 5 minutes to catch any we might have missed)
-            val recentChats = getChatMessagesSince(System.currentTimeMillis() - 300_000)
+            Log.i(TAG, "[CHAT-CRDT] $newChatCount new chat message(s) after merge (before=$chatCountBefore, after=$chatCountAfter)")
+            // Get ALL chat messages and check against processed set
+            val allChats = getAllChatMessages()
+            Log.d(TAG, "[CHAT-CRDT] allChats has ${allChats.size} messages, checking for unprocessed")
+            // Debug: log all messages in order
+            allChats.forEachIndexed { idx, c ->
+                val key = "${c.originNode}:${c.timestamp}"
+                val isProcessed = processedChatMessages.contains(key)
+                Log.v(TAG, "[CHAT-CRDT] [$idx] ${String.format("%08X", c.originNode)}:${c.timestamp} ${c.sender}: ${c.message} (processed=$isProcessed)")
+            }
             // Notify listener for new messages from other nodes
             val sourcePeer = peer
-            for (chat in recentChats.takeLast(newChatCount)) {
-                Log.d(TAG, "[CHAT-CRDT] Checking: originNode=${String.format("%08X", chat.originNode)}, ourNodeId=${String.format("%08X", nodeId)}, match=${chat.originNode == nodeId}")
+            var notifiedCount = 0
+            for (chat in allChats) {
+                val key = "${chat.originNode}:${chat.timestamp}"
+                // Skip if already processed
+                if (processedChatMessages.contains(key)) {
+                    continue
+                }
+                // Mark as processed
+                processedChatMessages.add(key)
+                Log.d(TAG, "[CHAT-CRDT] Processing: originNode=${String.format("%08X", chat.originNode)}, ts=${chat.timestamp}, msg='${chat.message}'")
                 if (chat.originNode != nodeId) { // Don't notify for our own messages
                     Log.i(TAG, "[CHAT-CRDT] New message from ${chat.sender}: ${chat.message}")
                     handler.post {
                         meshListener?.onChatReceived(chat, sourcePeer)
                     }
+                    notifiedCount++
                 } else {
-                    Log.d(TAG, "[CHAT-CRDT] Skipping own message from ${chat.sender}")
+                    Log.d(TAG, "[CHAT-CRDT] Skipping own message from ${chat.sender}: ${chat.message}")
+                }
+            }
+            Log.i(TAG, "[CHAT-CRDT] Notified $notifiedCount new message(s), processedChatMessages size=${processedChatMessages.size}")
+            // Limit processed set size to prevent memory issues (keep last 500)
+            if (processedChatMessages.size > 500) {
+                val toRemove = processedChatMessages.size - 500
+                val iterator = processedChatMessages.iterator()
+                repeat(toRemove) {
+                    if (iterator.hasNext()) {
+                        iterator.next()
+                        iterator.remove()
+                    }
                 }
             }
         }
