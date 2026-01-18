@@ -1,6 +1,6 @@
 [package]
 name = "hive-btle"
-version = "0.0.9"
+version = "0.0.11"
 edition = "2021"
 authors = ["(r)evolve - Revolve Team LLC"]
 license = "Apache-2.0"
