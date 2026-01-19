@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.0.12"  // ADR-002, clippy fixes, CI docs
+version = "0.1.0-SNAPSHOT"  // RC with identity/genesis security features
 
 android {
     namespace = "com.revolveteam.hive"
@@ -36,7 +36,7 @@ android {
 
         // Configure NDK for native library
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 
@@ -117,10 +117,17 @@ tasks.register<Exec>("buildNativeLibs") {
         mkdir -p android/src/main/jniLibs/armeabi-v7a
         cp target/armv7-linux-androideabi/release/libhive_btle.so android/src/main/jniLibs/armeabi-v7a/
 
+        # Build for x86_64 (emulators)
+        echo "Building for x86_64-linux-android (x86_64)..."
+        cargo build --release --target x86_64-linux-android --features android
+        mkdir -p android/src/main/jniLibs/x86_64
+        cp target/x86_64-linux-android/release/libhive_btle.so android/src/main/jniLibs/x86_64/
+
         echo ""
         echo "Native libraries built successfully!"
         echo "  arm64-v8a: android/src/main/jniLibs/arm64-v8a/libhive_btle.so"
         echo "  armeabi-v7a: android/src/main/jniLibs/armeabi-v7a/libhive_btle.so"
+        echo "  x86_64: android/src/main/jniLibs/x86_64/libhive_btle.so"
     """.trimIndent())
 }
 
@@ -131,7 +138,8 @@ tasks.register<Delete>("cleanNativeLibs") {
 
     delete(
         "src/main/jniLibs/arm64-v8a/libhive_btle.so",
-        "src/main/jniLibs/armeabi-v7a/libhive_btle.so"
+        "src/main/jniLibs/armeabi-v7a/libhive_btle.so",
+        "src/main/jniLibs/x86_64/libhive_btle.so"
     )
 }
 
