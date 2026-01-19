@@ -49,7 +49,7 @@
 //! Total: 3 + 18 = 21 bytes (fits!)
 
 #[cfg(not(feature = "std"))]
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 
 use crate::{capabilities, HierarchyLevel, NodeId};
 
@@ -304,8 +304,14 @@ pub struct ParsedAdvertisement {
     pub address: String,
     /// RSSI in dBm
     pub rssi: i8,
-    /// Parsed HIVE beacon (if this is a HIVE device)
+    /// Parsed HIVE beacon (if this is a HIVE device with plaintext beacon)
     pub beacon: Option<HiveBeacon>,
+    /// Raw encrypted beacon service data (if version 0x02 beacon detected)
+    ///
+    /// Platform code should populate this when it detects service data
+    /// starting with version byte 0x02 (encrypted beacon format).
+    /// The Scanner will attempt decryption if a beacon key is configured.
+    pub encrypted_service_data: Option<Vec<u8>>,
     /// Device local name
     pub local_name: Option<String>,
     /// TX power level (if advertised)
@@ -316,8 +322,11 @@ pub struct ParsedAdvertisement {
 
 impl ParsedAdvertisement {
     /// Check if this is a HIVE device
+    ///
+    /// Returns true if either a plaintext beacon is present or encrypted
+    /// service data is available (which may be decryptable by the Scanner).
     pub fn is_hive_device(&self) -> bool {
-        self.beacon.is_some()
+        self.beacon.is_some() || self.encrypted_service_data.is_some()
     }
 
     /// Get the node ID if this is a HIVE device
@@ -444,6 +453,7 @@ mod tests {
             address: "00:11:22:33:44:55".to_string(),
             rssi: -60,
             beacon: None,
+            encrypted_service_data: None,
             local_name: None,
             tx_power: Some(-20), // Typical BLE TX power
             connectable: true,

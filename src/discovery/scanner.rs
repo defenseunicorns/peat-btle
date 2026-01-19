@@ -29,6 +29,8 @@ use crate::HierarchyLevel;
 use crate::NodeId;
 
 use super::beacon::{HiveBeacon, ParsedAdvertisement};
+#[cfg(feature = "std")]
+use super::encrypted_beacon::{BeaconKey, EncryptedBeacon};
 
 /// Default timeout for considering a device "stale" (ms)
 #[cfg(feature = "std")]
@@ -245,6 +247,10 @@ pub struct Scanner {
     last_processed: HashMap<NodeId, u64>,
     /// Current time (monotonic ms, set externally)
     current_time_ms: u64,
+    /// Beacon key for decrypting encrypted beacons (optional)
+    beacon_key: Option<BeaconKey>,
+    /// Expected mesh ID bytes for filtering decrypted beacons
+    mesh_id_bytes: Option<[u8; 4]>,
 }
 
 #[cfg(feature = "std")]
@@ -260,6 +266,8 @@ impl Scanner {
             device_timeout_ms: DEFAULT_DEVICE_TIMEOUT_MS,
             last_processed: HashMap::new(),
             current_time_ms: 0,
+            beacon_key: None,
+            mesh_id_bytes: None,
         }
     }
 
@@ -276,6 +284,30 @@ impl Scanner {
     /// Set device timeout in milliseconds
     pub fn set_device_timeout_ms(&mut self, timeout_ms: u64) {
         self.device_timeout_ms = timeout_ms;
+    }
+
+    /// Configure beacon key for decrypting encrypted advertisements
+    ///
+    /// # Arguments
+    /// * `key` - Beacon encryption key from mesh genesis
+    /// * `mesh_id_bytes` - Expected 4-byte mesh identifier for filtering
+    ///
+    /// When configured, the scanner will attempt to decrypt encrypted beacons
+    /// and only accept those from the specified mesh.
+    pub fn set_beacon_key(&mut self, key: BeaconKey, mesh_id_bytes: [u8; 4]) {
+        self.beacon_key = Some(key);
+        self.mesh_id_bytes = Some(mesh_id_bytes);
+    }
+
+    /// Clear beacon key (stop accepting encrypted beacons)
+    pub fn clear_beacon_key(&mut self) {
+        self.beacon_key = None;
+        self.mesh_id_bytes = None;
+    }
+
+    /// Check if this scanner can decrypt encrypted beacons
+    pub fn can_decrypt_beacons(&self) -> bool {
+        self.beacon_key.is_some() && self.mesh_id_bytes.is_some()
     }
 
     /// Get current state
@@ -301,16 +333,32 @@ impl Scanner {
     /// Process a received advertisement
     ///
     /// Returns true if this is a new or updated device that passes the filter.
+    ///
+    /// Handles both plaintext and encrypted beacons:
+    /// - Plaintext beacons are processed directly from `adv.beacon`
+    /// - Encrypted beacons (in `adv.encrypted_service_data`) are decrypted if a
+    ///   beacon key is configured
     pub fn process_advertisement(&mut self, adv: ParsedAdvertisement) -> bool {
         // Apply filter
         if !self.filter.matches(&adv) {
             return false;
         }
 
-        // Extract beacon and node ID
-        let (beacon, node_id) = match adv.beacon {
-            Some(ref b) => (b.clone(), b.node_id),
-            None => return false, // No beacon = not a HIVE device
+        // Extract beacon and node ID - try plaintext first, then encrypted
+        let (beacon, node_id) = if let Some(ref b) = adv.beacon {
+            // Plaintext beacon
+            (b.clone(), b.node_id)
+        } else if let Some(ref encrypted_data) = adv.encrypted_service_data {
+            // Try to decrypt encrypted beacon
+            match self.try_decrypt_beacon(encrypted_data) {
+                Some((decrypted_beacon, _mesh_id)) => {
+                    let node_id = decrypted_beacon.node_id;
+                    (decrypted_beacon, node_id)
+                }
+                None => return false, // Decryption failed (wrong mesh or no key)
+            }
+        } else {
+            return false; // No beacon = not a HIVE device
         };
 
         // Check deduplication
@@ -341,6 +389,35 @@ impl Scanner {
         }
 
         is_new
+    }
+
+    /// Attempt to decrypt an encrypted beacon
+    ///
+    /// Returns the decrypted beacon and mesh_id if successful.
+    fn try_decrypt_beacon(&self, encrypted_data: &[u8]) -> Option<(HiveBeacon, [u8; 4])> {
+        let key = self.beacon_key.as_ref()?;
+        let expected_mesh_id = self.mesh_id_bytes?;
+
+        // Try to decrypt
+        let (encrypted_beacon, mesh_id) = EncryptedBeacon::decrypt(encrypted_data, key)?;
+
+        // Check mesh ID matches (ensures this is from our mesh)
+        if mesh_id != expected_mesh_id {
+            return None;
+        }
+
+        // Convert EncryptedBeacon to HiveBeacon
+        let beacon = HiveBeacon {
+            version: 1,
+            capabilities: encrypted_beacon.capabilities,
+            node_id: encrypted_beacon.node_id,
+            hierarchy_level: HierarchyLevel::from(encrypted_beacon.hierarchy_level),
+            geohash: 0, // Not included in encrypted beacon
+            battery_percent: encrypted_beacon.battery_percent,
+            seq_num: 0, // Not included in encrypted beacon
+        };
+
+        Some((beacon, mesh_id))
     }
 
     /// Get a tracked device by node ID
@@ -443,6 +520,7 @@ mod tests {
             address: format!("00:11:22:33:44:{:02X}", node_id as u8),
             rssi,
             beacon: Some(beacon),
+            encrypted_service_data: None,
             local_name: Some(format!("HIVE-{:08X}", node_id)),
             tx_power: Some(0),
             connectable: true,
@@ -477,6 +555,7 @@ mod tests {
             address: "AA:BB:CC:DD:EE:FF".to_string(),
             rssi: -50,
             beacon: None,
+            encrypted_service_data: None,
             local_name: Some("Other Device".to_string()),
             tx_power: None,
             connectable: true,
@@ -556,6 +635,84 @@ mod tests {
         scanner.set_time_ms(35_000);
         let removed = scanner.remove_stale();
         assert_eq!(removed, 1);
+        assert_eq!(scanner.device_count(), 0);
+    }
+
+    #[test]
+    fn test_encrypted_beacon_scanning() {
+        use crate::discovery::{mesh_id_to_bytes, EncryptedBeacon as EB};
+
+        let config = DiscoveryConfig::default();
+        let mut scanner = Scanner::new(config);
+        scanner.set_time_ms(0);
+
+        let beacon_key = BeaconKey::from_base(&[0x42; 32]);
+        let mesh_id_bytes = mesh_id_to_bytes("TEST-MESH");
+        let node_id = NodeId::new(0x12345678);
+
+        // Configure scanner for encrypted beacons
+        scanner.set_beacon_key(beacon_key.clone(), mesh_id_bytes);
+        assert!(scanner.can_decrypt_beacons());
+
+        // Create an encrypted beacon
+        let encrypted_beacon = EB::new(node_id, 0x0F00, u8::from(HierarchyLevel::Squad), 85);
+        let encrypted_data = encrypted_beacon.encrypt(&beacon_key, &mesh_id_bytes);
+
+        // Create advertisement with encrypted data
+        let adv = ParsedAdvertisement {
+            address: "00:11:22:33:44:55".to_string(),
+            rssi: -60,
+            beacon: None,
+            encrypted_service_data: Some(encrypted_data),
+            local_name: Some("HIVE".to_string()),
+            tx_power: None,
+            connectable: true,
+        };
+
+        // Process advertisement
+        assert!(scanner.process_advertisement(adv));
+        assert_eq!(scanner.device_count(), 1);
+
+        // Verify decrypted device
+        let device = scanner.get_device(&node_id).unwrap();
+        assert_eq!(device.beacon.node_id, node_id);
+        assert_eq!(device.beacon.capabilities, 0x0F00);
+        assert_eq!(device.beacon.hierarchy_level, HierarchyLevel::Squad);
+        assert_eq!(device.beacon.battery_percent, 85);
+    }
+
+    #[test]
+    fn test_encrypted_beacon_wrong_mesh_rejected() {
+        use crate::discovery::{mesh_id_to_bytes, EncryptedBeacon as EB};
+
+        let config = DiscoveryConfig::default();
+        let mut scanner = Scanner::new(config);
+        scanner.set_time_ms(0);
+
+        let beacon_key = BeaconKey::from_base(&[0x42; 32]);
+        let our_mesh_id = mesh_id_to_bytes("OUR-MESH");
+        let other_mesh_id = mesh_id_to_bytes("OTHER-MESH");
+        let node_id = NodeId::new(0x12345678);
+
+        // Configure scanner for our mesh
+        scanner.set_beacon_key(beacon_key.clone(), our_mesh_id);
+
+        // Create encrypted beacon for a different mesh
+        let encrypted_beacon = EB::new(node_id, 0x0F00, u8::from(HierarchyLevel::Squad), 85);
+        let encrypted_data = encrypted_beacon.encrypt(&beacon_key, &other_mesh_id);
+
+        let adv = ParsedAdvertisement {
+            address: "00:11:22:33:44:55".to_string(),
+            rssi: -60,
+            beacon: None,
+            encrypted_service_data: Some(encrypted_data),
+            local_name: Some("HIVE".to_string()),
+            tx_power: None,
+            connectable: true,
+        };
+
+        // Should be rejected - wrong mesh
+        assert!(!scanner.process_advertisement(adv));
         assert_eq!(scanner.device_count(), 0);
     }
 }

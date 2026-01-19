@@ -24,6 +24,9 @@ use crate::config::DiscoveryConfig;
 use crate::{HierarchyLevel, NodeId, HIVE_SERVICE_UUID_16BIT};
 
 use super::beacon::{HiveBeacon, BEACON_COMPACT_SIZE};
+use super::encrypted_beacon::{
+    BeaconKey, EncryptedBeacon, ENCRYPTED_BEACON_SIZE, ENCRYPTED_DEVICE_NAME,
+};
 
 /// Maximum advertising data length for legacy advertising
 const LEGACY_ADV_MAX: usize = 31;
@@ -91,6 +94,16 @@ impl AdvertisingPacket {
     }
 }
 
+/// Advertising mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AdvertisingMode {
+    /// Plaintext beacons (default) - anyone can read mesh/node IDs
+    #[default]
+    Plaintext,
+    /// Encrypted beacons - only mesh members can read IDs
+    Encrypted,
+}
+
 /// HIVE Beacon Advertiser
 ///
 /// Manages building and updating BLE advertisements containing HIVE beacons.
@@ -116,6 +129,12 @@ pub struct Advertiser {
     cached_packet: Option<AdvertisingPacket>,
     /// Whether cache is dirty
     cache_dirty: bool,
+    /// Advertising mode (plaintext or encrypted)
+    mode: AdvertisingMode,
+    /// Beacon encryption key (for encrypted mode)
+    beacon_key: Option<BeaconKey>,
+    /// Mesh ID bytes (for encrypted mode identity)
+    mesh_id_bytes: Option<[u8; 4]>,
 }
 
 impl Advertiser {
@@ -133,6 +152,9 @@ impl Advertiser {
             use_extended: false,
             cached_packet: None,
             cache_dirty: true,
+            mode: AdvertisingMode::Plaintext,
+            beacon_key: None,
+            mesh_id_bytes: None,
         }
     }
 
@@ -150,6 +172,9 @@ impl Advertiser {
             use_extended: false,
             cached_packet: None,
             cache_dirty: true,
+            mode: AdvertisingMode::Plaintext,
+            beacon_key: None,
+            mesh_id_bytes: None,
         }
     }
 
@@ -177,6 +202,43 @@ impl Advertiser {
         self.use_extended = enabled;
         self.cache_dirty = true;
         self
+    }
+
+    /// Enable encrypted advertising mode
+    ///
+    /// In encrypted mode:
+    /// - Beacon identity (mesh_id + node_id) is encrypted
+    /// - Device name becomes generic "HIVE"
+    /// - Only mesh members with the beacon key can identify the node
+    ///
+    /// # Arguments
+    /// * `beacon_key` - Encryption key derived from mesh genesis
+    /// * `mesh_id_bytes` - 4-byte mesh identifier for beacon identity
+    pub fn with_encryption(mut self, beacon_key: BeaconKey, mesh_id_bytes: [u8; 4]) -> Self {
+        self.mode = AdvertisingMode::Encrypted;
+        self.beacon_key = Some(beacon_key);
+        self.mesh_id_bytes = Some(mesh_id_bytes);
+        // In encrypted mode, use generic name for privacy
+        self.device_name = Some(ENCRYPTED_DEVICE_NAME.into());
+        self.cache_dirty = true;
+        self
+    }
+
+    /// Set advertising mode
+    pub fn set_mode(&mut self, mode: AdvertisingMode) {
+        self.mode = mode;
+        self.cache_dirty = true;
+    }
+
+    /// Get current advertising mode
+    pub fn mode(&self) -> AdvertisingMode {
+        self.mode
+    }
+
+    /// Update encryption key (for key rotation)
+    pub fn set_beacon_key(&mut self, key: BeaconKey) {
+        self.beacon_key = Some(key);
+        self.cache_dirty = true;
     }
 
     /// Get current state
@@ -289,13 +351,43 @@ impl Advertiser {
         adv_data.push((HIVE_SERVICE_UUID_16BIT & 0xFF) as u8);
         adv_data.push((HIVE_SERVICE_UUID_16BIT >> 8) as u8);
 
-        // Service Data with beacon (3 + 10 = 13 bytes for compact beacon)
-        let beacon_data = self.beacon.encode_compact();
-        adv_data.push((2 + BEACON_COMPACT_SIZE) as u8); // Length
-        adv_data.push(AD_TYPE_SERVICE_DATA_16);
-        adv_data.push((HIVE_SERVICE_UUID_16BIT & 0xFF) as u8);
-        adv_data.push((HIVE_SERVICE_UUID_16BIT >> 8) as u8);
-        adv_data.extend_from_slice(&beacon_data);
+        // Service Data with beacon - format depends on mode
+        match self.mode {
+            AdvertisingMode::Plaintext => {
+                // Plaintext: compact beacon (10 bytes)
+                let beacon_data = self.beacon.encode_compact();
+                adv_data.push((2 + BEACON_COMPACT_SIZE) as u8); // Length
+                adv_data.push(AD_TYPE_SERVICE_DATA_16);
+                adv_data.push((HIVE_SERVICE_UUID_16BIT & 0xFF) as u8);
+                adv_data.push((HIVE_SERVICE_UUID_16BIT >> 8) as u8);
+                adv_data.extend_from_slice(&beacon_data);
+            }
+            AdvertisingMode::Encrypted => {
+                // Encrypted: privacy-preserving beacon (21 bytes)
+                if let (Some(key), Some(mesh_id_bytes)) = (&self.beacon_key, &self.mesh_id_bytes) {
+                    let encrypted_beacon = EncryptedBeacon::new(
+                        self.beacon.node_id,
+                        self.beacon.capabilities,
+                        u8::from(self.beacon.hierarchy_level),
+                        self.beacon.battery_percent,
+                    );
+                    let beacon_data = encrypted_beacon.encrypt(key, mesh_id_bytes);
+                    adv_data.push((2 + ENCRYPTED_BEACON_SIZE) as u8); // Length
+                    adv_data.push(AD_TYPE_SERVICE_DATA_16);
+                    adv_data.push((HIVE_SERVICE_UUID_16BIT & 0xFF) as u8);
+                    adv_data.push((HIVE_SERVICE_UUID_16BIT >> 8) as u8);
+                    adv_data.extend_from_slice(&beacon_data);
+                } else {
+                    // Fallback to plaintext if encryption not configured
+                    let beacon_data = self.beacon.encode_compact();
+                    adv_data.push((2 + BEACON_COMPACT_SIZE) as u8);
+                    adv_data.push(AD_TYPE_SERVICE_DATA_16);
+                    adv_data.push((HIVE_SERVICE_UUID_16BIT & 0xFF) as u8);
+                    adv_data.push((HIVE_SERVICE_UUID_16BIT >> 8) as u8);
+                    adv_data.extend_from_slice(&beacon_data);
+                }
+            }
+        }
 
         // TX Power (3 bytes) - add if space permits
         if let Some(tx_power) = self.tx_power {
@@ -489,5 +581,84 @@ mod tests {
 
         advertiser.set_geohash(0x123456);
         assert_eq!(advertiser.beacon().geohash, 0x123456);
+    }
+
+    #[test]
+    fn test_encrypted_advertising() {
+        use crate::discovery::mesh_id_to_bytes;
+
+        let config = DiscoveryConfig::default();
+        let beacon_key = BeaconKey::from_base(&[0x42; 32]);
+        let mesh_id_bytes = mesh_id_to_bytes("TEST-MESH");
+
+        let mut advertiser = Advertiser::new(config, NodeId::new(0x12345678))
+            .with_encryption(beacon_key.clone(), mesh_id_bytes);
+
+        assert_eq!(advertiser.mode(), AdvertisingMode::Encrypted);
+
+        let packet = advertiser.build_packet();
+
+        // Encrypted beacon is larger: Flags(3) + UUID(4) + ServiceData(25) = 32 bytes
+        // This exceeds 31-byte legacy limit, so extended advertising is enabled
+        assert!(packet.extended || packet.adv_data.len() > LEGACY_ADV_MAX);
+
+        // Scan response should have generic "HIVE" name
+        let scan_rsp = packet.scan_rsp.as_ref().unwrap();
+        assert!(scan_rsp.windows(4).any(|w| w == b"HIVE"));
+    }
+
+    #[test]
+    fn test_encrypted_beacon_decrypts() {
+        use crate::discovery::mesh_id_to_bytes;
+
+        let config = DiscoveryConfig::default();
+        let beacon_key = BeaconKey::from_base(&[0x42; 32]);
+        let mesh_id_bytes = mesh_id_to_bytes("TEST-MESH");
+        let node_id = NodeId::new(0x12345678);
+
+        let mut advertiser =
+            Advertiser::new(config, node_id).with_encryption(beacon_key.clone(), mesh_id_bytes);
+
+        advertiser.set_hierarchy_level(HierarchyLevel::Squad);
+        advertiser.set_battery(85);
+        advertiser.set_capabilities(0x0F00);
+
+        let packet = advertiser.build_packet();
+
+        // Find service data in advertising data (after UUID header)
+        // Format: len, type, uuid_lo, uuid_hi, beacon_data...
+        let mut offset = 0;
+        let mut found_beacon = false;
+
+        while offset < packet.adv_data.len() {
+            let len = packet.adv_data[offset] as usize;
+            if offset + 1 + len > packet.adv_data.len() {
+                break;
+            }
+
+            let ad_type = packet.adv_data[offset + 1];
+            if ad_type == AD_TYPE_SERVICE_DATA_16 && len >= 2 + ENCRYPTED_BEACON_SIZE {
+                // Skip len, type, uuid (2 bytes)
+                let beacon_data = &packet.adv_data[offset + 4..offset + 4 + ENCRYPTED_BEACON_SIZE];
+
+                // Decrypt and verify
+                if let Some((decrypted, decrypted_mesh_id)) =
+                    EncryptedBeacon::decrypt(beacon_data, &beacon_key)
+                {
+                    assert_eq!(decrypted.node_id, node_id);
+                    assert_eq!(decrypted.capabilities, 0x0F00);
+                    assert_eq!(decrypted.hierarchy_level, u8::from(HierarchyLevel::Squad));
+                    assert_eq!(decrypted.battery_percent, 85);
+                    assert_eq!(decrypted_mesh_id, mesh_id_bytes);
+                    found_beacon = true;
+                }
+            }
+            offset += 1 + len;
+        }
+
+        assert!(
+            found_beacon,
+            "Encrypted beacon not found in advertising data"
+        );
     }
 }

@@ -54,11 +54,16 @@
 
 mod advertiser;
 mod beacon;
+mod encrypted_beacon;
 mod scanner;
 
-pub use advertiser::{Advertiser, AdvertiserState, AdvertisingPacket};
+pub use advertiser::{Advertiser, AdvertiserState, AdvertisingMode, AdvertisingPacket};
 pub use beacon::{
     HiveBeacon, ParsedAdvertisement, BEACON_COMPACT_SIZE, BEACON_SIZE, BEACON_VERSION,
+};
+pub use encrypted_beacon::{
+    mesh_id_to_bytes, BeaconKey, EncryptedBeacon, ENCRYPTED_BEACON_SIZE, ENCRYPTED_BEACON_VERSION,
+    ENCRYPTED_DEVICE_NAME,
 };
 #[cfg(feature = "std")]
 pub use scanner::Scanner;
