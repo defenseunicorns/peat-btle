@@ -226,6 +226,15 @@ pub use peer::{
     MAX_TRACKED_DEGREE,
 };
 pub use peer_manager::PeerManager;
+
+// Device identity and attestation
+pub use security::{
+    DeviceIdentity, IdentityAttestation, IdentityError, IdentityRecord, IdentityRegistry,
+    RegistryResult,
+};
+// Mesh genesis and credentials
+pub use security::{MembershipPolicy, MeshCredentials, MeshGenesis};
+
 // Phase 1: Mesh-wide encryption
 pub use security::{EncryptedDocument, EncryptionError, MeshEncryptionKey};
 // Phase 2: Per-peer E2EE

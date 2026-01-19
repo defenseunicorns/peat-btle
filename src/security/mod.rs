@@ -77,11 +77,15 @@ mod identity;
 mod mesh_key;
 mod peer_key;
 mod peer_session;
+mod registry;
 
 // Device identity and attestation
 pub use identity::{
     node_id_from_public_key, verify_signature, DeviceIdentity, IdentityAttestation, IdentityError,
 };
+
+// TOFU Identity Registry
+pub use registry::{IdentityRecord, IdentityRegistry, RegistryResult};
 
 // Mesh genesis and credentials
 pub use genesis::{MembershipPolicy, MeshCredentials, MeshGenesis};

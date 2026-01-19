@@ -72,7 +72,8 @@ use crate::relay::{
     RELAY_ENVELOPE_MARKER,
 };
 use crate::security::{
-    KeyExchangeMessage, MeshEncryptionKey, PeerEncryptedMessage, PeerSessionManager, SessionState,
+    DeviceIdentity, IdentityAttestation, IdentityRegistry, KeyExchangeMessage, MeshEncryptionKey,
+    PeerEncryptedMessage, PeerSessionManager, RegistryResult, SessionState,
 };
 use crate::sync::crdt::{EventType, PeripheralType};
 use crate::sync::delta::{DeltaEncoder, DeltaStats};
@@ -293,6 +294,17 @@ pub struct HiveMesh {
     /// Tracks what data has been sent to each peer to enable delta sync
     /// (sending only changes instead of full documents).
     delta_encoder: std::sync::Mutex<DeltaEncoder>,
+
+    /// This node's cryptographic identity (Ed25519 keypair)
+    ///
+    /// When set, the node_id is derived from the public key and documents
+    /// can be signed for authenticity verification.
+    identity: Option<DeviceIdentity>,
+
+    /// TOFU identity registry for tracking peer identities
+    ///
+    /// Maps node_id to public key on first contact, rejects mismatches.
+    identity_registry: std::sync::Mutex<IdentityRegistry>,
 }
 
 #[cfg(feature = "std")]
@@ -340,7 +352,76 @@ impl HiveMesh {
             seen_cache: std::sync::Mutex::new(seen_cache),
             gossip_strategy,
             delta_encoder: std::sync::Mutex::new(delta_encoder),
+            identity: None,
+            identity_registry: std::sync::Mutex::new(IdentityRegistry::new()),
         }
+    }
+
+    /// Create a new HiveMesh with a cryptographic identity
+    ///
+    /// The node_id will be derived from the identity's public key, overriding
+    /// any node_id specified in the config. This ensures cryptographic binding
+    /// between node_id and identity.
+    pub fn with_identity(config: HiveMeshConfig, identity: DeviceIdentity) -> Self {
+        // Override node_id with identity-derived value
+        let mut config = config;
+        config.node_id = identity.node_id();
+
+        let peer_manager = PeerManager::new(config.node_id, config.peer_config.clone());
+        let document_sync = DocumentSync::with_peripheral_type(
+            config.node_id,
+            &config.callsign,
+            config.peripheral_type,
+        );
+
+        let encryption_key = config
+            .encryption_secret
+            .map(|secret| MeshEncryptionKey::from_shared_secret(&config.mesh_id, &secret));
+
+        let connection_graph = ConnectionStateGraph::with_config(
+            config.peer_config.rssi_degraded_threshold,
+            config.peer_config.lost_timeout_ms,
+        );
+
+        let seen_cache = SeenMessageCache::with_ttl(config.seen_cache_ttl_ms);
+        let gossip_strategy: Box<dyn GossipStrategy> =
+            Box::new(RandomFanout::new(config.relay_fanout));
+        let delta_encoder = DeltaEncoder::new(config.node_id);
+
+        Self {
+            config,
+            peer_manager,
+            document_sync,
+            observers: ObserverManager::new(),
+            last_sync_ms: std::sync::atomic::AtomicU32::new(0),
+            last_cleanup_ms: std::sync::atomic::AtomicU32::new(0),
+            encryption_key,
+            peer_sessions: std::sync::Mutex::new(None),
+            connection_graph: std::sync::Mutex::new(connection_graph),
+            seen_cache: std::sync::Mutex::new(seen_cache),
+            gossip_strategy,
+            delta_encoder: std::sync::Mutex::new(delta_encoder),
+            identity: Some(identity),
+            identity_registry: std::sync::Mutex::new(IdentityRegistry::new()),
+        }
+    }
+
+    /// Create a new HiveMesh from genesis data
+    ///
+    /// This is the recommended way to create a mesh for production use.
+    /// The mesh will be configured with:
+    /// - node_id derived from identity
+    /// - mesh_id from genesis
+    /// - encryption enabled using genesis-derived secret
+    pub fn from_genesis(
+        genesis: &crate::security::MeshGenesis,
+        identity: DeviceIdentity,
+        callsign: &str,
+    ) -> Self {
+        let config = HiveMeshConfig::new(identity.node_id(), callsign, &genesis.mesh_id())
+            .with_encryption(genesis.encryption_secret());
+
+        Self::with_identity(config, identity)
     }
 
     // ==================== Encryption ====================
@@ -452,6 +533,103 @@ impl HiveMesh {
                 // Permissive mode: accept unencrypted for backward compatibility
                 Some(std::borrow::Cow::Borrowed(data))
             }
+        }
+    }
+
+    // ==================== Identity ====================
+
+    /// Check if this mesh has a cryptographic identity
+    pub fn has_identity(&self) -> bool {
+        self.identity.is_some()
+    }
+
+    /// Get this node's public key (if identity is configured)
+    pub fn public_key(&self) -> Option<[u8; 32]> {
+        self.identity.as_ref().map(|id| id.public_key())
+    }
+
+    /// Create an identity attestation for this node
+    ///
+    /// Returns None if no identity is configured.
+    pub fn create_attestation(&self, now_ms: u64) -> Option<IdentityAttestation> {
+        self.identity
+            .as_ref()
+            .map(|id| id.create_attestation(now_ms))
+    }
+
+    /// Verify and register a peer's identity attestation
+    ///
+    /// Implements TOFU (Trust On First Use):
+    /// - On first contact, registers the node_id → public_key binding
+    /// - On subsequent contacts, verifies the public key matches
+    ///
+    /// Returns the verification result. Security violations should be handled
+    /// by the caller (e.g., disconnect, alert).
+    pub fn verify_peer_identity(&self, attestation: &IdentityAttestation) -> RegistryResult {
+        self.identity_registry
+            .lock()
+            .unwrap()
+            .verify_or_register(attestation)
+    }
+
+    /// Check if a peer's identity is known (has been registered)
+    pub fn is_peer_identity_known(&self, node_id: NodeId) -> bool {
+        self.identity_registry.lock().unwrap().is_known(node_id)
+    }
+
+    /// Get a peer's public key if known
+    pub fn peer_public_key(&self, node_id: NodeId) -> Option<[u8; 32]> {
+        self.identity_registry
+            .lock()
+            .unwrap()
+            .get_public_key(node_id)
+            .copied()
+    }
+
+    /// Get the number of known peer identities
+    pub fn known_identity_count(&self) -> usize {
+        self.identity_registry.lock().unwrap().len()
+    }
+
+    /// Pre-register a peer's identity (for out-of-band key exchange)
+    ///
+    /// Use this when keys are exchanged through a secure side channel
+    /// (e.g., QR code, NFC tap, or provisioning server).
+    pub fn pre_register_peer_identity(&self, node_id: NodeId, public_key: [u8; 32], now_ms: u64) {
+        self.identity_registry
+            .lock()
+            .unwrap()
+            .pre_register(node_id, public_key, now_ms);
+    }
+
+    /// Remove a peer's identity from the registry
+    ///
+    /// Use with caution - this allows re-registration with a different key.
+    pub fn forget_peer_identity(&self, node_id: NodeId) {
+        self.identity_registry.lock().unwrap().remove(node_id);
+    }
+
+    /// Sign arbitrary data with this node's identity
+    ///
+    /// Returns None if no identity is configured.
+    pub fn sign(&self, data: &[u8]) -> Option<[u8; 64]> {
+        self.identity.as_ref().map(|id| id.sign(data))
+    }
+
+    /// Verify a signature from a peer
+    ///
+    /// Uses the peer's public key from the identity registry.
+    /// Returns false if peer is unknown or signature is invalid.
+    pub fn verify_peer_signature(
+        &self,
+        node_id: NodeId,
+        data: &[u8],
+        signature: &[u8; 64],
+    ) -> bool {
+        if let Some(public_key) = self.peer_public_key(node_id) {
+            crate::security::verify_signature(&public_key, data, signature)
+        } else {
+            false
         }
     }
 

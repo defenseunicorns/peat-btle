@@ -61,6 +61,9 @@ x25519-dalek = { version = "2.0", features = ["static_secrets"] }
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 blake3 = "1.5"
 
+# no_std HashMap for IdentityRegistry
+hashbrown = "0.15"
+
 # Async runtime (optional, for std platforms)
 tokio = { version = "1.42", features = ["sync", "time", "macros", "rt-multi-thread"], optional = true }
 
