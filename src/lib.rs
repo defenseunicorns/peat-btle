@@ -244,6 +244,12 @@ pub use security::{
     PeerSessionManager, SessionState,
 };
 
+// Credential persistence
+#[cfg(feature = "std")]
+pub use security::{
+    MemoryStorage, PersistedState, PersistenceError, SecureStorage, PERSISTED_STATE_VERSION,
+};
+
 // Gossip and persistence abstractions
 #[cfg(feature = "std")]
 pub use gossip::{BroadcastAll, EmergencyAware, GossipStrategy, RandomFanout, SignalBasedFanout};

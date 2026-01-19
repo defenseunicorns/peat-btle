@@ -77,6 +77,7 @@ mod identity;
 mod mesh_key;
 mod peer_key;
 mod peer_session;
+mod persistence;
 mod registry;
 
 // Device identity and attestation
@@ -100,4 +101,9 @@ pub use peer_key::{
 pub use peer_session::{
     PeerEncryptedMessage, PeerSession, PeerSessionManager, SessionState, DEFAULT_MAX_SESSIONS,
     DEFAULT_SESSION_TIMEOUT_MS,
+};
+
+// Credential persistence
+pub use persistence::{
+    MemoryStorage, PersistedState, PersistenceError, SecureStorage, PERSISTED_STATE_VERSION,
 };

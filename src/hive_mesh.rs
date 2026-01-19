@@ -424,6 +424,90 @@ impl HiveMesh {
         Self::with_identity(config, identity)
     }
 
+    /// Create a HiveMesh from persisted state.
+    ///
+    /// Restores mesh configuration from previously saved state, including:
+    /// - Device identity (Ed25519 keypair)
+    /// - Mesh genesis (if present)
+    /// - Identity registry (TOFU cache)
+    ///
+    /// Use this on device boot to restore mesh membership without re-provisioning.
+    ///
+    /// # Arguments
+    ///
+    /// * `state` - Previously persisted state
+    /// * `callsign` - Human-readable identifier (may differ from original)
+    ///
+    /// # Errors
+    ///
+    /// Returns `PersistenceError` if the identity cannot be restored.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // On boot, restore from secure storage
+    /// let state = PersistedState::load(&storage)?;
+    /// let mesh = HiveMesh::from_persisted(state, "SENSOR-01")?;
+    /// ```
+    #[cfg(feature = "std")]
+    pub fn from_persisted(
+        state: crate::security::PersistedState,
+        callsign: &str,
+    ) -> Result<Self, crate::security::PersistenceError> {
+        // Restore identity
+        let identity = state.restore_identity()?;
+
+        // Restore genesis (if present)
+        let genesis = state.restore_genesis();
+
+        // Create mesh with or without genesis
+        let mesh = if let Some(ref gen) = genesis {
+            Self::from_genesis(gen, identity, callsign)
+        } else {
+            let config = HiveMeshConfig::new(identity.node_id(), callsign, "RESTORED");
+            Self::with_identity(config, identity)
+        };
+
+        // Restore identity registry
+        let restored_registry = state.restore_registry();
+        if let Ok(mut registry) = mesh.identity_registry.lock() {
+            *registry = restored_registry;
+        }
+
+        log::info!(
+            "HiveMesh restored from persisted state: node_id={:08X}, known_peers={}",
+            mesh.config.node_id.as_u32(),
+            mesh.known_identity_count()
+        );
+
+        Ok(mesh)
+    }
+
+    /// Create persisted state from current mesh state.
+    ///
+    /// Captures the current identity, genesis, and registry for persistence.
+    /// Call this periodically or before shutdown to save state.
+    ///
+    /// # Arguments
+    ///
+    /// * `genesis` - Optional genesis to include (if mesh was created from genesis)
+    ///
+    /// # Returns
+    ///
+    /// `None` if the mesh has no identity bound.
+    #[cfg(feature = "std")]
+    pub fn to_persisted_state(
+        &self,
+        genesis: Option<&crate::security::MeshGenesis>,
+    ) -> Option<crate::security::PersistedState> {
+        let identity = self.identity.as_ref()?;
+        let registry = self.identity_registry.lock().ok()?;
+
+        Some(crate::security::PersistedState::with_registry(
+            identity, genesis, &registry,
+        ))
+    }
+
     // ==================== Encryption ====================
 
     /// Check if mesh-wide encryption is enabled
