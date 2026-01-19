@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.1.0-SNAPSHOT"  // RC with identity/genesis security features
+version = "0.1.0-rc1"  // RC with identity/genesis security features
 
 android {
     namespace = "com.revolveteam.hive"
