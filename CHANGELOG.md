@@ -7,22 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- ESP32 platform support with NimBLE integration
-- macOS platform support with CoreBluetooth
-- iOS platform support with CoreBluetooth
-- EmergencyEvent CRDT with distributed ACK tracking
-- Peer connection tracking and management
-- GATT server and client implementations for all platforms
-- Cross-platform CRDT document synchronization
-- Swift test application for macOS/iOS testing
+## [0.0.12] - 2026-01-19
 
-### Changed
-- Centralized peer management and document sync
-- Improved peer connection tracking and display updates
+### Added
+- ADR-002: Mesh Provisioning and Node Onboarding architecture
+- Codex.md with Radicle workflow guide and CI documentation
+- Security implementation roadmap with 8 tracked issues
 
 ### Fixed
-- EMERGENCY/ACK sync between ESP32 and macOS/iOS devices
+- Clippy warnings in linux adapter (derivable_impls, type_complexity, manual_strip, clone_on_copy)
+- Range contains checks in CRDT validation
+- linux_scanner example (rand dependency, callback types)
+- Code formatting across multiple files
+
+## [0.0.11] - 2026-01-18
+
+### Added
+- ChatCRDT for persistent mesh chat with reply threading
+- Chat message deduplication in Android bindings
+- MTU overflow protection (CHAT_SYNC_LIMIT=8)
+- Profiling stress test example
+
+### Fixed
+- BLE MTU overflow crash with large chat histories
+- Duplicate chat notifications in Android
 
 ## [0.1.0] - 2024-12-01
 

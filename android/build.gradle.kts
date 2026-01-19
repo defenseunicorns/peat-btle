@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.0.11"  // Added chat message support (0xAD)
+version = "0.0.12"  // ADR-002, clippy fixes, CI docs
 
 android {
     namespace = "com.revolveteam.hive"
