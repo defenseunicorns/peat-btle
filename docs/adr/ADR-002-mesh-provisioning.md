@@ -4,7 +4,13 @@
 **Date**: 2026-01-19
 **Authors**: (r)evolve Team
 **Depends On**: ADR-001 (Trust Architecture)
-**Related Issues**: 97f090e (Identity), 3920c2c (Membership)
+**Related Issues**:
+- 97f090e (Identity Binding)
+- 3920c2c (Membership Control)
+- fdef59b (Mesh Genesis)
+- ffed828 (Node Provisioning)
+- b37d4bc (Trust Hierarchy)
+- b3b0bf0 (Credential Persistence)
 
 ---
 
