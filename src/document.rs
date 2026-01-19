@@ -732,7 +732,7 @@ mod tests {
     fn test_document_encode_decode_with_event() {
         let node_id = NodeId::new(0x12345678);
         let mut peripheral = Peripheral::new(0xAABBCCDD, PeripheralType::SoldierSensor);
-        peripheral.set_event(EventType::Emergency, 1234567890);
+        peripheral.set_event(EventType::Emergency, TEST_TIMESTAMP);
 
         let doc = HiveDocument::new(node_id).with_peripheral(peripheral);
 
@@ -744,7 +744,7 @@ mod tests {
         assert!(p.last_event.is_some());
         let event = p.last_event.unwrap();
         assert_eq!(event.event_type, EventType::Emergency);
-        assert_eq!(event.timestamp, 1234567890);
+        assert_eq!(event.timestamp, TEST_TIMESTAMP);
     }
 
     #[test]
@@ -828,6 +828,9 @@ mod tests {
     // Chat CRDT Document Tests
     // ============================================================================
 
+    // Valid timestamp for tests: 2024-01-15 00:00:00 UTC
+    const TEST_TIMESTAMP: u64 = 1705276800000;
+
     #[test]
     fn test_document_add_chat_message() {
         let node_id = NodeId::new(0x12345678);
@@ -837,16 +840,16 @@ mod tests {
         assert_eq!(doc.chat_count(), 0);
 
         // Add a message
-        assert!(doc.add_chat_message(0x12345678, 1000, "ALPHA", "Hello mesh!"));
+        assert!(doc.add_chat_message(0x12345678, TEST_TIMESTAMP, "ALPHA", "Hello mesh!"));
         assert!(doc.has_chat());
         assert_eq!(doc.chat_count(), 1);
 
         // Duplicate should be rejected
-        assert!(!doc.add_chat_message(0x12345678, 1000, "ALPHA", "Hello mesh!"));
+        assert!(!doc.add_chat_message(0x12345678, TEST_TIMESTAMP, "ALPHA", "Hello mesh!"));
         assert_eq!(doc.chat_count(), 1);
 
         // Different message should be accepted
-        assert!(doc.add_chat_message(0x12345678, 2000, "ALPHA", "Second message"));
+        assert!(doc.add_chat_message(0x12345678, TEST_TIMESTAMP + 1000, "ALPHA", "Second message"));
         assert_eq!(doc.chat_count(), 2);
     }
 
@@ -856,26 +859,26 @@ mod tests {
         let mut doc = HiveDocument::new(node_id);
 
         // Add original message
-        doc.add_chat_message(0xAABBCCDD, 1000, "BRAVO", "Need assistance");
+        doc.add_chat_message(0xAABBCCDD, TEST_TIMESTAMP, "BRAVO", "Need assistance");
 
         // Add reply
         assert!(doc.add_chat_reply(
             0x12345678,
-            2000,
+            TEST_TIMESTAMP + 1000,
             "ALPHA",
             "Copy that",
-            0xAABBCCDD, // reply to node
-            1000        // reply to timestamp
+            0xAABBCCDD,     // reply to node
+            TEST_TIMESTAMP  // reply to timestamp
         ));
 
         assert_eq!(doc.chat_count(), 2);
 
         // Verify reply-to info
         let chat = doc.get_chat().unwrap();
-        let reply = chat.get_message(0x12345678, 2000).unwrap();
+        let reply = chat.get_message(0x12345678, TEST_TIMESTAMP + 1000).unwrap();
         assert!(reply.is_reply());
         assert_eq!(reply.reply_to_node, 0xAABBCCDD);
-        assert_eq!(reply.reply_to_timestamp, 1000);
+        assert_eq!(reply.reply_to_timestamp, TEST_TIMESTAMP);
     }
 
     #[test]
@@ -883,8 +886,8 @@ mod tests {
         let node_id = NodeId::new(0x12345678);
         let mut doc = HiveDocument::new(node_id);
 
-        doc.add_chat_message(0x12345678, 1000, "ALPHA", "First message");
-        doc.add_chat_message(0xAABBCCDD, 2000, "BRAVO", "Second message");
+        doc.add_chat_message(0x12345678, TEST_TIMESTAMP, "ALPHA", "First message");
+        doc.add_chat_message(0xAABBCCDD, TEST_TIMESTAMP + 1000, "BRAVO", "Second message");
 
         let encoded = doc.encode();
         let decoded = HiveDocument::decode(&encoded).unwrap();
@@ -893,11 +896,11 @@ mod tests {
         assert_eq!(decoded.chat_count(), 2);
 
         let chat = decoded.get_chat().unwrap();
-        let msg1 = chat.get_message(0x12345678, 1000).unwrap();
+        let msg1 = chat.get_message(0x12345678, TEST_TIMESTAMP).unwrap();
         assert_eq!(msg1.sender(), "ALPHA");
         assert_eq!(msg1.text(), "First message");
 
-        let msg2 = chat.get_message(0xAABBCCDD, 2000).unwrap();
+        let msg2 = chat.get_message(0xAABBCCDD, TEST_TIMESTAMP + 1000).unwrap();
         assert_eq!(msg2.sender(), "BRAVO");
         assert_eq!(msg2.text(), "Second message");
     }
@@ -908,10 +911,10 @@ mod tests {
         let node2 = NodeId::new(0x22222222);
 
         let mut doc1 = HiveDocument::new(node1);
-        doc1.add_chat_message(0x11111111, 1000, "ALPHA", "From node 1");
+        doc1.add_chat_message(0x11111111, TEST_TIMESTAMP, "ALPHA", "From node 1");
 
         let mut doc2 = HiveDocument::new(node2);
-        doc2.add_chat_message(0x22222222, 2000, "BRAVO", "From node 2");
+        doc2.add_chat_message(0x22222222, TEST_TIMESTAMP + 1000, "BRAVO", "From node 2");
 
         // Merge doc2 into doc1
         let changed = doc1.merge(&doc2);
@@ -924,8 +927,10 @@ mod tests {
 
         // Verify both messages present
         let chat = doc1.get_chat().unwrap();
-        assert!(chat.get_message(0x11111111, 1000).is_some());
-        assert!(chat.get_message(0x22222222, 2000).is_some());
+        assert!(chat.get_message(0x11111111, TEST_TIMESTAMP).is_some());
+        assert!(chat
+            .get_message(0x22222222, TEST_TIMESTAMP + 1000)
+            .is_some());
     }
 
     #[test]
@@ -936,7 +941,7 @@ mod tests {
         let base_size = doc.encoded_size();
 
         // Add a message
-        doc.add_chat_message(0x12345678, 1000, "ALPHA", "Test");
+        doc.add_chat_message(0x12345678, TEST_TIMESTAMP, "ALPHA", "Test");
 
         // Size should increase
         let with_chat_size = doc.encoded_size();

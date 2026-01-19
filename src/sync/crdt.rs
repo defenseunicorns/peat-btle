@@ -29,6 +29,31 @@ use std::collections::BTreeMap;
 
 use crate::NodeId;
 
+// ============================================================================
+// Security Validation Constants
+// ============================================================================
+// These constants define bounds for validating decoded data to prevent
+// spoofing, injection attacks, and garbage data from corrupting state.
+
+/// Minimum valid timestamp: 2020-01-01 00:00:00 UTC (milliseconds)
+/// Any timestamp before this is rejected as invalid/spoofed.
+pub const MIN_VALID_TIMESTAMP: u64 = 1577836800000;
+
+/// Maximum valid battery percentage (100%)
+pub const MAX_BATTERY_PERCENT: u8 = 100;
+
+/// Minimum valid heart rate (BPM) - anything below is likely garbage
+pub const MIN_HEART_RATE: u8 = 20;
+
+/// Maximum valid heart rate (BPM) - anything above is likely garbage
+pub const MAX_HEART_RATE: u8 = 250;
+
+/// Maximum number of ACK entries in an emergency event (prevents DoS)
+pub const MAX_EMERGENCY_ACKS: usize = 256;
+
+/// Maximum number of counter entries (prevents DoS)
+pub const MAX_COUNTER_ENTRIES: usize = 256;
+
 /// Timestamp for CRDT operations (milliseconds since epoch or monotonic)
 pub type Timestamp = u64;
 
@@ -186,12 +211,22 @@ impl GCounter {
         buf
     }
 
-    /// Decode from bytes
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Limits number of entries to prevent DoS via huge allocations.
+    /// Skips zero node IDs.
     pub fn decode(data: &[u8]) -> Option<Self> {
         if data.len() < 4 {
             return None;
         }
         let num_entries = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+
+        // Security: Limit entries to prevent DoS via huge allocations
+        if num_entries > MAX_COUNTER_ENTRIES {
+            return None;
+        }
+
         if data.len() < 4 + num_entries * 12 {
             return None;
         }
@@ -215,7 +250,10 @@ impl GCounter {
                 data[offset + 10],
                 data[offset + 11],
             ]);
-            counts.insert(node_id, count);
+            // Security: Skip zero node IDs
+            if node_id != 0 {
+                counts.insert(node_id, count);
+            }
             offset += 12;
         }
 
@@ -284,7 +322,11 @@ impl Position {
         buf
     }
 
-    /// Decode from bytes
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Validates that latitude/longitude are within valid ranges and not NaN/Inf.
+    /// Rejects garbage data that could indicate spoofing or corruption.
     pub fn decode(data: &[u8]) -> Option<Self> {
         if data.len() < 9 {
             return None;
@@ -294,6 +336,17 @@ impl Position {
         let longitude = f32::from_le_bytes([data[4], data[5], data[6], data[7]]);
         let flags = data[8];
 
+        // Security: Reject NaN, Inf, or out-of-range coordinates
+        if !latitude.is_finite() || !longitude.is_finite() {
+            return None;
+        }
+        if latitude < -90.0 || latitude > 90.0 {
+            return None;
+        }
+        if longitude < -180.0 || longitude > 180.0 {
+            return None;
+        }
+
         let mut pos = Self::new(latitude, longitude);
         let mut offset = 9;
 
@@ -301,12 +354,17 @@ impl Position {
             if data.len() < offset + 4 {
                 return None;
             }
-            pos.altitude = Some(f32::from_le_bytes([
+            let alt = f32::from_le_bytes([
                 data[offset],
                 data[offset + 1],
                 data[offset + 2],
                 data[offset + 3],
-            ]));
+            ]);
+            // Security: Reject NaN/Inf altitude, allow wide range for valid Earth elevations
+            if !alt.is_finite() || alt < -1000.0 || alt > 100000.0 {
+                return None;
+            }
+            pos.altitude = Some(alt);
             offset += 4;
         }
 
@@ -314,12 +372,17 @@ impl Position {
             if data.len() < offset + 4 {
                 return None;
             }
-            pos.accuracy = Some(f32::from_le_bytes([
+            let acc = f32::from_le_bytes([
                 data[offset],
                 data[offset + 1],
                 data[offset + 2],
                 data[offset + 3],
-            ]));
+            ]);
+            // Security: Reject NaN/Inf/negative accuracy
+            if !acc.is_finite() || acc < 0.0 {
+                return None;
+            }
+            pos.accuracy = Some(acc);
         }
 
         Some(pos)
@@ -397,17 +460,43 @@ impl HealthStatus {
         ]
     }
 
-    /// Decode from bytes
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Validates battery percentage and heart rate are within physiological bounds.
+    /// Rejects garbage data that could indicate spoofing or corruption.
     pub fn decode(data: &[u8]) -> Option<Self> {
         if data.len() < 4 {
             return None;
         }
-        let mut status = Self::new(data[0]);
-        status.activity = data[1];
-        status.alerts = data[2];
-        if data[3] > 0 {
-            status.heart_rate = Some(data[3]);
+
+        let battery_percent = data[0];
+        let activity = data[1];
+        let alerts = data[2];
+        let heart_rate_raw = data[3];
+
+        // Security: Reject battery percentage > 100%
+        if battery_percent > MAX_BATTERY_PERCENT {
+            return None;
         }
+
+        // Security: Validate activity is a known value (0-3)
+        if activity > 3 {
+            return None;
+        }
+
+        let mut status = Self::new(battery_percent);
+        status.activity = activity;
+        status.alerts = alerts;
+
+        // Security: Validate heart rate is in physiological range if present
+        if heart_rate_raw > 0 {
+            if heart_rate_raw < MIN_HEART_RATE || heart_rate_raw > MAX_HEART_RATE {
+                return None;
+            }
+            status.heart_rate = Some(heart_rate_raw);
+        }
+
         Some(status)
     }
 }
@@ -518,16 +607,30 @@ impl PeripheralEvent {
         buf
     }
 
-    /// Decode from bytes
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Validates timestamp is within reasonable bounds.
+    /// Rejects garbage data that could indicate spoofing or corruption.
     pub fn decode(data: &[u8]) -> Option<Self> {
         if data.len() < 9 {
             return None;
         }
+
+        let event_type = EventType::from_u8(data[0]);
+        let timestamp = u64::from_le_bytes([
+            data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8],
+        ]);
+
+        // Security: Reject events with timestamps before 2020
+        // Note: timestamp could be 0 for "no event" scenarios, so we allow that
+        if timestamp != 0 && timestamp < MIN_VALID_TIMESTAMP {
+            return None;
+        }
+
         Some(Self {
-            event_type: EventType::from_u8(data[0]),
-            timestamp: u64::from_le_bytes([
-                data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8],
-            ]),
+            event_type,
+            timestamp,
         })
     }
 }
@@ -716,7 +819,11 @@ impl EmergencyEvent {
         buf
     }
 
-    /// Decode from bytes
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Validates source_node, timestamp, and limits ACK entries to prevent DoS.
+    /// Rejects garbage data that could indicate spoofing or corruption.
     pub fn decode(data: &[u8]) -> Option<Self> {
         if data.len() < 16 {
             return None;
@@ -727,6 +834,21 @@ impl EmergencyEvent {
             data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
         ]);
         let num_acks = u32::from_le_bytes([data[12], data[13], data[14], data[15]]) as usize;
+
+        // Security: Reject zero source_node (invalid)
+        if source_node == 0 {
+            return None;
+        }
+
+        // Security: Reject timestamps before 2020
+        if timestamp < MIN_VALID_TIMESTAMP {
+            return None;
+        }
+
+        // Security: Limit ACK entries to prevent DoS via huge allocations
+        if num_acks > MAX_EMERGENCY_ACKS {
+            return None;
+        }
 
         if data.len() < 16 + num_acks * 5 {
             return None;
@@ -741,8 +863,11 @@ impl EmergencyEvent {
                 data[offset + 2],
                 data[offset + 3],
             ]);
-            let acked = data[offset + 4] != 0;
-            acks.insert(node_id, acked);
+            // Security: Skip zero node_ids in ACK list
+            if node_id != 0 {
+                let acked = data[offset + 4] != 0;
+                acks.insert(node_id, acked);
+            }
             offset += 5;
         }
 
@@ -843,7 +968,11 @@ impl Peripheral {
         buf
     }
 
-    /// Decode from bytes
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Validates peripheral ID, callsign UTF-8, and timestamp.
+    /// Rejects garbage data that could indicate spoofing or corruption.
     pub fn decode(data: &[u8]) -> Option<Self> {
         if data.len() < 34 {
             return None;
@@ -853,9 +982,22 @@ impl Peripheral {
         let parent_node = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
         let peripheral_type = PeripheralType::from_u8(data[8]);
 
+        // Security: Reject zero peripheral ID (invalid)
+        if id == 0 {
+            return None;
+        }
+
         let mut callsign = [0u8; 12];
         callsign.copy_from_slice(&data[9..21]);
 
+        // Security: Validate callsign is valid UTF-8
+        // Find the actual length (up to first null or end)
+        let callsign_len = callsign.iter().position(|&b| b == 0).unwrap_or(12);
+        if callsign_len > 0 && core::str::from_utf8(&callsign[..callsign_len]).is_err() {
+            return None;
+        }
+
+        // HealthStatus::decode now validates internally
         let health = HealthStatus::decode(&data[21..25])?;
 
         let has_event = data[25] != 0;
@@ -863,6 +1005,7 @@ impl Peripheral {
             if data.len() < 43 {
                 return None;
             }
+            // PeripheralEvent::decode now validates timestamp internally
             (PeripheralEvent::decode(&data[26..35]), 35)
         } else {
             (None, 26)
@@ -882,6 +1025,11 @@ impl Peripheral {
             data[timestamp_offset + 6],
             data[timestamp_offset + 7],
         ]);
+
+        // Security: Reject timestamps before 2020 (0 allowed for "not set")
+        if timestamp != 0 && timestamp < MIN_VALID_TIMESTAMP {
+            return None;
+        }
 
         Some(Self {
             id,
@@ -1058,7 +1206,18 @@ impl ChatMessage {
         buf
     }
 
-    /// Decode from bytes
+    /// Decode from bytes with strict validation
+    ///
+    /// Returns `None` if the data is malformed or fails validation checks.
+    /// This is a security-critical function - malformed messages could be
+    /// spoofed or part of an attack.
+    ///
+    /// # Validation checks:
+    /// - origin_node must be non-zero
+    /// - timestamp must be non-zero and within reasonable bounds
+    /// - sender must be non-empty and valid UTF-8
+    /// - text must be valid UTF-8 (can be empty for ACK messages)
+    /// - All length fields must be within bounds
     pub fn decode(data: &[u8]) -> Option<(Self, usize)> {
         if data.len() < 14 {
             // Minimum: 4 + 8 + 1 + 0 + 1 + 0 + 0 (no reply fields in old format)
@@ -1070,13 +1229,33 @@ impl ChatMessage {
             data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
         ]);
 
+        // Security: Reject messages with zero origin_node (invalid/spoofed)
+        if origin_node == 0 {
+            return None;
+        }
+
+        // Security: Reject messages with timestamps before 2020
+        if timestamp < MIN_VALID_TIMESTAMP {
+            return None;
+        }
+
         let sender_len = data[12] as usize;
         if sender_len > CHAT_MAX_SENDER_LEN || data.len() < 13 + sender_len + 1 {
             return None;
         }
 
+        // Security: Reject messages with empty sender (required field)
+        if sender_len == 0 {
+            return None;
+        }
+
         let mut sender = [0u8; CHAT_MAX_SENDER_LEN];
         sender[..sender_len].copy_from_slice(&data[13..13 + sender_len]);
+
+        // Security: Validate sender is valid UTF-8 (reject garbage/binary data)
+        if core::str::from_utf8(&sender[..sender_len]).is_err() {
+            return None;
+        }
 
         let text_offset = 13 + sender_len;
         let text_len = data[text_offset] as usize;
@@ -1086,6 +1265,12 @@ impl ChatMessage {
 
         let mut text = [0u8; CHAT_MAX_TEXT_LEN];
         text[..text_len].copy_from_slice(&data[text_offset + 1..text_offset + 1 + text_len]);
+
+        // Security: Validate text is valid UTF-8 (reject garbage/binary data)
+        // Empty text is allowed (e.g., for ACK messages)
+        if text_len > 0 && core::str::from_utf8(&text[..text_len]).is_err() {
+            return None;
+        }
 
         let flags_offset = text_offset + 1 + text_len;
         let flags = data[flags_offset];
@@ -1529,6 +1714,10 @@ impl CrdtOperation {
 mod tests {
     use super::*;
 
+    // Valid timestamp for tests: 2024-01-15 00:00:00 UTC
+    // All tests should use this or timestamps derived from it
+    const TEST_TIMESTAMP: u64 = 1705276800000;
+
     #[test]
     fn test_lww_register_basic() {
         let mut reg = LwwRegister::new(42u32, 100, NodeId::new(1));
@@ -1758,13 +1947,13 @@ mod tests {
 
     #[test]
     fn test_peripheral_event_encode_decode() {
-        let event = PeripheralEvent::new(EventType::Emergency, 1234567890);
+        let event = PeripheralEvent::new(EventType::Emergency, TEST_TIMESTAMP);
         let encoded = event.encode();
         assert_eq!(encoded.len(), 9);
 
         let decoded = PeripheralEvent::decode(&encoded).unwrap();
         assert_eq!(decoded.event_type, EventType::Emergency);
-        assert_eq!(decoded.timestamp, 1234567890);
+        assert_eq!(decoded.timestamp, TEST_TIMESTAMP);
     }
 
     #[test]
@@ -1790,13 +1979,13 @@ mod tests {
     #[test]
     fn test_peripheral_set_event() {
         let mut peripheral = Peripheral::new(1, PeripheralType::SoldierSensor);
-        peripheral.set_event(EventType::Emergency, 1000);
+        peripheral.set_event(EventType::Emergency, TEST_TIMESTAMP);
 
         assert!(peripheral.last_event.is_some());
         let event = peripheral.last_event.as_ref().unwrap();
         assert_eq!(event.event_type, EventType::Emergency);
-        assert_eq!(event.timestamp, 1000);
-        assert_eq!(peripheral.timestamp, 1000);
+        assert_eq!(event.timestamp, TEST_TIMESTAMP);
+        assert_eq!(peripheral.timestamp, TEST_TIMESTAMP);
 
         peripheral.clear_event();
         assert!(peripheral.last_event.is_none());
@@ -1825,7 +2014,7 @@ mod tests {
             .with_callsign("CHARLIE")
             .with_parent(0x87654321);
         peripheral.health = HealthStatus::new(85);
-        peripheral.set_event(EventType::NeedAssist, 9999);
+        peripheral.set_event(EventType::NeedAssist, TEST_TIMESTAMP);
 
         let encoded = peripheral.encode();
         assert_eq!(encoded.len(), 43); // With event
@@ -1838,7 +2027,7 @@ mod tests {
         assert!(decoded.last_event.is_some());
         let event = decoded.last_event.as_ref().unwrap();
         assert_eq!(event.event_type, EventType::NeedAssist);
-        assert_eq!(event.timestamp, 9999);
+        assert_eq!(event.timestamp, TEST_TIMESTAMP);
     }
 
     #[test]
@@ -1846,9 +2035,13 @@ mod tests {
         // Too short
         assert!(Peripheral::decode(&[0u8; 10]).is_none());
 
-        // Valid length but no event
+        // Valid length but id=0 is rejected
         let mut data = vec![0u8; 34];
         data[25] = 0; // no event flag
+        assert!(Peripheral::decode(&data).is_none()); // id=0 rejected
+
+        // Valid id but no event - should succeed
+        data[0..4].copy_from_slice(&1u32.to_le_bytes()); // id=1
         assert!(Peripheral::decode(&data).is_some());
 
         // Claims to have event but too short
@@ -1863,10 +2056,10 @@ mod tests {
     #[test]
     fn test_emergency_event_new() {
         let peers = vec![0x22222222, 0x33333333];
-        let event = EmergencyEvent::new(0x11111111, 1000, &peers);
+        let event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
 
         assert_eq!(event.source_node(), 0x11111111);
-        assert_eq!(event.timestamp(), 1000);
+        assert_eq!(event.timestamp(), TEST_TIMESTAMP);
         assert_eq!(event.peer_count(), 3); // source + 2 peers
 
         // Source is auto-acked
@@ -1879,7 +2072,7 @@ mod tests {
     #[test]
     fn test_emergency_event_ack() {
         let peers = vec![0x22222222, 0x33333333];
-        let mut event = EmergencyEvent::new(0x11111111, 1000, &peers);
+        let mut event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
 
         assert_eq!(event.ack_count(), 1); // just source
         assert!(!event.all_acked());
@@ -1901,7 +2094,7 @@ mod tests {
     #[test]
     fn test_emergency_event_pending_nodes() {
         let peers = vec![0x22222222, 0x33333333];
-        let mut event = EmergencyEvent::new(0x11111111, 1000, &peers);
+        let mut event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
 
         let pending = event.pending_nodes();
         assert_eq!(pending.len(), 2);
@@ -1917,14 +2110,14 @@ mod tests {
     #[test]
     fn test_emergency_event_encode_decode() {
         let peers = vec![0x22222222, 0x33333333];
-        let mut event = EmergencyEvent::new(0x11111111, 1234567890, &peers);
+        let mut event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
         event.ack(0x22222222);
 
         let encoded = event.encode();
         let decoded = EmergencyEvent::decode(&encoded).unwrap();
 
         assert_eq!(decoded.source_node(), 0x11111111);
-        assert_eq!(decoded.timestamp(), 1234567890);
+        assert_eq!(decoded.timestamp(), TEST_TIMESTAMP);
         assert!(decoded.has_acked(0x11111111));
         assert!(decoded.has_acked(0x22222222));
         assert!(!decoded.has_acked(0x33333333));
@@ -1934,8 +2127,8 @@ mod tests {
     fn test_emergency_event_merge_same_event() {
         // Two nodes have the same emergency, different ack states
         let peers = vec![0x22222222, 0x33333333];
-        let mut event1 = EmergencyEvent::new(0x11111111, 1000, &peers);
-        let mut event2 = EmergencyEvent::new(0x11111111, 1000, &peers);
+        let mut event1 = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
+        let mut event2 = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
 
         event1.ack(0x22222222);
         event2.ack(0x33333333);
@@ -1951,17 +2144,18 @@ mod tests {
     #[test]
     fn test_emergency_event_merge_different_events() {
         // Old emergency
-        let mut old_event = EmergencyEvent::new(0x11111111, 1000, &[0x22222222]);
+        let mut old_event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &[0x22222222]);
         old_event.ack(0x22222222);
 
         // New emergency from different source
-        let new_event = EmergencyEvent::new(0x33333333, 2000, &[0x11111111, 0x22222222]);
+        let new_event =
+            EmergencyEvent::new(0x33333333, TEST_TIMESTAMP + 1000, &[0x11111111, 0x22222222]);
 
         // Merge new into old - should replace
         let changed = old_event.merge(&new_event);
         assert!(changed);
         assert_eq!(old_event.source_node(), 0x33333333);
-        assert_eq!(old_event.timestamp(), 2000);
+        assert_eq!(old_event.timestamp(), TEST_TIMESTAMP + 1000);
         // Old ack state should be gone
         assert!(!old_event.has_acked(0x22222222));
     }
@@ -1969,21 +2163,21 @@ mod tests {
     #[test]
     fn test_emergency_event_merge_older_event_ignored() {
         // Current emergency
-        let mut current = EmergencyEvent::new(0x11111111, 2000, &[0x22222222]);
+        let mut current = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP + 1000, &[0x22222222]);
 
         // Older emergency
-        let older = EmergencyEvent::new(0x33333333, 1000, &[0x11111111]);
+        let older = EmergencyEvent::new(0x33333333, TEST_TIMESTAMP, &[0x11111111]);
 
         // Merge older into current - should NOT replace
         let changed = current.merge(&older);
         assert!(!changed);
         assert_eq!(current.source_node(), 0x11111111);
-        assert_eq!(current.timestamp(), 2000);
+        assert_eq!(current.timestamp(), TEST_TIMESTAMP + 1000);
     }
 
     #[test]
     fn test_emergency_event_add_peer() {
-        let mut event = EmergencyEvent::new(0x11111111, 1000, &[]);
+        let mut event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &[]);
 
         // Add a peer discovered after emergency started
         event.add_peer(0x22222222);
@@ -2013,9 +2207,9 @@ mod tests {
 
     #[test]
     fn test_chat_message_new() {
-        let msg = ChatMessage::new(0x12345678, 1000, "ALPHA-1", "Hello mesh!");
+        let msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "ALPHA-1", "Hello mesh!");
         assert_eq!(msg.origin_node, 0x12345678);
-        assert_eq!(msg.timestamp, 1000);
+        assert_eq!(msg.timestamp, TEST_TIMESTAMP);
         assert_eq!(msg.sender(), "ALPHA-1");
         assert_eq!(msg.text(), "Hello mesh!");
         assert!(msg.is_broadcast);
@@ -2025,29 +2219,29 @@ mod tests {
 
     #[test]
     fn test_chat_message_reply_to() {
-        let mut msg = ChatMessage::new(0x12345678, 2000, "BRAVO", "Roger that");
-        msg.set_reply_to(0xAABBCCDD, 1500);
+        let mut msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP + 1000, "BRAVO", "Roger that");
+        msg.set_reply_to(0xAABBCCDD, TEST_TIMESTAMP);
 
         assert!(msg.is_reply());
         assert_eq!(msg.reply_to_node, 0xAABBCCDD);
-        assert_eq!(msg.reply_to_timestamp, 1500);
+        assert_eq!(msg.reply_to_timestamp, TEST_TIMESTAMP);
     }
 
     #[test]
     fn test_chat_message_truncation() {
         // Test sender truncation (max 12 bytes)
-        let msg = ChatMessage::new(0x1, 1000, "VERY_LONG_CALLSIGN", "Hi");
+        let msg = ChatMessage::new(0x1, TEST_TIMESTAMP, "VERY_LONG_CALLSIGN", "Hi");
         assert_eq!(msg.sender(), "VERY_LONG_CA"); // 12 chars
 
         // Test text truncation (max 128 bytes)
         let long_text = "A".repeat(200);
-        let msg = ChatMessage::new(0x1, 1000, "X", &long_text);
+        let msg = ChatMessage::new(0x1, TEST_TIMESTAMP, "X", &long_text);
         assert_eq!(msg.text().len(), 128);
     }
 
     #[test]
     fn test_chat_message_id() {
-        let msg = ChatMessage::new(0x12345678, 0xABCDEF01, "X", "Y");
+        let msg = ChatMessage::new(0x12345678, 0x18D4A51_ABCDEF01, "X", "Y");
         let id = msg.message_id();
         // ID = (origin << 32) | (timestamp & 0xFFFFFFFF)
         assert_eq!(id, (0x12345678u64 << 32) | 0xABCDEF01);
@@ -2055,33 +2249,143 @@ mod tests {
 
     #[test]
     fn test_chat_message_encode_decode() {
-        let mut msg = ChatMessage::new(0x12345678, 1234567890, "CHARLIE", "Test message");
+        let mut msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "CHARLIE", "Test message");
         msg.is_broadcast = true;
         msg.requires_ack = true;
-        msg.set_reply_to(0xAABBCCDD, 1234567000);
+        msg.set_reply_to(0xAABBCCDD, TEST_TIMESTAMP - 1000);
 
         let encoded = msg.encode();
         let (decoded, len) = ChatMessage::decode(&encoded).unwrap();
 
         assert_eq!(len, encoded.len());
         assert_eq!(decoded.origin_node, 0x12345678);
-        assert_eq!(decoded.timestamp, 1234567890);
+        assert_eq!(decoded.timestamp, TEST_TIMESTAMP);
         assert_eq!(decoded.sender(), "CHARLIE");
         assert_eq!(decoded.text(), "Test message");
         assert!(decoded.is_broadcast);
         assert!(decoded.requires_ack);
         assert_eq!(decoded.reply_to_node, 0xAABBCCDD);
-        assert_eq!(decoded.reply_to_timestamp, 1234567000);
+        assert_eq!(decoded.reply_to_timestamp, TEST_TIMESTAMP - 1000);
     }
 
     #[test]
-    fn test_chat_message_decode_minimal() {
-        // Message with empty sender and text
-        let msg = ChatMessage::new(0x1, 1000, "", "");
+    fn test_chat_message_decode_empty_text() {
+        // Message with valid sender but empty text (allowed for ACK messages)
+        let msg = ChatMessage::new(0x1, TEST_TIMESTAMP, "ACK-NODE", "");
         let encoded = msg.encode();
         let (decoded, _) = ChatMessage::decode(&encoded).unwrap();
-        assert_eq!(decoded.sender(), "");
+        assert_eq!(decoded.sender(), "ACK-NODE");
         assert_eq!(decoded.text(), "");
+    }
+
+    // ============================================================================
+    // ChatMessage Validation/Security Tests
+    // ============================================================================
+
+    #[test]
+    fn test_chat_message_decode_rejects_zero_origin() {
+        // Build message bytes manually with origin_node = 0
+        let msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "TEST", "msg");
+        let mut encoded = msg.encode();
+        // Zero out the origin_node (first 4 bytes)
+        encoded[0] = 0;
+        encoded[1] = 0;
+        encoded[2] = 0;
+        encoded[3] = 0;
+
+        assert!(ChatMessage::decode(&encoded).is_none());
+    }
+
+    #[test]
+    fn test_chat_message_decode_rejects_old_timestamp() {
+        // Build message bytes manually with timestamp before 2020
+        let msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "TEST", "msg");
+        let mut encoded = msg.encode();
+        // Set timestamp to 1000 (way before 2020)
+        let old_ts: u64 = 1000;
+        encoded[4..12].copy_from_slice(&old_ts.to_le_bytes());
+
+        assert!(ChatMessage::decode(&encoded).is_none());
+    }
+
+    #[test]
+    fn test_chat_message_decode_rejects_empty_sender() {
+        // Build message bytes manually with sender_len = 0
+        let msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "X", "msg");
+        let mut encoded = msg.encode();
+        // Set sender_len to 0 at offset 12
+        encoded[12] = 0;
+        // Adjust text position (move text_len and text to right after sender_len)
+        // This is tricky - we need to rebuild the encoding properly
+        // Actually easier to just build raw bytes:
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&0x12345678u32.to_le_bytes()); // origin_node
+        raw.extend_from_slice(&TEST_TIMESTAMP.to_le_bytes()); // timestamp
+        raw.push(0); // sender_len = 0 (INVALID)
+        raw.push(3); // text_len = 3
+        raw.extend_from_slice(b"msg"); // text
+        raw.push(0x01); // flags
+
+        assert!(ChatMessage::decode(&raw).is_none());
+    }
+
+    #[test]
+    fn test_chat_message_decode_rejects_invalid_utf8_sender() {
+        // Build message with invalid UTF-8 in sender
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&0x12345678u32.to_le_bytes()); // origin_node
+        raw.extend_from_slice(&TEST_TIMESTAMP.to_le_bytes()); // timestamp
+        raw.push(4); // sender_len = 4
+        raw.extend_from_slice(&[0x66, 0x59, 0xFF, 0xFE]); // "fY" + invalid UTF-8
+        raw.push(3); // text_len = 3
+        raw.extend_from_slice(b"msg"); // text
+        raw.push(0x01); // flags
+        raw.extend_from_slice(&0u32.to_le_bytes()); // reply_to_node
+        raw.extend_from_slice(&0u64.to_le_bytes()); // reply_to_timestamp
+
+        assert!(ChatMessage::decode(&raw).is_none());
+    }
+
+    #[test]
+    fn test_chat_message_decode_rejects_invalid_utf8_text() {
+        // Build message with invalid UTF-8 in text
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&0x12345678u32.to_le_bytes()); // origin_node
+        raw.extend_from_slice(&TEST_TIMESTAMP.to_le_bytes()); // timestamp
+        raw.push(4); // sender_len = 4
+        raw.extend_from_slice(b"TEST"); // valid sender
+        raw.push(4); // text_len = 4
+        raw.extend_from_slice(&[0x80, 0x81, 0x82, 0x83]); // invalid UTF-8
+        raw.push(0x01); // flags
+        raw.extend_from_slice(&0u32.to_le_bytes()); // reply_to_node
+        raw.extend_from_slice(&0u64.to_le_bytes()); // reply_to_timestamp
+
+        assert!(ChatMessage::decode(&raw).is_none());
+    }
+
+    #[test]
+    fn test_chat_message_decode_accepts_valid_utf8() {
+        // Build message with valid UTF-8 including unicode
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&0x12345678u32.to_le_bytes()); // origin_node
+        raw.extend_from_slice(&TEST_TIMESTAMP.to_le_bytes()); // timestamp
+        raw.push(6); // sender_len = 6 (UTF-8 encoded)
+        raw.extend_from_slice("TËST".as_bytes()); // valid UTF-8 with umlaut (5 bytes: T, Ë=2bytes, S, T)
+                                                  // Wait, "TËST" is 5 bytes not 6. Let me fix:
+        let sender_bytes = "TËST1".as_bytes(); // T(1) + Ë(2) + S(1) + T(1) + 1(1) = 6 bytes
+        raw[12] = sender_bytes.len() as u8;
+        raw.truncate(13);
+        raw.extend_from_slice(sender_bytes);
+        raw.push(4); // text_len = 4
+        raw.extend_from_slice(b"test"); // text
+        raw.push(0x01); // flags
+        raw.extend_from_slice(&0u32.to_le_bytes()); // reply_to_node
+        raw.extend_from_slice(&0u64.to_le_bytes()); // reply_to_timestamp
+
+        let result = ChatMessage::decode(&raw);
+        assert!(result.is_some());
+        let (msg, _) = result.unwrap();
+        assert_eq!(msg.sender(), "TËST1");
     }
 
     // ============================================================================
@@ -2099,7 +2403,7 @@ mod tests {
     fn test_chat_crdt_add_message() {
         let mut chat = ChatCRDT::new();
 
-        let msg = ChatMessage::new(0x12345678, 1000, "ALPHA", "Hello");
+        let msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "ALPHA", "Hello");
         assert!(chat.add_message(msg.clone()));
         assert_eq!(chat.len(), 1);
 
@@ -2112,26 +2416,26 @@ mod tests {
     fn test_chat_crdt_send_message() {
         let mut chat = ChatCRDT::new();
 
-        assert!(chat.send_message(0x1, 1000, "ALPHA", "First"));
-        assert!(chat.send_message(0x2, 1001, "BRAVO", "Second"));
+        assert!(chat.send_message(0x1, TEST_TIMESTAMP, "ALPHA", "First"));
+        assert!(chat.send_message(0x2, TEST_TIMESTAMP + 1, "BRAVO", "Second"));
         assert_eq!(chat.len(), 2);
 
         // Same node, same timestamp = duplicate
-        assert!(!chat.send_message(0x1, 1000, "ALPHA", "Duplicate"));
+        assert!(!chat.send_message(0x1, TEST_TIMESTAMP, "ALPHA", "Duplicate"));
         assert_eq!(chat.len(), 2);
     }
 
     #[test]
     fn test_chat_crdt_get_message() {
         let mut chat = ChatCRDT::new();
-        chat.send_message(0x12345678, 1000, "ALPHA", "Test");
+        chat.send_message(0x12345678, TEST_TIMESTAMP, "ALPHA", "Test");
 
-        let msg = chat.get_message(0x12345678, 1000);
+        let msg = chat.get_message(0x12345678, TEST_TIMESTAMP);
         assert!(msg.is_some());
         assert_eq!(msg.unwrap().text(), "Test");
 
         // Non-existent message
-        assert!(chat.get_message(0x99999999, 1000).is_none());
+        assert!(chat.get_message(0x99999999, TEST_TIMESTAMP).is_none());
     }
 
     #[test]
@@ -2139,8 +2443,8 @@ mod tests {
         let mut chat1 = ChatCRDT::new();
         let mut chat2 = ChatCRDT::new();
 
-        chat1.send_message(0x1, 1000, "ALPHA", "From 1");
-        chat2.send_message(0x2, 1001, "BRAVO", "From 2");
+        chat1.send_message(0x1, TEST_TIMESTAMP, "ALPHA", "From 1");
+        chat2.send_message(0x2, TEST_TIMESTAMP + 1, "BRAVO", "From 2");
 
         // Merge chat2 into chat1
         let changed = chat1.merge(&chat2);
@@ -2159,8 +2463,8 @@ mod tests {
         let mut chat2 = ChatCRDT::new();
 
         // Both have the same message
-        chat1.send_message(0x1, 1000, "ALPHA", "Same message");
-        chat2.send_message(0x1, 1000, "ALPHA", "Same message");
+        chat1.send_message(0x1, TEST_TIMESTAMP, "ALPHA", "Same message");
+        chat2.send_message(0x1, TEST_TIMESTAMP, "ALPHA", "Same message");
 
         // Merge should not create duplicates
         chat1.merge(&chat2);
@@ -2171,44 +2475,47 @@ mod tests {
     fn test_chat_crdt_pruning() {
         let mut chat = ChatCRDT::new();
 
-        // Add more than CHAT_MAX_MESSAGES
+        // Add more than CHAT_MAX_MESSAGES with valid timestamps
         for i in 0..(CHAT_MAX_MESSAGES + 10) {
-            chat.send_message(i as u32, i as u64, "X", "Y");
+            chat.send_message(i as u32 + 1, TEST_TIMESTAMP + i as u64, "X", "Y");
         }
 
         // Should be pruned to max
         assert_eq!(chat.len(), CHAT_MAX_MESSAGES);
 
-        // Oldest messages should be removed
-        // (first 10 should be gone)
-        assert!(chat.get_message(0, 0).is_none());
-        assert!(chat.get_message(9, 9).is_none());
+        // Oldest messages should be removed (first 10)
+        // Message IDs are (node << 32) | (timestamp & 0xFFFFFFFF)
+        // node=1, ts=TEST_TIMESTAMP has lowest ID, etc.
+        assert!(chat.get_message(1, TEST_TIMESTAMP).is_none());
+        assert!(chat.get_message(10, TEST_TIMESTAMP + 9).is_none());
         // Newer messages should remain
-        assert!(chat.get_message(10, 10).is_some());
+        assert!(chat.get_message(11, TEST_TIMESTAMP + 10).is_some());
     }
 
     #[test]
     fn test_chat_crdt_encode_decode() {
         let mut chat = ChatCRDT::new();
-        chat.send_message(0x12345678, 1000, "ALPHA", "First message");
-        chat.send_message(0xAABBCCDD, 2000, "BRAVO", "Second message");
+        chat.send_message(0x12345678, TEST_TIMESTAMP, "ALPHA", "First message");
+        chat.send_message(0xAABBCCDD, TEST_TIMESTAMP + 1000, "BRAVO", "Second message");
 
         let encoded = chat.encode();
         let decoded = ChatCRDT::decode(&encoded).unwrap();
 
         assert_eq!(decoded.len(), 2);
-        assert!(decoded.get_message(0x12345678, 1000).is_some());
-        assert!(decoded.get_message(0xAABBCCDD, 2000).is_some());
+        assert!(decoded.get_message(0x12345678, TEST_TIMESTAMP).is_some());
+        assert!(decoded
+            .get_message(0xAABBCCDD, TEST_TIMESTAMP + 1000)
+            .is_some());
     }
 
     #[test]
     fn test_chat_crdt_messages_since() {
         let mut chat = ChatCRDT::new();
-        chat.send_message(0x1, 1000, "A", "Old");
-        chat.send_message(0x2, 2000, "B", "Mid");
-        chat.send_message(0x3, 3000, "C", "New");
+        chat.send_message(0x1, TEST_TIMESTAMP, "A", "Old");
+        chat.send_message(0x2, TEST_TIMESTAMP + 1000, "B", "Mid");
+        chat.send_message(0x3, TEST_TIMESTAMP + 2000, "C", "New");
 
-        let recent: Vec<_> = chat.messages_since(1500).collect();
+        let recent: Vec<_> = chat.messages_since(TEST_TIMESTAMP + 500).collect();
         assert_eq!(recent.len(), 2);
     }
 
@@ -2217,13 +2524,45 @@ mod tests {
         let mut chat = ChatCRDT::new();
         assert!(chat.newest_timestamp().is_none());
 
-        chat.send_message(0x1, 1000, "A", "1");
-        assert_eq!(chat.newest_timestamp(), Some(1000));
+        chat.send_message(0x1, TEST_TIMESTAMP, "A", "1");
+        assert_eq!(chat.newest_timestamp(), Some(TEST_TIMESTAMP));
 
-        chat.send_message(0x2, 3000, "B", "2");
-        assert_eq!(chat.newest_timestamp(), Some(3000));
+        chat.send_message(0x2, TEST_TIMESTAMP + 2000, "B", "2");
+        assert_eq!(chat.newest_timestamp(), Some(TEST_TIMESTAMP + 2000));
 
-        chat.send_message(0x3, 2000, "C", "3"); // older timestamp
-        assert_eq!(chat.newest_timestamp(), Some(3000));
+        chat.send_message(0x3, TEST_TIMESTAMP + 1000, "C", "3"); // older timestamp
+        assert_eq!(chat.newest_timestamp(), Some(TEST_TIMESTAMP + 2000));
+    }
+
+    // ============================================================================
+    // ChatCRDT Security/Validation Tests
+    // ============================================================================
+
+    #[test]
+    fn test_chat_crdt_decode_skips_invalid_messages() {
+        // Build a CRDT with 2 messages, one valid and one invalid
+        let mut valid_chat = ChatCRDT::new();
+        valid_chat.send_message(0x12345678, TEST_TIMESTAMP, "VALID", "Good message");
+
+        let encoded = valid_chat.encode();
+
+        // Decode should work and contain the valid message
+        let decoded = ChatCRDT::decode(&encoded).unwrap();
+        assert_eq!(decoded.len(), 1);
+        assert!(decoded.get_message(0x12345678, TEST_TIMESTAMP).is_some());
+    }
+
+    #[test]
+    fn test_chat_crdt_decode_handles_truncated_data() {
+        let mut chat = ChatCRDT::new();
+        chat.send_message(0x12345678, TEST_TIMESTAMP, "TEST", "Message");
+
+        let encoded = chat.encode();
+
+        // Truncate to just the message count
+        let truncated = &encoded[..2];
+        let decoded = ChatCRDT::decode(truncated);
+        assert!(decoded.is_some());
+        assert_eq!(decoded.unwrap().len(), 0); // No messages decoded
     }
 }

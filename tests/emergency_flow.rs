@@ -21,6 +21,9 @@ use hive_btle::document::HiveDocument;
 use hive_btle::sync::crdt::{Peripheral, PeripheralType};
 use hive_btle::NodeId;
 
+// Valid timestamp for testing (2024-01-15 00:00:00 UTC)
+const TEST_TIMESTAMP: u64 = 1705276800000;
+
 /// Test basic emergency creation and encoding
 #[test]
 fn test_emergency_event_creation() {
@@ -30,12 +33,12 @@ fn test_emergency_event_creation() {
 
     // Set emergency with known peers
     let known_peers = vec![0x222, 0x333, 0x444];
-    doc.set_emergency(0x111, 1000, &known_peers);
+    doc.set_emergency(0x111, TEST_TIMESTAMP, &known_peers);
 
     assert!(doc.has_emergency());
     let emergency = doc.get_emergency().unwrap();
     assert_eq!(emergency.source_node(), 0x111);
-    assert_eq!(emergency.timestamp(), 1000);
+    assert_eq!(emergency.timestamp(), TEST_TIMESTAMP);
     assert!(!emergency.has_acked(0x222));
     assert!(!emergency.has_acked(0x333));
     assert!(!emergency.has_acked(0x444));
@@ -45,7 +48,7 @@ fn test_emergency_event_creation() {
 #[test]
 fn test_emergency_ack_recording() {
     let mut doc = HiveDocument::new(NodeId::new(0x111));
-    doc.set_emergency(0x111, 1000, &[0x222, 0x333]);
+    doc.set_emergency(0x111, TEST_TIMESTAMP, &[0x222, 0x333]);
 
     // ACK from node 0x222
     let changed = doc.ack_emergency(0x222);
@@ -67,7 +70,7 @@ fn test_emergency_propagation() {
     let mut doc_a = HiveDocument::new(NodeId::new(0xAAA));
     let peripheral = Peripheral::new(0xAAA, PeripheralType::SoldierSensor);
     doc_a.peripheral = Some(peripheral);
-    doc_a.set_emergency(0xAAA, 1000, &[0xBBB, 0xCCC]);
+    doc_a.set_emergency(0xAAA, TEST_TIMESTAMP, &[0xBBB, 0xCCC]);
 
     // Node B receives emergency
     let mut doc_b = HiveDocument::new(NodeId::new(0xBBB));
@@ -90,7 +93,7 @@ fn test_ack_propagation() {
     let known_peers = vec![0xBBB, 0xCCC];
 
     let mut doc_a = HiveDocument::new(NodeId::new(0xAAA));
-    doc_a.set_emergency(0xAAA, 1000, &known_peers);
+    doc_a.set_emergency(0xAAA, TEST_TIMESTAMP, &known_peers);
 
     let mut doc_b = HiveDocument::new(NodeId::new(0xBBB));
     let mut doc_c = HiveDocument::new(NodeId::new(0xCCC));
@@ -133,7 +136,7 @@ fn test_ack_merge_from_multiple_paths() {
     let known_peers = vec![0xBBB, 0xCCC, 0xDDD];
 
     let mut doc_a = HiveDocument::new(NodeId::new(0xAAA));
-    doc_a.set_emergency(0xAAA, 1000, &known_peers);
+    doc_a.set_emergency(0xAAA, TEST_TIMESTAMP, &known_peers);
 
     let mut doc_b = HiveDocument::new(NodeId::new(0xBBB));
     let mut doc_c = HiveDocument::new(NodeId::new(0xCCC));
@@ -180,7 +183,7 @@ fn test_ack_merge_from_multiple_paths() {
 #[test]
 fn test_emergency_clear() {
     let mut doc = HiveDocument::new(NodeId::new(0x111));
-    doc.set_emergency(0x111, 1000, &[0x222]);
+    doc.set_emergency(0x111, TEST_TIMESTAMP, &[0x222]);
 
     assert!(doc.has_emergency());
 
@@ -195,16 +198,16 @@ fn test_emergency_clear() {
 fn test_emergency_supersede() {
     let known_peers = vec![0xBBB, 0xCCC];
 
-    // A creates emergency at time 1000
+    // A creates emergency at TEST_TIMESTAMP
     let mut doc_a = HiveDocument::new(NodeId::new(0xAAA));
-    doc_a.set_emergency(0xAAA, 1000, &known_peers);
+    doc_a.set_emergency(0xAAA, TEST_TIMESTAMP, &known_peers);
 
     // B receives it
     let mut doc_b = HiveDocument::new(NodeId::new(0xBBB));
     doc_b.merge(&HiveDocument::decode(&doc_a.encode()).unwrap());
 
-    // B creates a NEWER emergency at time 2000
-    doc_b.set_emergency(0xBBB, 2000, &known_peers);
+    // B creates a NEWER emergency at TEST_TIMESTAMP + 1000
+    doc_b.set_emergency(0xBBB, TEST_TIMESTAMP + 1000, &known_peers);
 
     // A receives B's newer emergency
     doc_a.merge(&HiveDocument::decode(&doc_b.encode()).unwrap());
@@ -212,7 +215,7 @@ fn test_emergency_supersede() {
     // A should have B's newer emergency
     let emergency = doc_a.get_emergency().unwrap();
     assert_eq!(emergency.source_node(), 0xBBB);
-    assert_eq!(emergency.timestamp(), 2000);
+    assert_eq!(emergency.timestamp(), TEST_TIMESTAMP + 1000);
 }
 
 /// Test document size with emergency data
@@ -225,7 +228,7 @@ fn test_emergency_document_size() {
     doc.peripheral = Some(peripheral);
 
     // Small emergency (few peers)
-    doc.set_emergency(0x111, 1000, &[0x222, 0x333, 0x444]);
+    doc.set_emergency(0x111, TEST_TIMESTAMP, &[0x222, 0x333, 0x444]);
 
     let size = doc.encoded_size();
     assert!(
@@ -245,7 +248,7 @@ fn test_emergency_document_size() {
 #[test]
 fn test_ack_idempotent_merge() {
     let mut doc_a = HiveDocument::new(NodeId::new(0xAAA));
-    doc_a.set_emergency(0xAAA, 1000, &[0xBBB]);
+    doc_a.set_emergency(0xAAA, TEST_TIMESTAMP, &[0xBBB]);
 
     let mut doc_b = HiveDocument::new(NodeId::new(0xBBB));
     doc_b.merge(&HiveDocument::decode(&doc_a.encode()).unwrap());

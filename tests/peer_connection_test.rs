@@ -21,6 +21,9 @@
 use hive_btle::hive_mesh::{HiveMesh, HiveMeshConfig};
 use hive_btle::NodeId;
 
+// Valid timestamp for testing (2024-01-15 00:00:00 UTC)
+const TEST_TIMESTAMP: u64 = 1705276800000;
+
 /// Test that receiving data from a peer marks them as connected
 #[test]
 fn test_peer_marked_connected_on_data_receive() {
@@ -45,7 +48,7 @@ fn test_peer_marked_connected_on_data_receive() {
     println!("Doc from B: {} bytes", doc_b.len());
 
     // Mesh A receives data from "peer-b" identifier
-    let result = mesh_a.on_ble_data("peer-b", &doc_b, 1000);
+    let result = mesh_a.on_ble_data("peer-b", &doc_b, TEST_TIMESTAMP);
     assert!(
         result.is_some(),
         "on_ble_data should return Some for valid peer data"
@@ -90,8 +93,8 @@ fn test_emergency_ack_flow() {
     let doc_a = mesh_a.build_document();
     let doc_b = mesh_b.build_document();
 
-    let result_a = mesh_a.on_ble_data("peer-b", &doc_b, 1000);
-    let result_b = mesh_b.on_ble_data("peer-a", &doc_a, 1000);
+    let result_a = mesh_a.on_ble_data("peer-b", &doc_b, TEST_TIMESTAMP);
+    let result_b = mesh_b.on_ble_data("peer-a", &doc_a, TEST_TIMESTAMP);
 
     assert!(result_a.is_some(), "A should process B's document");
     assert!(result_b.is_some(), "B should process A's document");
@@ -103,7 +106,7 @@ fn test_emergency_ack_flow() {
     println!("Step 1 PASS: Both nodes see each other as peers");
 
     // Step 2: Node A sends EMERGENCY
-    let emergency_doc = mesh_a.start_emergency_with_known_peers(2000);
+    let emergency_doc = mesh_a.start_emergency_with_known_peers(TEST_TIMESTAMP + 1000);
     println!("Emergency doc from A: {} bytes", emergency_doc.len());
 
     // Verify A has active emergency
@@ -124,7 +127,7 @@ fn test_emergency_ack_flow() {
     println!("Step 2 PASS: A created emergency");
 
     // Step 3: Node B receives emergency document
-    let result_b = mesh_b.on_ble_data("peer-a", &emergency_doc, 2100);
+    let result_b = mesh_b.on_ble_data("peer-a", &emergency_doc, TEST_TIMESTAMP + 1100);
     assert!(
         result_b.is_some(),
         "B should process A's emergency document"
@@ -158,7 +161,7 @@ fn test_emergency_ack_flow() {
     println!("Step 3 PASS: B received emergency");
 
     // Step 4: Node B sends ACK
-    let ack_doc = mesh_b.ack_emergency(2200);
+    let ack_doc = mesh_b.ack_emergency(TEST_TIMESTAMP + 1200);
     assert!(ack_doc.is_some(), "B should be able to ACK the emergency");
     let ack_doc = ack_doc.unwrap();
     println!("ACK doc from B: {} bytes", ack_doc.len());
@@ -172,7 +175,7 @@ fn test_emergency_ack_flow() {
     println!("Step 4 PASS: B created ACK");
 
     // Step 5: Node A receives ACK
-    let result_a = mesh_a.on_ble_data("peer-b", &ack_doc, 2300);
+    let result_a = mesh_a.on_ble_data("peer-b", &ack_doc, TEST_TIMESTAMP + 1300);
     assert!(result_a.is_some(), "A should process B's ACK document");
 
     let result = result_a.unwrap();
@@ -219,8 +222,8 @@ fn test_multiple_peer_registration() {
     let doc_c = mesh_c.build_document();
 
     // A receives from B and C
-    mesh_a.on_ble_data("peer-b", &doc_b, 1000);
-    mesh_a.on_ble_data("peer-c", &doc_c, 1100);
+    mesh_a.on_ble_data("peer-b", &doc_b, TEST_TIMESTAMP);
+    mesh_a.on_ble_data("peer-c", &doc_c, TEST_TIMESTAMP + 100);
 
     // A should have 2 peers, both connected
     let peers_a = mesh_a.get_peers();

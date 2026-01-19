@@ -331,7 +331,10 @@ fn test_document_sizes(_meshes: &[HiveMesh]) {
 
     // Measure baseline document size (no chat)
     let baseline_doc = fresh_meshes[0].build_document();
-    println!("  Baseline document size (no chat): {} bytes", baseline_doc.len());
+    println!(
+        "  Baseline document size (no chat): {} bytes",
+        baseline_doc.len()
+    );
 
     // Fill chat to capacity (will be pruned for sync)
     for i in 0..50 {
@@ -351,16 +354,20 @@ fn test_document_sizes(_meshes: &[HiveMesh]) {
     // Verify chat count (local should have more than sync limit)
     println!("\n  Chat message counts:");
     println!("    Node 0 local: {}", fresh_meshes[0].chat_count());
-    println!(
-        "    Expected sync limit: 8 (CHAT_SYNC_LIMIT), local max: 32 (CHAT_MAX_MESSAGES)"
-    );
+    println!("    Expected sync limit: 8 (CHAT_SYNC_LIMIT), local max: 32 (CHAT_MAX_MESSAGES)");
 
     // Show size breakdown
     let chat_doc = fresh_meshes[0].build_document();
     let chat_overhead = chat_doc.len() - baseline_doc.len();
     println!("\n  Size breakdown:");
-    println!("    Baseline (counter + peripheral + encryption): {} bytes", baseline_doc.len());
-    println!("    Chat overhead (8 sync messages): {} bytes", chat_overhead);
+    println!(
+        "    Baseline (counter + peripheral + encryption): {} bytes",
+        baseline_doc.len()
+    );
+    println!(
+        "    Chat overhead (8 sync messages): {} bytes",
+        chat_overhead
+    );
     println!("    Total: {} bytes (MTU limit: 512)", chat_doc.len());
 }
 

@@ -605,6 +605,9 @@ impl DocumentCheck {
 mod tests {
     use super::*;
 
+    // Valid timestamp for testing (2024-01-15 00:00:00 UTC)
+    const TEST_TIMESTAMP: u64 = 1705276800000;
+
     #[test]
     fn test_document_sync_new() {
         let sync = DocumentSync::new(NodeId::new(0x12345678), "ALPHA-1");
@@ -620,7 +623,7 @@ mod tests {
     fn test_send_emergency() {
         let sync = DocumentSync::new(NodeId::new(0x12345678), "ALPHA-1");
 
-        let doc_bytes = sync.send_emergency(1234567890);
+        let doc_bytes = sync.send_emergency(TEST_TIMESTAMP);
 
         assert!(!doc_bytes.is_empty());
         assert_eq!(sync.total_count(), 1);
@@ -639,7 +642,7 @@ mod tests {
     fn test_send_ack() {
         let sync = DocumentSync::new(NodeId::new(0x12345678), "ALPHA-1");
 
-        let doc_bytes = sync.send_ack(1234567890);
+        let doc_bytes = sync.send_ack(TEST_TIMESTAMP);
 
         assert!(!doc_bytes.is_empty());
         assert_eq!(sync.total_count(), 1);
@@ -651,7 +654,7 @@ mod tests {
     fn test_clear_event() {
         let sync = DocumentSync::new(NodeId::new(0x12345678), "ALPHA-1");
 
-        sync.send_emergency(1000);
+        sync.send_emergency(TEST_TIMESTAMP);
         assert!(sync.is_emergency_active());
 
         sync.clear_event();
@@ -664,7 +667,7 @@ mod tests {
         let sync2 = DocumentSync::new(NodeId::new(0x22222222), "BRAVO-1");
 
         // sync2 sends emergency
-        let doc_bytes = sync2.send_emergency(1000);
+        let doc_bytes = sync2.send_emergency(TEST_TIMESTAMP);
 
         // sync1 receives and merges
         let result = sync1.merge_document(&doc_bytes);
@@ -685,7 +688,7 @@ mod tests {
     fn test_merge_own_document_ignored() {
         let sync = DocumentSync::new(NodeId::new(0x12345678), "ALPHA-1");
 
-        let doc_bytes = sync.send_emergency(1000);
+        let doc_bytes = sync.send_emergency(TEST_TIMESTAMP);
 
         // Merging our own document should be ignored
         let result = sync.merge_document(&doc_bytes);
@@ -701,7 +704,7 @@ mod tests {
         sync.increment_counter();
         assert_eq!(sync.version(), 2);
 
-        sync.send_emergency(1000);
+        sync.send_emergency(TEST_TIMESTAMP);
         assert_eq!(sync.version(), 3);
 
         sync.clear_event();
@@ -712,14 +715,14 @@ mod tests {
     fn test_document_check() {
         let sync = DocumentSync::new(NodeId::new(0x12345678), "ALPHA-1");
 
-        let emergency_doc = sync.send_emergency(1000);
+        let emergency_doc = sync.send_emergency(TEST_TIMESTAMP);
         let check = DocumentCheck::from_document(&emergency_doc).unwrap();
         assert_eq!(check.node_id.as_u32(), 0x12345678);
         assert!(check.is_emergency);
         assert!(!check.is_ack);
 
         sync.clear_event();
-        let ack_doc = sync.send_ack(2000);
+        let ack_doc = sync.send_ack(TEST_TIMESTAMP + 1000);
         let check = DocumentCheck::from_document(&ack_doc).unwrap();
         assert!(!check.is_emergency);
         assert!(check.is_ack);
@@ -731,7 +734,7 @@ mod tests {
         let sync2 = DocumentSync::new(NodeId::new(0x22222222), "BRAVO-1");
 
         // sync2 sends something
-        let doc_bytes = sync2.send_emergency(1000);
+        let doc_bytes = sync2.send_emergency(TEST_TIMESTAMP);
 
         // sync1 merges twice - second should not change counter
         let result1 = sync1.merge_document(&doc_bytes).unwrap();

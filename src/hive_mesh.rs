@@ -2442,6 +2442,9 @@ mod tests {
     use super::*;
     use crate::observer::CollectingObserver;
 
+    // Valid timestamp for testing (2024-01-15 00:00:00 UTC)
+    const TEST_TIMESTAMP: u64 = 1705276800000;
+
     fn create_mesh(node_id: u32, callsign: &str) -> HiveMesh {
         let config = HiveMeshConfig::new(NodeId::new(node_id), callsign, "TEST");
         HiveMesh::new(config)
@@ -2529,11 +2532,12 @@ mod tests {
         mesh2.add_observer(observer2.clone());
 
         // mesh1 sends emergency
-        let doc = mesh1.send_emergency(1000);
+        let doc = mesh1.send_emergency(TEST_TIMESTAMP);
         assert!(mesh1.is_emergency_active());
 
         // mesh2 receives it
-        let result = mesh2.on_ble_data_received_from_node(NodeId::new(0x11111111), &doc, 1000);
+        let result =
+            mesh2.on_ble_data_received_from_node(NodeId::new(0x11111111), &doc, TEST_TIMESTAMP);
 
         assert!(result.is_some());
         let result = result.unwrap();
@@ -2556,11 +2560,12 @@ mod tests {
         mesh2.add_observer(observer2.clone());
 
         // mesh1 sends ACK
-        let doc = mesh1.send_ack(1000);
+        let doc = mesh1.send_ack(TEST_TIMESTAMP);
         assert!(mesh1.is_ack_active());
 
         // mesh2 receives it
-        let result = mesh2.on_ble_data_received_from_node(NodeId::new(0x11111111), &doc, 1000);
+        let result =
+            mesh2.on_ble_data_received_from_node(NodeId::new(0x11111111), &doc, TEST_TIMESTAMP);
 
         assert!(result.is_some());
         let result = result.unwrap();
@@ -2748,10 +2753,11 @@ mod tests {
         mesh2.add_observer(observer.clone());
 
         // mesh1 sends emergency
-        let doc = mesh1.send_emergency(1000);
+        let doc = mesh1.send_emergency(TEST_TIMESTAMP);
 
         // mesh2 receives and decrypts
-        let result = mesh2.on_ble_data_received_from_node(NodeId::new(0x11111111), &doc, 1000);
+        let result =
+            mesh2.on_ble_data_received_from_node(NodeId::new(0x11111111), &doc, TEST_TIMESTAMP);
 
         assert!(result.is_some());
         let result = result.unwrap();
