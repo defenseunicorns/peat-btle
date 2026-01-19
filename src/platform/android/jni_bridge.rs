@@ -2401,6 +2401,808 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeIsPeerKnown(
     0
 }
 
+// ============================================================================
+// JNI Native Method Exports - DeviceIdentity (Cryptographic Identity)
+// ============================================================================
+
+use crate::security::{
+    DeviceIdentity, IdentityAttestation, MembershipPolicy, MeshGenesis, RegistryResult,
+};
+
+/// Global DeviceIdentity instance storage
+/// Maps a handle to a DeviceIdentity instance
+static IDENTITY_INSTANCES: OnceLock<Mutex<HashMap<i64, DeviceIdentity>>> = OnceLock::new();
+
+fn get_identity_storage() -> &'static Mutex<HashMap<i64, DeviceIdentity>> {
+    IDENTITY_INSTANCES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Global MeshGenesis instance storage
+static GENESIS_INSTANCES: OnceLock<Mutex<HashMap<i64, MeshGenesis>>> = OnceLock::new();
+
+fn get_genesis_storage() -> &'static Mutex<HashMap<i64, MeshGenesis>> {
+    GENESIS_INSTANCES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Counter for generating unique handles
+static HANDLE_COUNTER: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+
+fn next_handle() -> i64 {
+    HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Generate a new DeviceIdentity
+///
+/// JNI Signature: ()J
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_DeviceIdentity_nativeGenerate<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jlong {
+    let identity = DeviceIdentity::generate();
+    let handle = next_handle();
+
+    if let Ok(mut storage) = get_identity_storage().lock() {
+        storage.insert(handle, identity);
+    }
+
+    log::info!("DeviceIdentity generated: handle={}", handle);
+    handle
+}
+
+/// Create DeviceIdentity from private key bytes
+///
+/// JNI Signature: ([B)J
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_DeviceIdentity_nativeFromPrivateKey<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    private_key: JByteArray<'local>,
+) -> jlong {
+    let key_bytes = match env.convert_byte_array(private_key) {
+        Ok(bytes) => bytes,
+        Err(_) => return 0,
+    };
+
+    if key_bytes.len() != 32 {
+        log::error!("DeviceIdentity: private key must be 32 bytes");
+        return 0;
+    }
+
+    let mut key_arr = [0u8; 32];
+    key_arr.copy_from_slice(&key_bytes);
+
+    match DeviceIdentity::from_private_key(&key_arr) {
+        Ok(identity) => {
+            let handle = next_handle();
+            if let Ok(mut storage) = get_identity_storage().lock() {
+                storage.insert(handle, identity);
+            }
+            log::info!("DeviceIdentity created from private key: handle={}", handle);
+            handle
+        }
+        Err(e) => {
+            log::error!("DeviceIdentity: failed to create from private key: {:?}", e);
+            0
+        }
+    }
+}
+
+/// Destroy a DeviceIdentity instance
+///
+/// JNI Signature: (J)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_DeviceIdentity_nativeDestroy<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) {
+    if let Ok(mut storage) = get_identity_storage().lock() {
+        storage.remove(&handle);
+    }
+    log::info!("DeviceIdentity destroyed: handle={}", handle);
+}
+
+/// Get public key from DeviceIdentity
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_DeviceIdentity_nativeGetPublicKey<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let public_key = if let Ok(storage) = get_identity_storage().lock() {
+        storage.get(&handle).map(|id| id.public_key())
+    } else {
+        None
+    };
+
+    match public_key {
+        Some(key) => env
+            .byte_array_from_slice(&key)
+            .unwrap_or_else(|_| JByteArray::default()),
+        None => JByteArray::default(),
+    }
+}
+
+/// Get private key bytes from DeviceIdentity (for secure storage)
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_DeviceIdentity_nativeGetPrivateKey<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let private_key = if let Ok(storage) = get_identity_storage().lock() {
+        storage.get(&handle).map(|id| id.private_key_bytes())
+    } else {
+        None
+    };
+
+    match private_key {
+        Some(key) => env
+            .byte_array_from_slice(&key)
+            .unwrap_or_else(|_| JByteArray::default()),
+        None => JByteArray::default(),
+    }
+}
+
+/// Get NodeId from DeviceIdentity
+///
+/// JNI Signature: (J)J
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_DeviceIdentity_nativeGetNodeId<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jlong {
+    if let Ok(storage) = get_identity_storage().lock() {
+        if let Some(identity) = storage.get(&handle) {
+            return identity.node_id().as_u32() as jlong;
+        }
+    }
+    0
+}
+
+/// Create an identity attestation
+///
+/// JNI Signature: (JJ)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_DeviceIdentity_nativeCreateAttestation<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    timestamp_ms: jlong,
+) -> JByteArray<'local> {
+    let attestation = if let Ok(storage) = get_identity_storage().lock() {
+        storage
+            .get(&handle)
+            .map(|id| id.create_attestation(timestamp_ms as u64))
+    } else {
+        None
+    };
+
+    match attestation {
+        Some(att) => {
+            let encoded = att.encode();
+            env.byte_array_from_slice(&encoded)
+                .unwrap_or_else(|_| JByteArray::default())
+        }
+        None => JByteArray::default(),
+    }
+}
+
+/// Sign data with DeviceIdentity
+///
+/// JNI Signature: (J[B)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_DeviceIdentity_nativeSign<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    data: JByteArray<'local>,
+) -> JByteArray<'local> {
+    let data_bytes = match env.convert_byte_array(data) {
+        Ok(bytes) => bytes,
+        Err(_) => return JByteArray::default(),
+    };
+
+    let signature = if let Ok(storage) = get_identity_storage().lock() {
+        storage.get(&handle).map(|id| id.sign(&data_bytes))
+    } else {
+        None
+    };
+
+    match signature {
+        Some(sig) => env
+            .byte_array_from_slice(&sig)
+            .unwrap_or_else(|_| JByteArray::default()),
+        None => JByteArray::default(),
+    }
+}
+
+// ============================================================================
+// JNI Native Method Exports - MeshGenesis (Mesh Creation Protocol)
+// ============================================================================
+
+/// Create a new MeshGenesis
+///
+/// JNI Signature: (Ljava/lang/String;JI)J
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_MeshGenesis_nativeCreate<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    mesh_name: JString<'local>,
+    identity_handle: jlong,
+    policy: jint,
+) -> jlong {
+    let mesh_name_str: String = env
+        .get_string(&mesh_name)
+        .map(|s| s.into())
+        .unwrap_or_else(|_| "MESH".to_string());
+
+    let membership_policy = match policy {
+        0 => MembershipPolicy::Open,
+        1 => MembershipPolicy::Controlled,
+        2 => MembershipPolicy::Strict,
+        _ => MembershipPolicy::Controlled,
+    };
+
+    // Get the identity from storage
+    let identity = if let Ok(storage) = get_identity_storage().lock() {
+        storage.get(&identity_handle).cloned()
+    } else {
+        None
+    };
+
+    match identity {
+        Some(id) => {
+            let genesis = MeshGenesis::create(&mesh_name_str, &id, membership_policy);
+            let handle = next_handle();
+
+            if let Ok(mut storage) = get_genesis_storage().lock() {
+                storage.insert(handle, genesis);
+            }
+
+            log::info!(
+                "MeshGenesis created: handle={}, name={}",
+                handle,
+                mesh_name_str
+            );
+            handle
+        }
+        None => {
+            log::error!("MeshGenesis: identity handle {} not found", identity_handle);
+            0
+        }
+    }
+}
+
+/// Destroy a MeshGenesis instance
+///
+/// JNI Signature: (J)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_MeshGenesis_nativeDestroy<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) {
+    if let Ok(mut storage) = get_genesis_storage().lock() {
+        storage.remove(&handle);
+    }
+    log::info!("MeshGenesis destroyed: handle={}", handle);
+}
+
+/// Get mesh_id from MeshGenesis
+///
+/// JNI Signature: (J)Ljava/lang/String;
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_MeshGenesis_nativeGetMeshId<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JString<'local> {
+    let mesh_id = if let Ok(storage) = get_genesis_storage().lock() {
+        storage.get(&handle).map(|g| g.mesh_id())
+    } else {
+        None
+    };
+
+    let id_str = mesh_id.unwrap_or_else(|| "".to_string());
+    env.new_string(id_str)
+        .unwrap_or_else(|_| env.new_string("").expect("Failed to create empty string"))
+}
+
+/// Get encryption secret from MeshGenesis
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_MeshGenesis_nativeGetEncryptionSecret<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let secret = if let Ok(storage) = get_genesis_storage().lock() {
+        storage.get(&handle).map(|g| g.encryption_secret())
+    } else {
+        None
+    };
+
+    match secret {
+        Some(s) => env
+            .byte_array_from_slice(&s)
+            .unwrap_or_else(|_| JByteArray::default()),
+        None => JByteArray::default(),
+    }
+}
+
+/// Encode MeshGenesis for persistence
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_MeshGenesis_nativeEncode<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let encoded = if let Ok(storage) = get_genesis_storage().lock() {
+        storage.get(&handle).map(|g| g.encode())
+    } else {
+        None
+    };
+
+    match encoded {
+        Some(data) => env
+            .byte_array_from_slice(&data)
+            .unwrap_or_else(|_| JByteArray::default()),
+        None => JByteArray::default(),
+    }
+}
+
+/// Decode MeshGenesis from bytes
+///
+/// JNI Signature: ([B)J
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_MeshGenesis_nativeDecode<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    data: JByteArray<'local>,
+) -> jlong {
+    let data_bytes = match env.convert_byte_array(data) {
+        Ok(bytes) => bytes,
+        Err(_) => return 0,
+    };
+
+    match MeshGenesis::decode(&data_bytes) {
+        Some(genesis) => {
+            let handle = next_handle();
+            if let Ok(mut storage) = get_genesis_storage().lock() {
+                storage.insert(handle, genesis);
+            }
+            log::info!("MeshGenesis decoded: handle={}", handle);
+            handle
+        }
+        None => {
+            log::error!("MeshGenesis: failed to decode");
+            0
+        }
+    }
+}
+
+// ============================================================================
+// JNI Native Method Exports - HiveMesh Identity Methods
+// ============================================================================
+
+/// Create HiveMesh with identity
+///
+/// JNI Signature: (JLjava/lang/String;Ljava/lang/String;IJ)J
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeCreateWithIdentity<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    node_id: jlong,
+    callsign: JString<'local>,
+    mesh_id: JString<'local>,
+    peripheral_type: jint,
+    identity_handle: jlong,
+) -> jlong {
+    let callsign_str: String = env
+        .get_string(&callsign)
+        .map(|s| s.into())
+        .unwrap_or_else(|_| "ANDROID".to_string());
+
+    let mesh_id_str: String = env
+        .get_string(&mesh_id)
+        .map(|s| s.into())
+        .unwrap_or_else(|_| "DEMO".to_string());
+
+    let ptype = match peripheral_type {
+        1 => PeripheralType::SoldierSensor,
+        2 => PeripheralType::FixedSensor,
+        3 => PeripheralType::Relay,
+        _ => PeripheralType::Unknown,
+    };
+
+    // Get identity from storage
+    let identity = if let Ok(mut storage) = get_identity_storage().lock() {
+        storage.remove(&identity_handle) // Take ownership
+    } else {
+        None
+    };
+
+    match identity {
+        Some(id) => {
+            let config =
+                HiveMeshConfig::new(NodeId::new(node_id as u32), &callsign_str, &mesh_id_str)
+                    .with_peripheral_type(ptype);
+
+            let mesh = Arc::new(HiveMesh::with_identity(config, id));
+            let handle = node_id;
+
+            if let Ok(mut storage) = get_mesh_storage().lock() {
+                storage.insert(handle, mesh);
+            }
+
+            log::info!(
+                "HiveMesh created with identity: handle={}, mesh={}",
+                handle,
+                mesh_id_str
+            );
+            handle
+        }
+        None => {
+            log::error!("HiveMesh: identity handle {} not found", identity_handle);
+            0
+        }
+    }
+}
+
+/// Create HiveMesh from genesis
+///
+/// JNI Signature: (JJLjava/lang/String;)J
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeCreateFromGenesis<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    genesis_handle: jlong,
+    identity_handle: jlong,
+    callsign: JString<'local>,
+) -> jlong {
+    let callsign_str: String = env
+        .get_string(&callsign)
+        .map(|s| s.into())
+        .unwrap_or_else(|_| "ANDROID".to_string());
+
+    // Get genesis (borrow, don't remove)
+    let genesis = if let Ok(storage) = get_genesis_storage().lock() {
+        storage.get(&genesis_handle).cloned()
+    } else {
+        None
+    };
+
+    // Get identity (take ownership)
+    let identity = if let Ok(mut storage) = get_identity_storage().lock() {
+        storage.remove(&identity_handle)
+    } else {
+        None
+    };
+
+    match (genesis, identity) {
+        (Some(gen), Some(id)) => {
+            let mesh = Arc::new(HiveMesh::from_genesis(&gen, id, &callsign_str));
+            let handle = next_handle();
+
+            if let Ok(mut storage) = get_mesh_storage().lock() {
+                storage.insert(handle, mesh);
+            }
+
+            log::info!(
+                "HiveMesh created from genesis: handle={}, mesh_id={}",
+                handle,
+                gen.mesh_id()
+            );
+            handle
+        }
+        (None, _) => {
+            log::error!("HiveMesh: genesis handle {} not found", genesis_handle);
+            0
+        }
+        (_, None) => {
+            log::error!("HiveMesh: identity handle {} not found", identity_handle);
+            0
+        }
+    }
+}
+
+/// Check if HiveMesh has identity
+///
+/// JNI Signature: (J)Z
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeHasIdentity<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jboolean {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            return if mesh.has_identity() { 1 } else { 0 };
+        }
+    }
+    0
+}
+
+/// Get public key from HiveMesh
+///
+/// JNI Signature: (J)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetPublicKey<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JByteArray<'local> {
+    let public_key = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).and_then(|m| m.public_key())
+    } else {
+        None
+    };
+
+    match public_key {
+        Some(key) => env
+            .byte_array_from_slice(&key)
+            .unwrap_or_else(|_| JByteArray::default()),
+        None => JByteArray::default(),
+    }
+}
+
+/// Create attestation from HiveMesh
+///
+/// JNI Signature: (JJ)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeCreateAttestation<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    timestamp_ms: jlong,
+) -> JByteArray<'local> {
+    let attestation = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .and_then(|m| m.create_attestation(timestamp_ms as u64))
+    } else {
+        None
+    };
+
+    match attestation {
+        Some(att) => {
+            let encoded = att.encode();
+            env.byte_array_from_slice(&encoded)
+                .unwrap_or_else(|_| JByteArray::default())
+        }
+        None => JByteArray::default(),
+    }
+}
+
+/// Verify peer identity attestation (TOFU)
+///
+/// Returns: 0 = Registered, 1 = Verified, 2 = InvalidSignature, 3 = KeyMismatch
+///
+/// JNI Signature: (J[B)I
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeVerifyPeerIdentity<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    attestation_bytes: JByteArray<'local>,
+) -> jint {
+    let data = match env.convert_byte_array(attestation_bytes) {
+        Ok(bytes) => bytes,
+        Err(_) => return -1,
+    };
+
+    let attestation = match IdentityAttestation::decode(&data) {
+        Some(att) => att,
+        None => return -1,
+    };
+
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            let result = mesh.verify_peer_identity(&attestation);
+            return match result {
+                RegistryResult::Registered => 0,
+                RegistryResult::Verified => 1,
+                RegistryResult::InvalidSignature => 2,
+                RegistryResult::KeyMismatch { .. } => 3,
+            };
+        }
+    }
+    -1
+}
+
+/// Check if peer identity is known
+///
+/// JNI Signature: (JJ)Z
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeIsPeerIdentityKnown<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    peer_node_id: jlong,
+) -> jboolean {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            let peer_id = crate::NodeId::new(peer_node_id as u32);
+            return if mesh.is_peer_identity_known(peer_id) {
+                1
+            } else {
+                0
+            };
+        }
+    }
+    0
+}
+
+/// Get known identity count
+///
+/// JNI Signature: (J)I
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeKnownIdentityCount<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> jint {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            return mesh.known_identity_count() as jint;
+        }
+    }
+    0
+}
+
+/// Sign data with HiveMesh identity
+///
+/// JNI Signature: (J[B)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSign<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    data: JByteArray<'local>,
+) -> JByteArray<'local> {
+    let data_bytes = match env.convert_byte_array(data) {
+        Ok(bytes) => bytes,
+        Err(_) => return JByteArray::default(),
+    };
+
+    let signature = if let Ok(storage) = get_mesh_storage().lock() {
+        storage.get(&handle).and_then(|m| m.sign(&data_bytes))
+    } else {
+        None
+    };
+
+    match signature {
+        Some(sig) => env
+            .byte_array_from_slice(&sig)
+            .unwrap_or_else(|_| JByteArray::default()),
+        None => JByteArray::default(),
+    }
+}
+
+/// Verify peer signature
+///
+/// JNI Signature: (JJ[B[B)Z
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeVerifyPeerSignature<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    peer_node_id: jlong,
+    data: JByteArray<'local>,
+    signature: JByteArray<'local>,
+) -> jboolean {
+    let data_bytes = match env.convert_byte_array(data) {
+        Ok(bytes) => bytes,
+        Err(_) => return 0,
+    };
+
+    let sig_bytes = match env.convert_byte_array(signature) {
+        Ok(bytes) => bytes,
+        Err(_) => return 0,
+    };
+
+    if sig_bytes.len() != 64 {
+        return 0;
+    }
+
+    let mut sig_arr = [0u8; 64];
+    sig_arr.copy_from_slice(&sig_bytes);
+
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            let peer_id = crate::NodeId::new(peer_node_id as u32);
+            return if mesh.verify_peer_signature(peer_id, &data_bytes, &sig_arr) {
+                1
+            } else {
+                0
+            };
+        }
+    }
+    0
+}
+
+// ============================================================================
+// JNI Native Method Exports - IdentityAttestation Utilities
+// ============================================================================
+
+/// Verify an attestation without registering it
+///
+/// JNI Signature: ([B)Z
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_IdentityAttestation_nativeVerify<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    attestation_bytes: JByteArray<'local>,
+) -> jboolean {
+    let data = match env.convert_byte_array(attestation_bytes) {
+        Ok(bytes) => bytes,
+        Err(_) => return 0,
+    };
+
+    match IdentityAttestation::decode(&data) {
+        Some(att) => {
+            if att.verify() {
+                1
+            } else {
+                0
+            }
+        }
+        None => 0,
+    }
+}
+
+/// Get node_id from attestation bytes
+///
+/// JNI Signature: ([B)J
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_IdentityAttestation_nativeGetNodeId<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    attestation_bytes: JByteArray<'local>,
+) -> jlong {
+    let data = match env.convert_byte_array(attestation_bytes) {
+        Ok(bytes) => bytes,
+        Err(_) => return 0,
+    };
+
+    match IdentityAttestation::decode(&data) {
+        Some(att) => att.node_id.as_u32() as jlong,
+        None => 0,
+    }
+}
+
+/// Get public key from attestation bytes
+///
+/// JNI Signature: ([B)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_IdentityAttestation_nativeGetPublicKey<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    attestation_bytes: JByteArray<'local>,
+) -> JByteArray<'local> {
+    let data = match env.convert_byte_array(attestation_bytes) {
+        Ok(bytes) => bytes,
+        Err(_) => return JByteArray::default(),
+    };
+
+    match IdentityAttestation::decode(&data) {
+        Some(att) => env
+            .byte_array_from_slice(&att.public_key)
+            .unwrap_or_else(|_| JByteArray::default()),
+        None => JByteArray::default(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // JNI tests require Android runtime environment
