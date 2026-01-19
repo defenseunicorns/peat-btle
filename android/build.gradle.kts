@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.1.0-rc2"  // RC2 with encrypted BLE advertisements
+version = "0.1.0-rc3"  // RC3 with HiveBtle encryption integration
 
 android {
     namespace = "com.revolveteam.hive"
