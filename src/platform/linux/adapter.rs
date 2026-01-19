@@ -42,6 +42,7 @@ use crate::{NodeId, HIVE_SERVICE_UUID};
 use super::BluerConnection;
 
 /// Internal state for the adapter
+#[derive(Default)]
 struct AdapterState {
     /// Active connections by node ID
     connections: HashMap<NodeId, BluerConnection>,
@@ -55,16 +56,8 @@ struct AdapterState {
     discovered: HashMap<Address, DiscoveredDevice>,
 }
 
-impl Default for AdapterState {
-    fn default() -> Self {
-        Self {
-            connections: HashMap::new(),
-            address_to_node: HashMap::new(),
-            node_to_address: HashMap::new(),
-            discovered: HashMap::new(),
-        }
-    }
-}
+/// Type alias for callback functions to reduce complexity
+type SyncCallback = Box<dyn Fn(Vec<u8>) + Send + Sync>;
 
 /// State shared between GATT characteristic callbacks
 struct GattState {
@@ -77,9 +70,9 @@ struct GattState {
     /// Status data (readable, notifiable)
     status: Mutex<Vec<u8>>,
     /// Received sync data callback
-    sync_data_callback: Mutex<Option<Box<dyn Fn(Vec<u8>) + Send + Sync>>>,
+    sync_data_callback: Mutex<Option<SyncCallback>>,
     /// Received command callback
-    command_callback: Mutex<Option<Box<dyn Fn(Vec<u8>) + Send + Sync>>>,
+    command_callback: Mutex<Option<SyncCallback>>,
 }
 
 impl GattState {
@@ -262,13 +255,10 @@ impl BluerAdapter {
         let is_hive = service_data.contains_key(&HIVE_SERVICE_UUID);
 
         // Try to extract node ID from name (HIVE-XXXXXXXX format)
-        let node_id = name.as_ref().and_then(|n| {
-            if n.starts_with("HIVE-") {
-                NodeId::parse(&n[5..])
-            } else {
-                None
-            }
-        });
+        let node_id = name
+            .as_ref()
+            .and_then(|n| n.strip_prefix("HIVE-"))
+            .and_then(NodeId::parse);
 
         Some(DiscoveredDevice {
             address: address.to_string(),
@@ -283,7 +273,7 @@ impl BluerAdapter {
     /// Register node ID to address mapping
     pub async fn register_node_address(&self, node_id: NodeId, address: Address) {
         let mut state = self.state.write().await;
-        state.address_to_node.insert(address, node_id.clone());
+        state.address_to_node.insert(address, node_id);
         state.node_to_address.insert(node_id, address);
     }
 
@@ -501,20 +491,18 @@ impl BleAdapter for BluerAdapter {
             .map_err(|e| BleError::ConnectionFailed(format!("Failed to connect: {}", e)))?;
 
         // Create connection wrapper
-        let connection = BluerConnection::new(peer_id.clone(), device).await?;
+        let connection = BluerConnection::new(*peer_id, device).await?;
 
         // Store connection
         {
             let mut state = self.state.write().await;
-            state
-                .connections
-                .insert(peer_id.clone(), connection.clone());
+            state.connections.insert(*peer_id, connection.clone());
         }
 
         // Notify callback
         if let Some(ref cb) = *self.connection_callback.read().await {
             cb(
-                peer_id.clone(),
+                *peer_id,
                 ConnectionEvent::Connected {
                     mtu: connection.mtu(),
                     phy: connection.phy(),
@@ -538,7 +526,7 @@ impl BleAdapter for BluerAdapter {
             // Notify callback
             if let Some(ref cb) = *self.connection_callback.read().await {
                 cb(
-                    peer_id.clone(),
+                    *peer_id,
                     ConnectionEvent::Disconnected {
                         reason: DisconnectReason::LocalRequest,
                     },

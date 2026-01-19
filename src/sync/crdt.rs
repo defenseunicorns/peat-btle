@@ -340,10 +340,10 @@ impl Position {
         if !latitude.is_finite() || !longitude.is_finite() {
             return None;
         }
-        if latitude < -90.0 || latitude > 90.0 {
+        if !(-90.0..=90.0).contains(&latitude) {
             return None;
         }
-        if longitude < -180.0 || longitude > 180.0 {
+        if !(-180.0..=180.0).contains(&longitude) {
             return None;
         }
 
@@ -361,7 +361,7 @@ impl Position {
                 data[offset + 3],
             ]);
             // Security: Reject NaN/Inf altitude, allow wide range for valid Earth elevations
-            if !alt.is_finite() || alt < -1000.0 || alt > 100000.0 {
+            if !alt.is_finite() || !(-1000.0..=100000.0).contains(&alt) {
                 return None;
             }
             pos.altitude = Some(alt);
@@ -491,7 +491,7 @@ impl HealthStatus {
 
         // Security: Validate heart rate is in physiological range if present
         if heart_rate_raw > 0 {
-            if heart_rate_raw < MIN_HEART_RATE || heart_rate_raw > MAX_HEART_RATE {
+            if !(MIN_HEART_RATE..=MAX_HEART_RATE).contains(&heart_rate_raw) {
                 return None;
             }
             status.heart_rate = Some(heart_rate_raw);

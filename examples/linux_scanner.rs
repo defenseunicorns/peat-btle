@@ -68,13 +68,18 @@ mod scanner {
         println!("HIVE Service UUID: {}", HIVE_SERVICE_UUID);
         println!();
 
-        // Generate a node ID from random bytes (in production, use MAC address)
-        let node_id = NodeId::new(rand::random::<u32>());
+        // Generate a node ID from timestamp (in production, use MAC address)
+        let node_id = NodeId::new(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as u32,
+        );
         println!("Our Node ID: {:08X}", node_id.as_u32());
 
         // Create BLE configuration
         let config = BleConfig::hive_lite(node_id);
-        println!("Power profile: {:?}", config.power.profile);
+        println!("Power profile: {:?}", config.power_profile);
         println!();
 
         // Create the adapter
@@ -98,27 +103,29 @@ mod scanner {
 
         // Set discovery callback
         let mesh_clone = mesh.clone();
-        adapter.set_discovery_callback(Some(Box::new(move |device| {
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64;
+        adapter.set_discovery_callback(Some(Arc::new(
+            move |device: hive_btle::DiscoveredDevice| {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
 
-            if device.is_hive_node {
-                mesh_clone.on_ble_discovered(
-                    &device.address,
-                    device.name.as_deref(),
-                    device.rssi,
-                    Some("DEMO"), // Filter by mesh ID
-                    now_ms,
-                );
-            } else {
-                // Non-HIVE device
-                if let Some(name) = &device.name {
-                    println!("Non-HIVE device: {} ({})", name, device.address);
+                if device.is_hive_node {
+                    mesh_clone.on_ble_discovered(
+                        &device.address,
+                        device.name.as_deref(),
+                        device.rssi,
+                        Some("DEMO"), // Filter by mesh ID
+                        now_ms,
+                    );
+                } else {
+                    // Non-HIVE device
+                    if let Some(name) = &device.name {
+                        println!("Non-HIVE device: {} ({})", name, device.address);
+                    }
                 }
-            }
-        })));
+            },
+        )));
 
         // Start scanning
         println!("Starting BLE scan...");
