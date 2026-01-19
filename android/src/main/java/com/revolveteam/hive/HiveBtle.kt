@@ -61,11 +61,33 @@ import java.util.Collections
  *
  * ## Usage
  *
+ * ### Basic (Unencrypted)
  * ```kotlin
- * // Initialize
  * val hiveBtle = HiveBtle(context, nodeId = 0x12345678)
  * hiveBtle.init()
+ * ```
  *
+ * ### Encrypted Mesh (Recommended)
+ * ```kotlin
+ * // Create or load identity (persist this!)
+ * val identity = DeviceIdentity.generate()
+ *
+ * // Create or load mesh genesis (share with team members)
+ * val genesis = MeshGenesis.create("ALPHA-TEAM", identity, MembershipPolicy.CONTROLLED)
+ *
+ * // Create encrypted mesh
+ * val hiveBtle = HiveBtle(
+ *     context = context,
+ *     identity = identity,
+ *     genesis = genesis
+ * )
+ * hiveBtle.init()
+ *
+ * // Mesh is now encrypted - only team members can read beacons/documents
+ * ```
+ *
+ * ### Scanning & Advertising
+ * ```kotlin
  * // Start scanning for HIVE nodes
  * hiveBtle.startScan { device ->
  *     Log.d("HIVE", "Found: ${device.address}")
@@ -81,11 +103,15 @@ import java.util.Collections
  * @param context Android context (Activity, Service, or Application)
  * @param nodeId This node's HIVE ID (32-bit unsigned). If null, auto-generated from Bluetooth MAC address.
  * @param meshId Mesh identifier for mesh isolation (e.g., "DEMO", "ALFA"). Defaults to "DEMO".
+ * @param identity Optional DeviceIdentity for cryptographic operations. Required for encrypted mesh.
+ * @param genesis Optional MeshGenesis for encrypted mesh. When provided with identity, enables encryption.
  */
 class HiveBtle(
     private val context: Context,
     private var _nodeId: Long? = null,
-    private val meshId: String = DEFAULT_MESH_ID
+    private val meshId: String = DEFAULT_MESH_ID,
+    private val identity: DeviceIdentity? = null,
+    private val genesis: MeshGenesis? = null
 ) {
     /**
      * This node's HIVE ID. Auto-generated from Bluetooth MAC address if not specified.
@@ -98,6 +124,24 @@ class HiveBtle(
      * Get the mesh ID this node belongs to.
      */
     fun getMeshId(): String = meshId
+
+    /**
+     * Check if this instance has encryption enabled.
+     *
+     * Encryption is enabled when both identity and genesis are provided.
+     */
+    fun isEncryptionEnabled(): Boolean = identity != null && genesis != null
+
+    /**
+     * Get the device identity if available.
+     */
+    fun getIdentity(): DeviceIdentity? = identity
+
+    /**
+     * Get the mesh genesis if available.
+     */
+    fun getGenesis(): MeshGenesis? = genesis
+
     companion object {
         private const val TAG = "HiveBtle"
 
@@ -436,12 +480,19 @@ class HiveBtle(
         }
 
         // Create HiveMesh for ConnectionStateGraph API
-        _mesh = HiveMesh(
-            nodeId = nodeId,
-            callsign = "ANDROID",
-            meshId = meshId,
-            peripheralType = PeripheralType.SOLDIER_SENSOR
-        )
+        // Use encrypted mesh if identity and genesis are provided
+        _mesh = if (identity != null && genesis != null) {
+            Log.i(TAG, "Creating encrypted mesh from genesis")
+            HiveMesh.createFromGenesis(genesis, identity, "ANDROID")
+        } else {
+            Log.i(TAG, "Creating unencrypted mesh")
+            HiveMesh(
+                nodeId = nodeId,
+                callsign = "ANDROID",
+                meshId = meshId,
+                peripheralType = PeripheralType.SOLDIER_SENSOR
+            )
+        }
 
         isInitialized = true
         Log.i(TAG, "Initialized for node ${String.format("%08X", nodeId)}")
