@@ -329,6 +329,82 @@ Per-peer E2EE adds 46 bytes overhead per message:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Device Identity
+
+hive-btle provides cryptographic device identity using Ed25519 keypairs. Each device generates a persistent identity that binds its node ID to a public key, preventing impersonation attacks.
+
+### Creating a Device Identity
+
+```rust
+use hive_btle::security::{DeviceIdentity, IdentityAttestation};
+
+// Generate a new device identity
+let identity = DeviceIdentity::generate();
+
+// The node_id is derived from the public key (collision-resistant)
+let node_id = identity.node_id();
+let public_key = identity.public_key();
+
+// Create a signed attestation proving ownership of this identity
+let attestation = identity.create_attestation();
+
+// Verify an attestation from another device
+if attestation.verify() {
+    println!("Identity verified for node {}", attestation.node_id);
+}
+```
+
+### Identity Attestation
+
+When nodes communicate, they exchange signed attestations proving they control their claimed node ID:
+
+| Field | Size | Description |
+|-------|------|-------------|
+| `node_id` | 4 bytes | Claimed node identifier |
+| `public_key` | 32 bytes | Ed25519 public key |
+| `timestamp_ms` | 8 bytes | Attestation creation time |
+| `signature` | 64 bytes | Ed25519 signature over all fields |
+
+## Mesh Genesis
+
+New meshes are created through a genesis protocol that establishes cryptographic roots:
+
+```rust
+use hive_btle::security::{DeviceIdentity, MeshGenesis, MembershipPolicy, MeshCredentials};
+
+// Create founder's identity
+let founder = DeviceIdentity::generate();
+
+// Create a new mesh
+let genesis = MeshGenesis::create("ALPHA-TEAM", &founder, MembershipPolicy::Controlled);
+
+// Get derived values
+let mesh_id = genesis.mesh_id();           // e.g., "A1B2C3D4"
+let secret = genesis.encryption_secret();   // 32-byte derived key
+let beacon_key = genesis.beacon_key_base(); // For encrypted beacons
+
+// Create shareable credentials for other nodes
+let credentials = MeshCredentials::from_genesis(&genesis);
+```
+
+### Membership Policies
+
+| Policy | Description |
+|--------|-------------|
+| `Open` | Anyone with mesh_id can attempt to join (demos, open networks) |
+| `Controlled` | Explicit enrollment by authority required (default) |
+| `Strict` | Only pre-provisioned devices can join (high security) |
+
+### Genesis Data
+
+The genesis contains all cryptographic material to bootstrap a mesh:
+
+- **mesh_seed**: 256-bit CSPRNG seed (root secret)
+- **mesh_id**: 8 hex chars derived from name + seed
+- **encryption_secret**: HKDF-derived key for mesh-wide encryption
+- **beacon_key_base**: HKDF-derived key for encrypted advertisements
+- **creator_identity**: Founder's DeviceIdentity (initial authority)
+
 ## Platform Requirements
 
 ### Linux

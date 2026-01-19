@@ -22,8 +22,8 @@ hive-btle implements a layered security model designed for tactical mesh network
 
 | Threat | Status | Notes |
 |--------|--------|-------|
-| Active man-in-the-middle | Not mitigated | No certificate/identity binding |
-| Node impersonation | Not mitigated | Any secret holder can claim any node_id |
+| Active man-in-the-middle | Partially mitigated | DeviceIdentity provides TOFU-based protection |
+| Node impersonation | **Mitigated** | Ed25519 DeviceIdentity binds node_id to keypair |
 | Traffic analysis | Not mitigated | mesh_id broadcast in clear |
 | Compromised node revocation | Not mitigated | Requires secret rotation for all nodes |
 | Key compromise recovery | Not mitigated | No key rotation mechanism |
@@ -71,10 +71,29 @@ hive-btle implements a layered security model designed for tactical mesh network
 
 | Component | Size | Source | Purpose |
 |-----------|------|--------|---------|
-| `node_id` | 32-bit | MAC-derived or explicit | Unique node identifier |
+| `DeviceIdentity` | Ed25519 keypair | Generated per-device | Cryptographic identity |
+| `node_id` | 32-bit | BLAKE3(public_key) | Unique node identifier |
 | `callsign` | String | User-assigned | Human-readable name |
-| `mesh_id` | 4-char | Deployment config | Network segregation |
-| `encryption_secret` | 256-bit | Out-of-band | Cryptographic access |
+| `mesh_id` | 8-char hex | MeshGenesis | Network segregation |
+| `encryption_secret` | 256-bit | MeshGenesis HKDF | Cryptographic access |
+
+### Device Identity (New)
+
+Each device generates a persistent Ed25519 keypair (`DeviceIdentity`):
+
+```rust
+use hive_btle::security::DeviceIdentity;
+
+let identity = DeviceIdentity::generate();
+let node_id = identity.node_id();        // Derived from public key
+let attestation = identity.create_attestation();  // Signed proof
+```
+
+The `IdentityAttestation` contains:
+- `node_id`: 4 bytes
+- `public_key`: 32 bytes
+- `timestamp_ms`: 8 bytes
+- `signature`: 64 bytes (signs all above fields)
 
 ### Mesh Formation Flow
 
@@ -303,10 +322,11 @@ When strict mode is enabled, `SecurityViolation::UnencryptedInStrictMode` events
    - Malicious node with secret stays forever
    - **Mitigation**: Implement deny-list with signed revocation
 
-3. **No Identity Binding**
-   - node_id is self-asserted
-   - Anyone with secret can claim any identity
-   - **Mitigation**: Sign node_id with per-device key
+3. **Identity Binding** (Implemented)
+   - Ed25519 `DeviceIdentity` binds node_id to public key
+   - `IdentityAttestation` provides signed proof of identity
+   - node_id derived from public key hash (BLAKE3)
+   - **Status**: Core primitives implemented, integration pending
 
 4. **mesh_id in Cleartext**
    - BLE advertisements expose network identifier
@@ -337,12 +357,16 @@ When strict mode is enabled, `SecurityViolation::UnencryptedInStrictMode` events
 - Accept current limitations
 
 ### For Adversarial Environments
-**Current implementation is NOT recommended.** Required additions:
-- Identity binding via device attestation
+**Use with caution.** Available security features:
+- Identity binding via `DeviceIdentity` (Ed25519)
+- Mesh genesis with `MeshGenesis` protocol
+
+Still required:
 - Key rotation protocol
 - Revocation mechanism
 - Encrypted advertisements
 - Audit logging
+- TOFU registry integration
 
 ## Future Work
 
@@ -358,10 +382,11 @@ When strict mode is enabled, `SecurityViolation::UnencryptedInStrictMode` events
    - Join approval workflow
    - Revocation propagation
 
-3. **v0.4: Identity Binding**
-   - Device attestation
-   - Node certificate chain
-   - Impersonation detection
+3. **v0.4: Identity Binding** (Implemented in v0.0.12)
+   - ~~Device attestation~~ `DeviceIdentity` with Ed25519
+   - ~~Node certificate chain~~ `IdentityAttestation` with signatures
+   - ~~Impersonation detection~~ node_id derived from public key
+   - Pending: TOFU registry, document signing integration
 
 ### Research Areas
 
@@ -372,6 +397,8 @@ When strict mode is enabled, `SecurityViolation::UnencryptedInStrictMode` events
 
 ## References
 
+- [Ed25519 (RFC 8032)](https://datatracker.ietf.org/doc/html/rfc8032) - Device identity signatures
+- [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) - Node ID derivation, key derivation
 - [ChaCha20-Poly1305 (RFC 8439)](https://datatracker.ietf.org/doc/html/rfc8439)
 - [X25519 (RFC 7748)](https://datatracker.ietf.org/doc/html/rfc7748)
 - [HKDF (RFC 5869)](https://datatracker.ietf.org/doc/html/rfc5869)
