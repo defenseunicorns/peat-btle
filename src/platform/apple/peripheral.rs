@@ -178,7 +178,7 @@ impl PeripheralManager {
     ///
     /// This initializes the CBPeripheralManager with default options.
     /// The manager won't be ready until `state` becomes `PoweredOn`.
-    pub fn new() -> Result<Self> {
+    pub(super) fn new() -> Result<Self> {
         let (event_tx, event_rx) = mpsc::channel(100);
 
         // Create delegate
@@ -206,12 +206,13 @@ impl PeripheralManager {
     }
 
     /// Get the current peripheral manager state
-    pub async fn state(&self) -> CentralState {
+    pub(super) async fn state(&self) -> CentralState {
         *self.state.read().await
     }
 
     /// Wait for the peripheral manager to be ready (powered on)
-    pub async fn wait_ready(&self) -> Result<()> {
+    #[allow(dead_code)] // Useful for manual initialization flows
+    pub(super) async fn wait_ready(&self) -> Result<()> {
         loop {
             self.process_events().await?;
 
@@ -243,7 +244,7 @@ impl PeripheralManager {
     /// Register the HIVE GATT service
     ///
     /// Creates the HIVE BLE service with all required characteristics.
-    pub async fn register_hive_service(&self, node_id: NodeId) -> Result<()> {
+    pub(super) async fn register_hive_service(&self, node_id: NodeId) -> Result<()> {
         // All ObjC work happens in this block, dropped before any await
         // The Retained<> types are not Send, so they can't cross await points
         {
@@ -456,7 +457,7 @@ impl PeripheralManager {
     }
 
     /// Unregister all GATT services
-    pub async fn unregister_all_services(&self) -> Result<()> {
+    pub(super) async fn unregister_all_services(&self) -> Result<()> {
         unsafe {
             self.manager.removeAllServices();
         }
@@ -473,7 +474,7 @@ impl PeripheralManager {
     /// # Arguments
     /// * `node_id` - Node ID to include in advertisement
     /// * `_config` - Discovery configuration (currently unused)
-    pub async fn start_advertising(
+    pub(super) async fn start_advertising(
         &self,
         node_id: NodeId,
         _config: &DiscoveryConfig,
@@ -538,7 +539,7 @@ impl PeripheralManager {
     }
 
     /// Stop advertising
-    pub async fn stop_advertising(&self) -> Result<()> {
+    pub(super) async fn stop_advertising(&self) -> Result<()> {
         unsafe {
             self.manager.stopAdvertising();
         }
@@ -549,7 +550,8 @@ impl PeripheralManager {
     }
 
     /// Check if currently advertising
-    pub async fn is_advertising(&self) -> bool {
+    #[allow(dead_code)] // Useful for state inspection
+    pub(super) async fn is_advertising(&self) -> bool {
         // Use the actual CoreBluetooth state
         unsafe { self.manager.isAdvertising() }
     }
@@ -558,18 +560,21 @@ impl PeripheralManager {
     ///
     /// This value will be returned when a central device reads the characteristic.
     /// Use this to set sync data or other readable values.
-    pub fn set_characteristic_value(&self, characteristic_uuid: &str, value: Vec<u8>) {
+    #[allow(dead_code)] // Will be used for GATT server responses
+    pub(super) fn set_characteristic_value(&self, characteristic_uuid: &str, value: Vec<u8>) {
         self.delegate
             .set_characteristic_value(characteristic_uuid, value);
     }
 
     /// Get the current value for a characteristic
-    pub fn get_characteristic_value(&self, characteristic_uuid: &str) -> Option<Vec<u8>> {
+    #[allow(dead_code)] // Will be used for GATT server responses
+    pub(super) fn get_characteristic_value(&self, characteristic_uuid: &str) -> Option<Vec<u8>> {
         self.delegate.get_characteristic_value(characteristic_uuid)
     }
 
     /// Send notification to subscribed centrals
-    pub async fn send_notification(&self, characteristic_uuid: &str, value: &[u8]) -> Result<bool> {
+    #[allow(dead_code)] // Will be used for GATT notifications
+    pub(super) async fn send_notification(&self, characteristic_uuid: &str, value: &[u8]) -> Result<bool> {
         // Use sync lock for characteristics (contains non-Send types)
         let chars = self.characteristics.read().unwrap();
         let characteristic = chars.get(characteristic_uuid).ok_or_else(|| {
@@ -593,7 +598,8 @@ impl PeripheralManager {
     }
 
     /// Get subscribers for a characteristic
-    pub async fn get_subscribers(&self, characteristic_uuid: &str) -> Vec<String> {
+    #[allow(dead_code)] // Will be used for targeted notifications
+    pub(super) async fn get_subscribers(&self, characteristic_uuid: &str) -> Vec<String> {
         let subscribers = self.subscribers.read().await;
         subscribers
             .get(characteristic_uuid)
@@ -602,7 +608,7 @@ impl PeripheralManager {
     }
 
     /// Process pending delegate events
-    pub async fn process_events(&self) -> Result<()> {
+    pub(super) async fn process_events(&self) -> Result<()> {
         let mut event_rx = self.event_rx.write().await;
 
         while let Ok(event) = event_rx.try_recv() {

@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::config::{BleConfig, BlePhy, DiscoveryConfig};
+use crate::config::{BleConfig, DiscoveryConfig};
 use crate::error::{BleError, Result};
 use crate::platform::{
     BleAdapter, ConnectionCallback, ConnectionEvent, DisconnectReason, DiscoveredDevice,
@@ -34,7 +34,6 @@ use crate::NodeId;
 
 use super::central::CentralManager;
 use super::connection::CoreBluetoothConnection;
-use super::delegates::CentralState;
 use super::peripheral::PeripheralManager;
 
 /// Internal state for the adapter
@@ -124,7 +123,7 @@ impl CoreBluetoothAdapter {
     }
 
     /// Register node ID to peripheral identifier mapping
-    pub async fn register_node_identifier(&self, node_id: NodeId, identifier: String) {
+    async fn register_node_identifier(&self, node_id: NodeId, identifier: String) {
         let mut state = self.state.write().await;
         state
             .identifier_to_node
@@ -133,13 +132,14 @@ impl CoreBluetoothAdapter {
     }
 
     /// Get peripheral identifier for a node ID
-    pub async fn get_node_identifier(&self, node_id: &NodeId) -> Option<String> {
+    async fn get_node_identifier(&self, node_id: &NodeId) -> Option<String> {
         let state = self.state.read().await;
         state.node_to_identifier.get(node_id).cloned()
     }
 
     /// Get node ID for a peripheral identifier
-    pub async fn get_identifier_node(&self, identifier: &str) -> Option<NodeId> {
+    #[allow(dead_code)] // May be needed for reverse lookup
+    async fn get_identifier_node(&self, identifier: &str) -> Option<NodeId> {
         let state = self.state.read().await;
         state.identifier_to_node.get(identifier).cloned()
     }

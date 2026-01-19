@@ -69,7 +69,7 @@ impl CoreBluetoothConnection {
     /// # Arguments
     /// * `peer_id` - HIVE node ID of the remote peer
     /// * `identifier` - CoreBluetooth peripheral identifier (UUID)
-    pub fn new(peer_id: NodeId, identifier: String) -> Self {
+    pub(super) fn new(peer_id: NodeId, identifier: String) -> Self {
         let (event_tx, event_rx) = mpsc::channel(100);
         let delegate = Arc::new(PeripheralDelegate::new(event_tx));
 
@@ -95,44 +95,50 @@ impl CoreBluetoothConnection {
     }
 
     /// Get the peripheral identifier
-    pub fn identifier(&self) -> &str {
+    #[allow(dead_code)] // Useful for debugging
+    pub(super) fn identifier(&self) -> &str {
         &self.identifier
     }
 
     /// Update connection state from delegate callback
-    pub async fn update_connection_state(&self, connected: bool) {
+    #[allow(dead_code)] // Will be called from delegate events
+    pub(super) async fn update_connection_state(&self, connected: bool) {
         let mut state = self.state.write().await;
         state.alive = connected;
     }
 
     /// Update MTU (called after MTU exchange completes)
-    pub async fn update_mtu(&self, mtu: u16) {
+    #[allow(dead_code)] // Will be called from delegate events
+    pub(super) async fn update_mtu(&self, mtu: u16) {
         let mut state = self.state.write().await;
         state.mtu = mtu;
         log::debug!("MTU updated to {} for peer {}", mtu, self.peer_id);
     }
 
     /// Update RSSI
-    pub async fn update_rssi(&self, rssi: i8) {
+    #[allow(dead_code)] // Will be called from delegate events
+    pub(super) async fn update_rssi(&self, rssi: i8) {
         let mut state = self.state.write().await;
         state.rssi = Some(rssi);
     }
 
     /// Mark services as discovered
-    pub async fn mark_services_discovered(&self) {
+    #[allow(dead_code)] // Will be called from delegate events
+    pub(super) async fn mark_services_discovered(&self) {
         let mut state = self.state.write().await;
         state.services_discovered = true;
         log::debug!("Services discovered for peer {}", self.peer_id);
     }
 
     /// Check if services have been discovered
-    pub async fn are_services_discovered(&self) -> bool {
+    #[allow(dead_code)] // Useful for checking discovery state
+    pub(super) async fn are_services_discovered(&self) -> bool {
         let state = self.state.read().await;
         state.services_discovered
     }
 
     /// Mark connection as dead
-    pub async fn mark_dead(&self) {
+    pub(super) async fn mark_dead(&self) {
         let mut state = self.state.write().await;
         state.alive = false;
     }
@@ -141,7 +147,7 @@ impl CoreBluetoothConnection {
     ///
     /// Note: On CoreBluetooth, disconnection is handled by the CentralManager,
     /// not the peripheral itself.
-    pub async fn disconnect(&self) -> Result<()> {
+    pub(super) async fn disconnect(&self) -> Result<()> {
         // TODO: Signal CentralManager to disconnect
         // This should call centralManager.cancelPeripheralConnection_(peripheral)
 
@@ -154,7 +160,8 @@ impl CoreBluetoothConnection {
     }
 
     /// Discover services on the peripheral
-    pub async fn discover_services(&self, service_uuids: Option<Vec<String>>) -> Result<()> {
+    #[allow(dead_code)] // GATT client operation - not yet wired up
+    pub(super) async fn discover_services(&self, _service_uuids: Option<Vec<String>>) -> Result<()> {
         // TODO: Call CBPeripheral.discoverServices:
         //
         // Example objc2 code:
@@ -178,10 +185,11 @@ impl CoreBluetoothConnection {
     }
 
     /// Discover characteristics for a service
-    pub async fn discover_characteristics(
+    #[allow(dead_code)] // GATT client operation - not yet wired up
+    pub(super) async fn discover_characteristics(
         &self,
         service_uuid: &str,
-        characteristic_uuids: Option<Vec<String>>,
+        _characteristic_uuids: Option<Vec<String>>,
     ) -> Result<()> {
         // TODO: Call CBPeripheral.discoverCharacteristics:forService:
         //
@@ -200,7 +208,8 @@ impl CoreBluetoothConnection {
     }
 
     /// Read a characteristic value
-    pub async fn read_characteristic(
+    #[allow(dead_code)] // GATT client operation - not yet wired up
+    pub(super) async fn read_characteristic(
         &self,
         service_uuid: &str,
         characteristic_uuid: &str,
@@ -223,7 +232,8 @@ impl CoreBluetoothConnection {
     }
 
     /// Write a characteristic value
-    pub async fn write_characteristic(
+    #[allow(dead_code)] // GATT client operation - not yet wired up
+    pub(super) async fn write_characteristic(
         &self,
         service_uuid: &str,
         characteristic_uuid: &str,
@@ -261,7 +271,8 @@ impl CoreBluetoothConnection {
     }
 
     /// Enable notifications for a characteristic
-    pub async fn enable_notifications(
+    #[allow(dead_code)] // GATT client operation - not yet wired up
+    pub(super) async fn enable_notifications(
         &self,
         service_uuid: &str,
         characteristic_uuid: &str,
@@ -285,7 +296,8 @@ impl CoreBluetoothConnection {
     }
 
     /// Disable notifications for a characteristic
-    pub async fn disable_notifications(
+    #[allow(dead_code)] // GATT client operation - not yet wired up
+    pub(super) async fn disable_notifications(
         &self,
         service_uuid: &str,
         characteristic_uuid: &str,
@@ -304,7 +316,8 @@ impl CoreBluetoothConnection {
     }
 
     /// Read RSSI
-    pub async fn read_rssi(&self) -> Result<()> {
+    #[allow(dead_code)] // GATT client operation - not yet wired up
+    pub(super) async fn read_rssi(&self) -> Result<()> {
         // TODO: Call CBPeripheral.readRSSI()
 
         log::warn!(
@@ -318,7 +331,8 @@ impl CoreBluetoothConnection {
     }
 
     /// Process pending delegate events
-    pub async fn process_events(&self) -> Result<()> {
+    #[allow(dead_code)] // Event processing - not yet wired up
+    pub(super) async fn process_events(&self) -> Result<()> {
         let mut event_rx = self.event_rx.write().await;
 
         while let Ok(event) = event_rx.try_recv() {

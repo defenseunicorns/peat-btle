@@ -109,7 +109,7 @@ pub enum CentralState {
 
 impl CentralState {
     /// Convert from CBManagerState integer value
-    pub fn from_raw(value: isize) -> Self {
+    pub(super) fn from_raw(value: isize) -> Self {
         match value {
             0 => CentralState::Unknown,
             1 => CentralState::Resetting,
@@ -122,7 +122,8 @@ impl CentralState {
     }
 
     /// Check if Bluetooth is ready to use
-    pub fn is_ready(&self) -> bool {
+    #[cfg(test)]
+    pub(super) fn is_ready(&self) -> bool {
         matches!(self, CentralState::PoweredOn)
     }
 }
@@ -358,7 +359,7 @@ declare_class!(
             let identifier = unsafe {
                 peripheral.identifier().UUIDString().to_string()
             };
-            let error_str = error.map(|e| unsafe { e.localizedDescription().to_string() });
+            let error_str = error.map(|e| e.localizedDescription().to_string());
             log::info!("Disconnected from peripheral: {} (error: {:?})", identifier, error_str);
 
             if let Ok(guard) = self.ivars().event_tx.lock() {
@@ -382,7 +383,7 @@ declare_class!(
                 peripheral.identifier().UUIDString().to_string()
             };
             let error_str = error
-                .map(|e| unsafe { e.localizedDescription().to_string() })
+                .map(|e| e.localizedDescription().to_string())
                 .unwrap_or_else(|| "Unknown error".to_string());
             log::warn!("Failed to connect to peripheral: {} ({})", identifier, error_str);
 
@@ -410,12 +411,12 @@ impl RustCentralManagerDelegate {
     }
 
     /// Get as a protocol object for setting as delegate
-    pub fn as_protocol(&self) -> &ProtocolObject<dyn CBCentralManagerDelegate> {
+    pub(super) fn as_protocol(&self) -> &ProtocolObject<dyn CBCentralManagerDelegate> {
         ProtocolObject::from_ref(self)
     }
 
     /// Get a stored peripheral by identifier
-    pub fn get_peripheral(&self, identifier: &str) -> Option<Retained<CBPeripheral>> {
+    pub(super) fn get_peripheral(&self, identifier: &str) -> Option<Retained<CBPeripheral>> {
         self.ivars()
             .peripherals
             .lock()
@@ -424,7 +425,8 @@ impl RustCentralManagerDelegate {
     }
 
     /// Remove a peripheral from storage
-    pub fn remove_peripheral(&self, identifier: &str) -> Option<Retained<CBPeripheral>> {
+    #[allow(dead_code)] // May be needed for disconnect cleanup
+    pub(super) fn remove_peripheral(&self, identifier: &str) -> Option<Retained<CBPeripheral>> {
         self.ivars()
             .peripherals
             .lock()
@@ -501,7 +503,7 @@ declare_class!(
             let identifier = unsafe {
                 peripheral.identifier().UUIDString().to_string()
             };
-            let error_str = error.map(|e| unsafe { e.localizedDescription().to_string() });
+            let error_str = error.map(|e| e.localizedDescription().to_string());
             log::debug!("Services discovered for {}: error={:?}", identifier, error_str);
 
             if let Ok(guard) = self.ivars().event_tx.lock() {
@@ -525,7 +527,7 @@ declare_class!(
                 peripheral.identifier().UUIDString().to_string()
             };
             let service_uuid = unsafe { service.UUID().UUIDString().to_string() };
-            let error_str = error.map(|e| unsafe { e.localizedDescription().to_string() });
+            let error_str = error.map(|e| e.localizedDescription().to_string());
 
             if let Ok(guard) = self.ivars().event_tx.lock() {
                 if let Some(tx) = guard.as_ref() {
@@ -554,7 +556,7 @@ declare_class!(
                     .map(|d| d.bytes().to_vec())
                     .unwrap_or_default()
             };
-            let error_str = error.map(|e| unsafe { e.localizedDescription().to_string() });
+            let error_str = error.map(|e| e.localizedDescription().to_string());
 
             if let Ok(guard) = self.ivars().event_tx.lock() {
                 if let Some(tx) = guard.as_ref() {
@@ -579,7 +581,7 @@ declare_class!(
                 peripheral.identifier().UUIDString().to_string()
             };
             let characteristic_uuid = unsafe { characteristic.UUID().UUIDString().to_string() };
-            let error_str = error.map(|e| unsafe { e.localizedDescription().to_string() });
+            let error_str = error.map(|e| e.localizedDescription().to_string());
 
             if let Ok(guard) = self.ivars().event_tx.lock() {
                 if let Some(tx) = guard.as_ref() {
@@ -604,7 +606,7 @@ declare_class!(
             };
             let characteristic_uuid = unsafe { characteristic.UUID().UUIDString().to_string() };
             let enabled = unsafe { characteristic.isNotifying() };
-            let error_str = error.map(|e| unsafe { e.localizedDescription().to_string() });
+            let error_str = error.map(|e| e.localizedDescription().to_string());
 
             if let Ok(guard) = self.ivars().event_tx.lock() {
                 if let Some(tx) = guard.as_ref() {
@@ -629,7 +631,7 @@ declare_class!(
                 peripheral.identifier().UUIDString().to_string()
             };
             let rssi_val = rssi.as_i8();
-            let error_str = error.map(|e| unsafe { e.localizedDescription().to_string() });
+            let error_str = error.map(|e| e.localizedDescription().to_string());
 
             if let Ok(guard) = self.ivars().event_tx.lock() {
                 if let Some(tx) = guard.as_ref() {
@@ -714,7 +716,7 @@ declare_class!(
             error: Option<&NSError>,
         ) {
             let service_uuid = unsafe { service.UUID().UUIDString().to_string() };
-            let error_str = error.map(|e| unsafe { e.localizedDescription().to_string() });
+            let error_str = error.map(|e| e.localizedDescription().to_string());
             log::debug!("Service {} added: error={:?}", service_uuid, error_str);
 
             if let Ok(guard) = self.ivars().event_tx.lock() {
@@ -733,7 +735,7 @@ declare_class!(
             _peripheral: &CBPeripheralManager,
             error: Option<&NSError>,
         ) {
-            let error_str = error.map(|e| unsafe { e.localizedDescription().to_string() });
+            let error_str = error.map(|e| e.localizedDescription().to_string());
             if let Some(ref e) = error_str {
                 log::warn!("Advertising failed to start: {}", e);
             } else {

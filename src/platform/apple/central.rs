@@ -117,14 +117,15 @@ impl CentralManager {
     }
 
     /// Get the current central manager state
-    pub async fn state(&self) -> CentralState {
+    pub(super) async fn state(&self) -> CentralState {
         *self.state.read().await
     }
 
     /// Wait for the central manager to be ready (powered on)
     ///
     /// Returns an error if Bluetooth is unavailable or unauthorized.
-    pub async fn wait_ready(&self) -> Result<()> {
+    #[allow(dead_code)] // Useful for manual initialization flows
+    pub(super) async fn wait_ready(&self) -> Result<()> {
         // Process events until state changes to a terminal state
         loop {
             self.process_events().await?;
@@ -214,7 +215,8 @@ impl CentralManager {
     }
 
     /// Check if currently scanning
-    pub async fn is_scanning(&self) -> bool {
+    #[allow(dead_code)] // Useful for state inspection
+    pub(super) async fn is_scanning(&self) -> bool {
         *self.scanning.read().await
     }
 
@@ -222,7 +224,7 @@ impl CentralManager {
     ///
     /// # Arguments
     /// * `identifier` - The peripheral's UUID identifier
-    pub async fn connect(&self, identifier: &str) -> Result<()> {
+    pub(super) async fn connect(&self, identifier: &str) -> Result<()> {
         // Get the CBPeripheral from delegate's storage
         let peripheral = self.delegate.get_peripheral(identifier).ok_or_else(|| {
             BleError::ConnectionFailed(format!("Unknown peripheral: {}", identifier))
@@ -238,7 +240,7 @@ impl CentralManager {
     }
 
     /// Disconnect from a peripheral
-    pub async fn disconnect(&self, identifier: &str) -> Result<()> {
+    pub(super) async fn disconnect(&self, identifier: &str) -> Result<()> {
         // Get the CBPeripheral from delegate's storage
         if let Some(peripheral) = self.delegate.get_peripheral(identifier) {
             unsafe {
@@ -251,24 +253,27 @@ impl CentralManager {
     }
 
     /// Get the CBPeripheral for an identifier
-    pub fn get_cb_peripheral(&self, identifier: &str) -> Option<Retained<CBPeripheral>> {
+    #[allow(dead_code)] // Useful for low-level CoreBluetooth access
+    pub(super) fn get_cb_peripheral(&self, identifier: &str) -> Option<Retained<CBPeripheral>> {
         self.delegate.get_peripheral(identifier)
     }
 
     /// Get information about a discovered peripheral
-    pub async fn get_peripheral(&self, identifier: &str) -> Option<PeripheralInfo> {
+    #[allow(dead_code)] // Useful for debugging discovery
+    pub(super) async fn get_peripheral(&self, identifier: &str) -> Option<PeripheralInfo> {
         let peripherals = self.peripherals.read().await;
         peripherals.get(identifier).cloned()
     }
 
     /// Get all discovered peripherals
-    pub async fn get_discovered_peripherals(&self) -> Vec<PeripheralInfo> {
+    #[allow(dead_code)] // Useful for debugging discovery
+    pub(super) async fn get_discovered_peripherals(&self) -> Vec<PeripheralInfo> {
         let peripherals = self.peripherals.read().await;
         peripherals.values().cloned().collect()
     }
 
     /// Get all HIVE node peripherals
-    pub async fn get_hive_peripherals(&self) -> Vec<PeripheralInfo> {
+    pub(super) async fn get_hive_peripherals(&self) -> Vec<PeripheralInfo> {
         let peripherals = self.peripherals.read().await;
         peripherals
             .values()
@@ -280,7 +285,7 @@ impl CentralManager {
     /// Process pending delegate events
     ///
     /// Call this periodically to update internal state from delegate callbacks.
-    pub async fn process_events(&self) -> Result<()> {
+    pub(super) async fn process_events(&self) -> Result<()> {
         let mut event_rx = self.event_rx.write().await;
 
         while let Ok(event) = event_rx.try_recv() {
