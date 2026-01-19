@@ -67,12 +67,26 @@ import java.nio.ByteOrder
  * @property meshId Mesh network identifier for isolation
  * @property peripheralType Type of peripheral device
  */
-class HiveMesh(
+class HiveMesh private constructor(
     val nodeId: Long,
-    val callsign: String = "ANDROID",
-    val meshId: String = "DEMO",
-    @PeripheralType val peripheralType: Int = PeripheralType.SOLDIER_SENSOR
+    val callsign: String,
+    val meshId: String,
+    @PeripheralType val peripheralType: Int,
+    existingHandle: Long?
 ) : AutoCloseable {
+
+    /**
+     * Create a new HiveMesh with the specified configuration.
+     *
+     * This constructor creates a mesh without cryptographic identity binding.
+     * For secure identity features, use [createWithIdentity] or [createFromGenesis].
+     */
+    constructor(
+        nodeId: Long,
+        callsign: String = "ANDROID",
+        meshId: String = "DEMO",
+        @PeripheralType peripheralType: Int = PeripheralType.SOLDIER_SENSOR
+    ) : this(nodeId, callsign, meshId, peripheralType, null)
 
     companion object {
         private const val TAG = "HiveMesh"
@@ -245,6 +259,133 @@ class HiveMesh(
 
         @JvmStatic
         private external fun nativeGetChatMessagesSince(handle: Long, sinceTimestamp: Long): String
+
+        // Identity methods
+        @JvmStatic
+        private external fun nativeCreateWithIdentity(
+            nodeId: Long,
+            callsign: String,
+            meshId: String,
+            peripheralType: Int,
+            identityHandle: Long
+        ): Long
+
+        @JvmStatic
+        private external fun nativeCreateFromGenesis(
+            genesisHandle: Long,
+            identityHandle: Long,
+            callsign: String
+        ): Long
+
+        @JvmStatic
+        private external fun nativeHasIdentity(handle: Long): Boolean
+
+        @JvmStatic
+        private external fun nativeGetPublicKey(handle: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeCreateAttestation(handle: Long, timestampMs: Long): ByteArray
+
+        @JvmStatic
+        private external fun nativeVerifyPeerIdentity(handle: Long, attestationBytes: ByteArray): Int
+
+        @JvmStatic
+        private external fun nativeIsPeerIdentityKnown(handle: Long, peerNodeId: Long): Boolean
+
+        @JvmStatic
+        private external fun nativeKnownIdentityCount(handle: Long): Int
+
+        @JvmStatic
+        private external fun nativeSign(handle: Long, data: ByteArray): ByteArray
+
+        @JvmStatic
+        private external fun nativeVerifyPeerSignature(
+            handle: Long,
+            peerNodeId: Long,
+            data: ByteArray,
+            signature: ByteArray
+        ): Boolean
+
+        /**
+         * Create a HiveMesh with cryptographic identity.
+         *
+         * This constructor binds the mesh to a specific device identity, enabling:
+         * - Cryptographically derived node_id (from public key)
+         * - Identity attestations for peer verification
+         * - Digital signatures for message authentication
+         * - TOFU (Trust On First Use) identity registry
+         *
+         * **Note**: The identity is consumed by this operation. Do not use the
+         * DeviceIdentity instance after calling this method.
+         *
+         * @param identity The device identity (ownership transferred)
+         * @param callsign Human-readable identifier for this node
+         * @param meshId Mesh network identifier
+         * @param peripheralType Type of peripheral device
+         * @return New HiveMesh instance with identity
+         * @throws IllegalStateException if creation fails
+         */
+        @JvmStatic
+        fun createWithIdentity(
+            identity: DeviceIdentity,
+            callsign: String = "ANDROID",
+            meshId: String = "DEMO",
+            @PeripheralType peripheralType: Int = PeripheralType.SOLDIER_SENSOR
+        ): HiveMesh {
+            val nodeId = identity.nodeId
+            val handle = nativeCreateWithIdentity(
+                nodeId,
+                callsign,
+                meshId,
+                peripheralType,
+                identity.getHandle()
+            )
+            if (handle == 0L) {
+                throw IllegalStateException("Failed to create HiveMesh with identity")
+            }
+            // Mark identity as consumed (ownership transferred to native)
+            identity.markConsumed()
+            Log.i(TAG, "Created HiveMesh with identity: nodeId=${String.format("%08X", nodeId)}")
+            return HiveMesh(nodeId, callsign, meshId, peripheralType, handle)
+        }
+
+        /**
+         * Create a HiveMesh from a mesh genesis block.
+         *
+         * This joins an existing mesh using the cryptographic parameters from
+         * the genesis block. The mesh_id, encryption keys, and other parameters
+         * are derived from the genesis.
+         *
+         * **Note**: The identity is consumed by this operation. Do not use the
+         * DeviceIdentity instance after calling this method.
+         *
+         * @param genesis The mesh genesis block
+         * @param identity The device identity (ownership transferred)
+         * @param callsign Human-readable identifier for this node
+         * @return New HiveMesh instance bound to the genesis mesh
+         * @throws IllegalStateException if creation fails
+         */
+        @JvmStatic
+        fun createFromGenesis(
+            genesis: MeshGenesis,
+            identity: DeviceIdentity,
+            callsign: String = "ANDROID"
+        ): HiveMesh {
+            val nodeId = identity.nodeId
+            val handle = nativeCreateFromGenesis(
+                genesis.getHandle(),
+                identity.getHandle(),
+                callsign
+            )
+            if (handle == 0L) {
+                throw IllegalStateException("Failed to create HiveMesh from genesis")
+            }
+            // Mark identity as consumed (ownership transferred to native)
+            identity.markConsumed()
+            val meshId = genesis.meshId
+            Log.i(TAG, "Created HiveMesh from genesis: meshId=$meshId, nodeId=${String.format("%08X", nodeId)}")
+            return HiveMesh(nodeId, callsign, meshId, PeripheralType.SOLDIER_SENSOR, handle)
+        }
     }
 
     /** Native handle returned by nativeCreate */
@@ -254,7 +395,7 @@ class HiveMesh(
     private var isDestroyed = false
 
     init {
-        handle = nativeCreate(nodeId, callsign, meshId, peripheralType)
+        handle = existingHandle ?: nativeCreate(nodeId, callsign, meshId, peripheralType)
         if (handle == 0L) {
             throw IllegalStateException("Failed to create native HiveMesh")
         }
@@ -846,6 +987,118 @@ class HiveMesh(
     fun isPeerKnown(nodeId: Long): Boolean {
         checkNotDestroyed()
         return nativeIsPeerKnown(handle, nodeId)
+    }
+
+    // ========================================================================
+    // Identity API (TOFU - Trust On First Use)
+    // ========================================================================
+
+    /**
+     * Check if this mesh has a cryptographic identity bound.
+     *
+     * Meshes created with [createWithIdentity] or [createFromGenesis] have
+     * identity binding, enabling secure peer verification.
+     *
+     * @return true if the mesh has an identity
+     */
+    fun hasIdentity(): Boolean {
+        checkNotDestroyed()
+        return nativeHasIdentity(handle)
+    }
+
+    /**
+     * Get this mesh's public key.
+     *
+     * @return 32-byte Ed25519 public key, or null if no identity
+     */
+    fun getIdentityPublicKey(): ByteArray? {
+        checkNotDestroyed()
+        val key = nativeGetPublicKey(handle)
+        return if (key.isEmpty()) null else key
+    }
+
+    /**
+     * Create an identity attestation for peer verification.
+     *
+     * The attestation proves possession of the private key corresponding to
+     * this mesh's node_id. Send this to peers during handshake.
+     *
+     * @param timestampMs Attestation timestamp (defaults to current time)
+     * @return Encoded attestation bytes, or null if no identity
+     */
+    fun createAttestation(timestampMs: Long = System.currentTimeMillis()): ByteArray? {
+        checkNotDestroyed()
+        val attestation = nativeCreateAttestation(handle, timestampMs)
+        return if (attestation.isEmpty()) null else attestation
+    }
+
+    /**
+     * Verify a peer's identity attestation using TOFU semantics.
+     *
+     * This is the primary identity verification method:
+     * - First contact: Registers the peer's public key (REGISTERED)
+     * - Subsequent contacts: Verifies key matches (VERIFIED)
+     * - Key mismatch: Potential impersonation (KEY_MISMATCH)
+     *
+     * @param attestationBytes Encoded attestation from peer
+     * @return Verification result code (see [VerifyResult])
+     */
+    @VerifyResult
+    fun verifyPeerIdentity(attestationBytes: ByteArray): Int {
+        checkNotDestroyed()
+        return nativeVerifyPeerIdentity(handle, attestationBytes)
+    }
+
+    /**
+     * Check if a peer's identity has been verified.
+     *
+     * @param peerNodeId The peer's node ID
+     * @return true if the peer is in the identity registry
+     */
+    fun isPeerIdentityKnown(peerNodeId: Long): Boolean {
+        checkNotDestroyed()
+        return nativeIsPeerIdentityKnown(handle, peerNodeId)
+    }
+
+    /**
+     * Get the number of known peer identities.
+     *
+     * @return Count of peers in the identity registry
+     */
+    fun knownIdentityCount(): Int {
+        checkNotDestroyed()
+        return nativeKnownIdentityCount(handle)
+    }
+
+    /**
+     * Sign data with this mesh's identity.
+     *
+     * Creates an Ed25519 signature over the provided data.
+     *
+     * @param data The data to sign
+     * @return 64-byte signature, or null if no identity
+     */
+    fun sign(data: ByteArray): ByteArray? {
+        checkNotDestroyed()
+        val signature = nativeSign(handle, data)
+        return if (signature.isEmpty()) null else signature
+    }
+
+    /**
+     * Verify a peer's signature.
+     *
+     * Uses the public key from the TOFU registry to verify the signature.
+     * The peer must have been previously verified via [verifyPeerIdentity].
+     *
+     * @param peerNodeId The peer's node ID
+     * @param data The signed data
+     * @param signature The 64-byte signature to verify
+     * @return true if signature is valid
+     */
+    fun verifyPeerSignature(peerNodeId: Long, data: ByteArray, signature: ByteArray): Boolean {
+        checkNotDestroyed()
+        if (signature.size != 64) return false
+        return nativeVerifyPeerSignature(handle, peerNodeId, data, signature)
     }
 
     private fun checkNotDestroyed() {
