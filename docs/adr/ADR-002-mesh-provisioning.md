@@ -5,14 +5,150 @@
 **Authors**: (r)evolve Team
 **Depends On**: ADR-001 (Trust Architecture)
 **Related Issues**: 97f090e (Identity), 3920c2c (Membership)
+**HIVE Framework**: ADR-006 (Security), ADR-044 (E2E Encryption)
 
 ---
 
 ## Executive Summary
 
-This ADR defines how HIVE meshes are created, how nodes are provisioned to join, and how trust is established in different operational scenarios. It distinguishes between **user-attended nodes** (phones, tablets) and **userless nodes** (sensors, beacons, wearables) with different provisioning requirements.
+This ADR defines how HIVE-BTLE meshes are created, how nodes are provisioned to join, and how trust is established. **Critically**, it defines two operating modes:
 
-The key insight: **The mesh doesn't exist until the first node creates it.** That genesis moment establishes the security parameters that all subsequent nodes must conform to.
+1. **Standalone Mode**: hive-btle operates independently with simplified provisioning (shared secret)
+2. **HIVE-Integrated Mode**: hive-btle receives credentials from the HIVE framework (PKI, MLS)
+
+The HIVE framework (ADR-006, ADR-044) provides comprehensive security with X509 certificates, MLS group key agreement, and organizational PKI. When integrated, hive-btle defers to HIVE for identity and key management. In standalone mode, hive-btle provides a simpler (but less secure) provisioning model suitable for demos, testing, and small deployments.
+
+---
+
+## Operating Modes
+
+### Mode 1: HIVE-Integrated (Production)
+
+When hive-btle is used as a transport within the HIVE framework:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     HIVE FRAMEWORK                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │  ADR-006    │  │  ADR-044    │  │  Cell Management        │ │
+│  │  Security   │  │  MLS Keys   │  │  (Formation/Membership) │ │
+│  │  (PKI/X509) │  │  (RFC 9420) │  │                         │ │
+│  └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘ │
+│         │                │                      │               │
+│         └────────────────┴──────────────────────┘               │
+│                          │                                      │
+│                          ▼                                      │
+│         ┌────────────────────────────────────┐                 │
+│         │  CredentialProvider Interface       │                 │
+│         │  - device_identity()                │                 │
+│         │  - mesh_encryption_key()            │                 │
+│         │  - verify_peer(pubkey)              │                 │
+│         │  - is_member_authorized(pubkey)     │                 │
+│         └────────────────┬───────────────────┘                 │
+└──────────────────────────┼──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     HIVE-BTLE                                   │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │  Transport  │  │  Encryption │  │  Peer Management        │ │
+│  │  (BLE)      │  │  (ChaCha20) │  │                         │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘ │
+│                                                                 │
+│  hive-btle does NOT manage identities or keys in this mode.    │
+│  It receives them from HIVE via CredentialProvider.            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**In HIVE-Integrated mode:**
+- Device identity comes from HIVE's PKI (ADR-006)
+- Mesh encryption keys come from MLS (ADR-044)
+- Membership authorization checked against HIVE's cell roster
+- Provisioning/enrollment handled by HIVE, not hive-btle
+
+### Mode 2: Standalone (Simplified)
+
+When hive-btle operates independently without HIVE framework:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     HIVE-BTLE STANDALONE                        │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Simplified Credential Management                        │   │
+│  │  - Ed25519 device identity (self-generated)              │   │
+│  │  - Shared secret → mesh encryption key                   │   │
+│  │  - TOFU peer verification                                │   │
+│  │  - Simple allow/deny lists                               │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ⚠️  Less secure than HIVE-Integrated mode:                    │
+│     - No PKI/certificate chain                                 │
+│     - No MLS forward secrecy                                   │
+│     - Shared secret = single point of compromise               │
+│                                                                 │
+│  ✓ Appropriate for:                                            │
+│     - Demos and testing                                        │
+│     - Small teams (< 10 nodes)                                 │
+│     - Environments without HIVE infrastructure                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Credential Provider Interface
+
+hive-btle defines a trait that HIVE implements for integration:
+
+```rust
+/// Credential provider interface for HIVE integration
+///
+/// When hive-btle is used standalone, a default implementation
+/// uses the simplified shared-secret model. When integrated with
+/// HIVE, this trait is implemented by the HIVE security layer.
+pub trait CredentialProvider: Send + Sync {
+    /// Get this device's identity for signing
+    fn device_identity(&self) -> &dyn DeviceIdentity;
+
+    /// Get the current mesh encryption key
+    fn mesh_encryption_key(&self) -> [u8; 32];
+
+    /// Get the current mesh_id
+    fn mesh_id(&self) -> &str;
+
+    /// Verify a peer's identity attestation
+    fn verify_peer(&self, attestation: &IdentityAttestation) -> Result<bool, SecurityError>;
+
+    /// Check if a peer is authorized to join this mesh
+    fn is_authorized(&self, peer_pubkey: &[u8; 32]) -> bool;
+
+    /// Called when a new peer is discovered (for TOFU registration)
+    fn on_peer_discovered(&self, peer_pubkey: &[u8; 32], attestation: &IdentityAttestation);
+
+    /// Check if key rotation is pending
+    fn pending_key_rotation(&self) -> Option<KeyRotationInfo>;
+}
+
+/// Default standalone implementation
+pub struct StandaloneCredentials {
+    identity: Ed25519Identity,
+    mesh_seed: [u8; 32],
+    mesh_name: String,
+    tofu_registry: TofuRegistry,
+    allow_list: Option<HashSet<[u8; 32]>>,
+    deny_list: HashSet<[u8; 32]>,
+}
+```
+
+---
+
+## Standalone Mode Details
+
+The remainder of this ADR focuses on **Standalone Mode** provisioning, which is self-contained within hive-btle. For HIVE-Integrated mode, see:
+- HIVE ADR-006: Security, Authentication, Authorization
+- HIVE ADR-044: End-to-End Encryption and Key Management
+
+---
 
 ---
 
