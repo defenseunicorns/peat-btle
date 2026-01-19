@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["(r)evolve - Revolve Team LLC"]
 license = "Apache-2.0"
 description = "Bluetooth Low Energy mesh transport for HIVE Protocol"
-repository = "https://app.radicle.xyz/nodes/seed.radicle.garden/rad:z3fF7wV6LXz915ND1nbHTfeY3Qcq7"
+repository = "https://app.radicle.xyz/nodes/rosa.radicle.xyz/rad:z458mp9Um3AYNQQFMdHaNEUtmiohq"
 keywords = ["bluetooth", "ble", "mesh", "hive", "tactical"]
 categories = ["network-programming", "embedded"]
 
@@ -56,6 +56,10 @@ hkdf = "0.12"
 sha2 = "0.10"
 rand_core = { version = "0.6", features = ["getrandom"] }
 x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+
+# Identity and signing (DeviceIdentity, MeshGenesis)
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+blake3 = "1.5"
 
 # Async runtime (optional, for std platforms)
 tokio = { version = "1.42", features = ["sync", "time", "macros", "rt-multi-thread"], optional = true }

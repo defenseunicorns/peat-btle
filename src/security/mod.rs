@@ -72,9 +72,19 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 
+mod genesis;
+mod identity;
 mod mesh_key;
 mod peer_key;
 mod peer_session;
+
+// Device identity and attestation
+pub use identity::{
+    node_id_from_public_key, verify_signature, DeviceIdentity, IdentityAttestation, IdentityError,
+};
+
+// Mesh genesis and credentials
+pub use genesis::{MembershipPolicy, MeshCredentials, MeshGenesis};
 
 // Phase 1: Mesh-wide encryption
 pub use mesh_key::{EncryptedDocument, EncryptionError, MeshEncryptionKey};
