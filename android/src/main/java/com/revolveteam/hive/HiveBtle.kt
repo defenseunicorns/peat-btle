@@ -3464,6 +3464,12 @@ data class HiveDocument(
                 return null
             }
 
+            // Check for encrypted document marker (0xAE) - these are handled by native CRDT
+            if (data[0] == 0xAE.toByte()) {
+                Log.d(TAG, "Skipping encrypted document (${data.size} bytes) - handled by native layer")
+                return null
+            }
+
             try {
                 var offset = 0
 

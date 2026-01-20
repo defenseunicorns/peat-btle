@@ -451,6 +451,94 @@ impl Default for BleConfig {
     }
 }
 
+// ============================================================================
+// Build-time Embedded Secrets
+// ============================================================================
+
+/// Get the compile-time embedded encryption secret, if set.
+///
+/// Set the `HIVE_ENCRYPTION_SECRET` environment variable during build to embed
+/// a 64-character hex string (32 bytes) as the default mesh encryption secret.
+///
+/// # Example
+///
+/// Build with embedded secret:
+/// ```bash
+/// HIVE_ENCRYPTION_SECRET=0102030405060708091011121314151617181920212223242526272829303132 \
+///   cargo build --release
+/// ```
+///
+/// Use in code:
+/// ```ignore
+/// use hive_btle::config::embedded_encryption_secret;
+/// use hive_btle::hive_mesh::HiveMeshConfig;
+///
+/// let config = if let Some(secret) = embedded_encryption_secret() {
+///     HiveMeshConfig::new(node_id, "CALL", "MESH").with_encryption(secret)
+/// } else {
+///     HiveMeshConfig::new(node_id, "CALL", "MESH")
+/// };
+/// ```
+///
+/// # Security Note
+///
+/// The embedded secret is compiled into the binary. This is suitable for:
+/// - Development/testing with a fixed secret
+/// - Closed deployments where binaries are distributed securely
+///
+/// For dynamic secret management, use `MeshGenesis` or runtime configuration.
+pub fn embedded_encryption_secret() -> Option<[u8; 32]> {
+    // Read at compile time - returns None if not set
+    option_env!("HIVE_ENCRYPTION_SECRET").and_then(|s| parse_hex_secret(s))
+}
+
+/// Get the compile-time embedded mesh ID, if set.
+///
+/// Set the `HIVE_MESH_ID` environment variable during build to embed
+/// a default mesh ID.
+///
+/// # Example
+///
+/// ```bash
+/// HIVE_MESH_ID=ALPHA cargo build --release
+/// ```
+pub fn embedded_mesh_id() -> Option<&'static str> {
+    option_env!("HIVE_MESH_ID")
+}
+
+/// Check if a compile-time encryption secret was embedded.
+pub fn has_embedded_encryption_secret() -> bool {
+    option_env!("HIVE_ENCRYPTION_SECRET").is_some()
+}
+
+/// Parse a 64-character hex string into a 32-byte array.
+fn parse_hex_secret(hex: &str) -> Option<[u8; 32]> {
+    if hex.len() != 64 {
+        return None;
+    }
+
+    let mut result = [0u8; 32];
+    for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+        if i >= 32 {
+            return None;
+        }
+        let high = hex_digit(chunk[0])?;
+        let low = hex_digit(chunk[1])?;
+        result[i] = (high << 4) | low;
+    }
+    Some(result)
+}
+
+/// Convert a hex character to its numeric value.
+fn hex_digit(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,5 +644,49 @@ mod tests {
 
         // Legacy devices (no mesh ID) match any mesh for backwards compatibility
         assert!(config.matches_mesh(None));
+    }
+
+    #[test]
+    fn test_parse_hex_secret() {
+        // Valid 64-char hex
+        let hex = "0102030405060708091011121314151617181920212223242526272829303132";
+        let result = parse_hex_secret(hex);
+        assert!(result.is_some());
+        let secret = result.unwrap();
+        assert_eq!(secret[0], 0x01);
+        assert_eq!(secret[1], 0x02);
+        assert_eq!(secret[31], 0x32);
+
+        // Mixed case hex (64 chars = 32 bytes)
+        let hex = "AABBCCDD01020304050607080910111213141516171819202122232425262728";
+        let result = parse_hex_secret(hex);
+        assert!(result.is_some());
+        let secret = result.unwrap();
+        assert_eq!(secret[0], 0xAA);
+        assert_eq!(secret[1], 0xBB);
+    }
+
+    #[test]
+    fn test_parse_hex_secret_invalid() {
+        // Too short
+        assert!(parse_hex_secret("0102030405").is_none());
+
+        // Too long
+        assert!(parse_hex_secret("01020304050607080910111213141516171819202122232425262728293031323334").is_none());
+
+        // Invalid characters
+        assert!(parse_hex_secret("GGHHIIJJ0102030405060708091011121314151617181920212223242526").is_none());
+
+        // Empty
+        assert!(parse_hex_secret("").is_none());
+    }
+
+    #[test]
+    fn test_embedded_functions_exist() {
+        // These just verify the functions compile and can be called
+        // The actual values depend on build-time env vars
+        let _ = embedded_encryption_secret();
+        let _ = embedded_mesh_id();
+        let _ = has_embedded_encryption_secret();
     }
 }
