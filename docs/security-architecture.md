@@ -28,6 +28,30 @@ hive-btle implements a layered security model designed for tactical mesh network
 | Compromised node revocation | Not mitigated | Requires secret rotation for all nodes |
 | Key compromise recovery | Not mitigated | No key rotation mechanism |
 | Side-channel attacks | Not mitigated | Standard crypto implementations |
+| BLE pairing attacks | **Mitigated** | Application-layer encryption; BLE is not trust boundary |
+
+### BLE Pairing Attack Resilience
+
+**Threat**: Attacks like WhisperPair (CVE-2024-XXXXX) can downgrade BLE pairing
+security by manipulating key exchange timing, resulting in weaker session keys.
+
+**HIVE-BTLE Mitigation**: BLE link security is **not** the trust boundary.
+
+1. **Discovery-only dependency**: HIVE uses BLE for proximity detection and
+   initial rendezvous. Security-critical operations require application-layer
+   authentication per ADR-006.
+
+2. **PKI verification**: Device identity is established via Ed25519 keypairs,
+   verified at connection establishment before any CRDT sync occurs.
+
+3. **Mesh-wide encryption**: ChaCha20-Poly1305 encrypts all sync payloads
+   regardless of BLE security level.
+
+4. **Defense in depth**: Even a fully compromised BLE link exposes only
+   encrypted, authenticated traffic that cannot be injected into the HIVE mesh.
+
+**Recommendation**: For maximum security, require BLE Security Level 3+ for
+sync operations (MITM-protected pairing) but design assuming it's compromised.
 
 ## Security Layers
 

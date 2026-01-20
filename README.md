@@ -405,6 +405,29 @@ The genesis contains all cryptographic material to bootstrap a mesh:
 - **beacon_key_base**: HKDF-derived key for encrypted advertisements
 - **creator_identity**: Founder's DeviceIdentity (initial authority)
 
+### BLE Pairing Attack Resilience
+
+**Threat**: Attacks like WhisperPair (CVE-2024-XXXXX) can downgrade BLE pairing
+security by manipulating the key exchange timing, resulting in weaker session keys.
+
+**HIVE-BTLE Mitigation**: BLE link security is **not** the trust boundary.
+
+1. **Discovery-only dependency**: HIVE uses BLE for proximity detection and
+   initial rendezvous. Security-critical operations require application-layer
+   authentication per ADR-006.
+
+2. **PKI verification**: Device identity is established via Ed25519 keypairs,
+   verified at connection establishment before any CRDT sync occurs.
+
+3. **Mesh-wide encryption**: ChaCha20-Poly1305 encrypts all sync payloads
+   regardless of BLE security level.
+
+4. **Defense in depth**: Even a fully compromised BLE link exposes only
+   encrypted, authenticated traffic that cannot be injected into the HIVE mesh.
+
+**Recommendation**: For maximum security, enable mesh-wide encryption (default in
+`MeshGenesis`) and consider per-peer E2EE for sensitive operations.
+
 ## Platform Requirements
 
 ### Linux
