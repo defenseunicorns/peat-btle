@@ -161,7 +161,10 @@ impl CoreBluetoothConnection {
 
     /// Discover services on the peripheral
     #[allow(dead_code)] // GATT client operation - not yet wired up
-    pub(super) async fn discover_services(&self, _service_uuids: Option<Vec<String>>) -> Result<()> {
+    pub(super) async fn discover_services(
+        &self,
+        _service_uuids: Option<Vec<String>>,
+    ) -> Result<()> {
         // TODO: Call CBPeripheral.discoverServices:
         //
         // Example objc2 code:

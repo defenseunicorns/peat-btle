@@ -157,6 +157,14 @@ class HiveMesh private constructor(
         ): ByteArray
 
         @JvmStatic
+        private external fun nativeOnBleDataReceivedAnonymous(
+            handle: Long,
+            identifier: String,
+            data: ByteArray,
+            nowMs: Long
+        ): ByteArray
+
+        @JvmStatic
         private external fun nativeTick(handle: Long, nowMs: Long): ByteArray
 
         @JvmStatic
@@ -176,6 +184,12 @@ class HiveMesh private constructor(
 
         @JvmStatic
         private external fun nativeMatchesMesh(handle: Long, deviceMeshId: String?): Boolean
+
+        @JvmStatic
+        private external fun nativeGetPeerCallsign(handle: Long, nodeId: Long): String?
+
+        @JvmStatic
+        private external fun nativeGetPeerPeripheral(handle: Long, nodeId: Long): ByteArray
 
         // Connection State Graph methods
         @JvmStatic
@@ -305,6 +319,46 @@ class HiveMesh private constructor(
             data: ByteArray,
             signature: ByteArray
         ): Boolean
+
+        // Peripheral state methods
+        @JvmStatic
+        private external fun nativeUpdateLocation(
+            handle: Long,
+            latitude: Float,
+            longitude: Float,
+            altitude: Float,
+            hasAltitude: Boolean
+        )
+
+        @JvmStatic
+        private external fun nativeClearLocation(handle: Long)
+
+        @JvmStatic
+        private external fun nativeUpdateCallsign(handle: Long, callsign: String)
+
+        @JvmStatic
+        private external fun nativeUpdateHeartRate(handle: Long, heartRate: Byte)
+
+        @JvmStatic
+        private external fun nativeSetPeripheralEvent(handle: Long, eventTypeCode: Byte, timestamp: Long)
+
+        @JvmStatic
+        private external fun nativeClearPeripheralEvent(handle: Long)
+
+        @JvmStatic
+        private external fun nativeUpdatePeripheralState(
+            handle: Long,
+            callsign: String,
+            batteryPercent: Byte,
+            heartRate: Byte,
+            hasHeartRate: Boolean,
+            latitude: Float,
+            longitude: Float,
+            hasLocation: Boolean,
+            altitude: Float,
+            eventTypeCode: Byte,
+            timestamp: Long
+        )
 
         /**
          * Create a HiveMesh with cryptographic identity.
@@ -639,6 +693,29 @@ class HiveMesh private constructor(
     }
 
     /**
+     * Handle encrypted BLE data from an unknown peer.
+     *
+     * This is used for encrypted documents received from peers whose BLE address
+     * isn't registered (due to BLE address rotation). It decrypts first, extracts
+     * the source_node from the document header, and registers the identifier.
+     *
+     * @param identifier BLE device identifier (address)
+     * @param data Raw encrypted document bytes (must start with 0xAE marker)
+     * @param nowMs Current timestamp in milliseconds
+     * @return Parsed result with event flags, or null if decryption failed
+     */
+    fun onBleDataReceivedAnonymous(
+        identifier: String,
+        data: ByteArray,
+        nowMs: Long = System.currentTimeMillis()
+    ): DataReceivedResult? {
+        checkNotDestroyed()
+        val resultBytes = nativeOnBleDataReceivedAnonymous(handle, identifier, data, nowMs)
+        Log.d(TAG, "[JNI-DEBUG] onBleDataReceivedAnonymous: identifier=$identifier, dataSize=${data.size}, resultSize=${resultBytes.size}")
+        return DataReceivedResult.decode(resultBytes)
+    }
+
+    /**
      * Perform periodic maintenance.
      *
      * Should be called periodically (e.g., every 3-5 seconds) to:
@@ -703,6 +780,36 @@ class HiveMesh private constructor(
     fun matchesMesh(deviceMeshId: String?): Boolean {
         checkNotDestroyed()
         return nativeMatchesMesh(handle, deviceMeshId)
+    }
+
+    /**
+     * Get a peer's callsign by node ID.
+     *
+     * Returns the callsign from the peer's most recently received peripheral data.
+     * This is the human-readable identifier configured on the peer device.
+     *
+     * @param nodeId The peer's node ID (32-bit)
+     * @return The peer's callsign, or null if no peripheral data has been received
+     */
+    fun getPeerCallsign(nodeId: Long): String? {
+        checkNotDestroyed()
+        return nativeGetPeerCallsign(handle, nodeId)
+    }
+
+    /**
+     * Get a peer's full peripheral data by node ID.
+     *
+     * Returns the complete peripheral information from the peer's most recently
+     * received document, including callsign, health status, location, and event.
+     *
+     * @param nodeId The peer's node ID (32-bit)
+     * @return The peer's peripheral data, or null if not available
+     */
+    fun getPeerPeripheral(nodeId: Long): HivePeripheral? {
+        checkNotDestroyed()
+        val data = nativeGetPeerPeripheral(handle, nodeId)
+        if (data.isEmpty()) return null
+        return HivePeripheral.decode(data)
     }
 
     // ========================================================================
@@ -1101,6 +1208,116 @@ class HiveMesh private constructor(
         return nativeVerifyPeerSignature(handle, peerNodeId, data, signature)
     }
 
+    // ========================================================================
+    // Peripheral State API
+    // ========================================================================
+
+    /**
+     * Update this node's GPS location in the CRDT state.
+     *
+     * The location will be included in the next document sync.
+     * Call this before [buildDocument] to ensure location is included.
+     *
+     * @param latitude Latitude in degrees (-90 to 90)
+     * @param longitude Longitude in degrees (-180 to 180)
+     * @param altitude Optional altitude in meters
+     */
+    fun updateLocation(latitude: Float, longitude: Float, altitude: Float? = null) {
+        checkNotDestroyed()
+        nativeUpdateLocation(handle, latitude, longitude, altitude ?: 0f, altitude != null)
+    }
+
+    /**
+     * Clear this node's GPS location.
+     *
+     * Location will no longer be included in sync documents.
+     */
+    fun clearLocation() {
+        checkNotDestroyed()
+        nativeClearLocation(handle)
+    }
+
+    /**
+     * Update this node's callsign in the CRDT state.
+     *
+     * @param callsign Human-readable identifier (max 12 chars)
+     */
+    fun updateCallsign(callsign: String) {
+        checkNotDestroyed()
+        nativeUpdateCallsign(handle, callsign)
+    }
+
+    /**
+     * Update this node's heart rate in the CRDT state.
+     *
+     * @param heartRate Heart rate in BPM (0-255)
+     */
+    fun updateHeartRate(heartRate: Int) {
+        checkNotDestroyed()
+        nativeUpdateHeartRate(handle, heartRate.toByte())
+    }
+
+    /**
+     * Set a peripheral event type (Warning, Distress, Alert).
+     *
+     * @param eventType Event type code (1=Warning, 2=Distress, 3=Alert)
+     * @param timestamp Event timestamp in milliseconds
+     */
+    fun setPeripheralEvent(@EventType eventType: Int, timestamp: Long = System.currentTimeMillis()) {
+        checkNotDestroyed()
+        nativeSetPeripheralEvent(handle, eventType.toByte(), timestamp)
+    }
+
+    /**
+     * Clear any active peripheral event.
+     */
+    fun clearPeripheralEvent() {
+        checkNotDestroyed()
+        nativeClearPeripheralEvent(handle)
+    }
+
+    /**
+     * Update complete peripheral state in one efficient call.
+     *
+     * This is the most efficient method when updating multiple fields at once.
+     * Call this before [buildDocument] to ensure all state is included.
+     *
+     * @param callsign Human-readable identifier (max 12 chars)
+     * @param batteryPercent Battery level 0-100
+     * @param heartRate Optional heart rate in BPM
+     * @param latitude Optional GPS latitude
+     * @param longitude Optional GPS longitude
+     * @param altitude Optional GPS altitude
+     * @param eventType Optional event type (1=Warning, 2=Distress, 3=Alert)
+     * @param timestamp Current timestamp
+     */
+    fun updatePeripheralState(
+        callsign: String,
+        batteryPercent: Int,
+        heartRate: Int? = null,
+        latitude: Float? = null,
+        longitude: Float? = null,
+        altitude: Float? = null,
+        @EventType eventType: Int? = null,
+        timestamp: Long = System.currentTimeMillis()
+    ) {
+        checkNotDestroyed()
+        val hasLocation = latitude != null && longitude != null
+        nativeUpdatePeripheralState(
+            handle,
+            callsign,
+            batteryPercent.toByte(),
+            (heartRate ?: 0).toByte(),
+            heartRate != null,
+            latitude ?: 0f,
+            longitude ?: 0f,
+            hasLocation,
+            altitude ?: 0f,
+            (eventType ?: 0).toByte(),
+            timestamp
+        )
+    }
+
     private fun checkNotDestroyed() {
         if (isDestroyed) {
             throw IllegalStateException("HiveMesh has been destroyed")
@@ -1124,13 +1341,29 @@ data class DataReceivedResult(
     /** Whether the CRDT counter changed (new data) */
     val counterChanged: Boolean,
     /** Total counter value after merge */
-    val totalCount: Long
+    val totalCount: Long,
+    /** Sender's callsign (null if not set) */
+    val callsign: String?,
+    /** Sender's battery percentage (null if not set, 0-100) */
+    val batteryPercent: Int?,
+    /** Sender's heart rate in BPM (null if not set) */
+    val heartRate: Int?,
+    /** Sender's event type (null if not set) */
+    val eventType: Int?,
+    /** Sender's latitude (null if no location) */
+    val latitude: Float?,
+    /** Sender's longitude (null if no location) */
+    val longitude: Float?,
+    /** Sender's altitude in meters (null if not set) */
+    val altitude: Float?
 ) {
     companion object {
         /**
          * Decode result from native byte format.
          *
          * Format: [source_node: 4][is_emergency: 1][is_ack: 1][counter_changed: 1][total_count: 8]
+         *         [callsign: 12][battery: 1][heart_rate: 1][event_type: 1]
+         *         [has_location: 1][lat: 4][lon: 4][alt: 4]
          */
         fun decode(data: ByteArray): DataReceivedResult? {
             if (data.size < 15) return null
@@ -1142,12 +1375,61 @@ data class DataReceivedResult(
             val counterChanged = buffer.get() != 0.toByte()
             val totalCount = buffer.long
 
+            // Decode peripheral fields if present (for backward compatibility)
+            var callsign: String? = null
+            var batteryPercent: Int? = null
+            var heartRate: Int? = null
+            var eventType: Int? = null
+            var latitude: Float? = null
+            var longitude: Float? = null
+            var altitude: Float? = null
+
+            if (data.size >= 43) {
+                // Read callsign (12 bytes, null-terminated)
+                val callsignBytes = ByteArray(12)
+                buffer.get(callsignBytes)
+                val nullIndex = callsignBytes.indexOf(0.toByte())
+                val callsignLen = if (nullIndex >= 0) nullIndex else 12
+                if (callsignLen > 0) {
+                    callsign = String(callsignBytes, 0, callsignLen, Charsets.UTF_8)
+                }
+
+                // Read battery, heart rate, event type
+                val battery = buffer.get().toInt() and 0xFF
+                if (battery > 0) batteryPercent = battery
+
+                val hr = buffer.get().toInt() and 0xFF
+                if (hr > 0) heartRate = hr
+
+                val et = buffer.get().toInt() and 0xFF
+                if (et != 0xFF) eventType = et
+
+                // Read location
+                val hasLocation = buffer.get() != 0.toByte()
+                val lat = buffer.float
+                val lon = buffer.float
+                val alt = buffer.float
+
+                if (hasLocation) {
+                    latitude = lat
+                    longitude = lon
+                    if (!alt.isNaN()) altitude = alt
+                }
+            }
+
             return DataReceivedResult(
                 sourceNode = sourceNode,
                 isEmergency = isEmergency,
                 isAck = isAck,
                 counterChanged = counterChanged,
-                totalCount = totalCount
+                totalCount = totalCount,
+                callsign = callsign,
+                batteryPercent = batteryPercent,
+                heartRate = heartRate,
+                eventType = eventType,
+                latitude = latitude,
+                longitude = longitude,
+                altitude = altitude
             )
         }
     }
@@ -1171,6 +1453,41 @@ annotation class PeripheralType {
         const val SOLDIER_SENSOR = 1
         const val FIXED_SENSOR = 2
         const val RELAY = 3
+    }
+}
+
+/**
+ * Peripheral event type classification.
+ *
+ * Matches the Rust EventType enum values in hive-btle/src/sync/crdt.rs
+ * and the HiveEventType enum in HiveBtle.kt
+ */
+@Retention(AnnotationRetention.SOURCE)
+@IntDef(
+    EventType.NONE,
+    EventType.PING,
+    EventType.NEED_ASSIST,
+    EventType.EMERGENCY,
+    EventType.MOVING,
+    EventType.IN_POSITION,
+    EventType.ACK
+)
+annotation class EventType {
+    companion object {
+        /** No event / cleared */
+        const val NONE = 0
+        /** "I'm OK" ping */
+        const val PING = 1
+        /** Request assistance */
+        const val NEED_ASSIST = 2
+        /** Emergency / SOS */
+        const val EMERGENCY = 3
+        /** Moving / in transit */
+        const val MOVING = 4
+        /** In position / stationary */
+        const val IN_POSITION = 5
+        /** Acknowledged / copy */
+        const val ACK = 6
     }
 }
 

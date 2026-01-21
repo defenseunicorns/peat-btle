@@ -38,10 +38,8 @@ const ITERATIONS: usize = 100;
 
 /// Shared secret for encryption tests
 const TEST_SECRET: [u8; 32] = [
-    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-    0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-    0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-    0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+    0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
 ];
 
 /// Create a mesh node without encryption
@@ -52,8 +50,8 @@ fn create_unencrypted_mesh(node_id: u32, callsign: &str) -> HiveMesh {
 
 /// Create a mesh node with encryption enabled
 fn create_encrypted_mesh(node_id: u32, callsign: &str) -> HiveMesh {
-    let config = HiveMeshConfig::new(NodeId::new(node_id), callsign, "BENCH")
-        .with_encryption(TEST_SECRET);
+    let config =
+        HiveMeshConfig::new(NodeId::new(node_id), callsign, "BENCH").with_encryption(TEST_SECRET);
     HiveMesh::new(config)
 }
 
@@ -111,7 +109,8 @@ fn print_results(
     unencrypted_size: usize,
     encrypted_size: usize,
 ) {
-    let build_overhead_us = encrypted_build.as_micros() as i64 - unencrypted_build.as_micros() as i64;
+    let build_overhead_us =
+        encrypted_build.as_micros() as i64 - unencrypted_build.as_micros() as i64;
     let build_overhead_pct = if unencrypted_build.as_micros() > 0 {
         (build_overhead_us as f64 / unencrypted_build.as_micros() as f64) * 100.0
     } else {
@@ -170,16 +169,7 @@ fn benchmark_encryption_latency() {
     );
     println!(
         "| {:30} | {:>8} | {:>8} | {:>20} | {:>8} | {:>8} | {:>20} | {:>6} | {:>6} | {:>5} |",
-        "",
-        "Plain",
-        "Enc",
-        "(per op)",
-        "Plain",
-        "Enc",
-        "(per op)",
-        "Plain",
-        "Enc",
-        "Δ"
+        "", "Plain", "Enc", "(per op)", "Plain", "Enc", "(per op)", "Plain", "Enc", "Δ"
     );
     println!("{}", "-".repeat(180));
 
@@ -225,7 +215,9 @@ fn benchmark_encryption_latency() {
     println!();
     println!("Notes:");
     println!("  - Build: Time to serialize document (includes encryption if enabled)");
-    println!("  - Sync: Full cycle: build + transmit (memory copy) + process (includes decryption)");
+    println!(
+        "  - Sync: Full cycle: build + transmit (memory copy) + process (includes decryption)"
+    );
     println!("  - Size overhead is ~30 bytes (2 byte marker + 12 byte nonce + 16 byte auth tag)");
     println!("  - Latency overhead is primarily from ChaCha20-Poly1305 AEAD operations");
     println!();
@@ -276,17 +268,29 @@ fn benchmark_encryption_throughput() {
     let enc_throughput_kbps = (enc_rate * enc_size as f64 * 8.0) / 1000.0;
 
     println!();
-    println!("Document size: {} bytes (plain), {} bytes (encrypted)", plain_size, enc_size);
+    println!(
+        "Document size: {} bytes (plain), {} bytes (encrypted)",
+        plain_size, enc_size
+    );
     println!();
-    println!("| {:20} | {:>15} | {:>15} | {:>15} |", "Mode", "Docs/sec", "KB/sec", "Throughput");
+    println!(
+        "| {:20} | {:>15} | {:>15} | {:>15} |",
+        "Mode", "Docs/sec", "KB/sec", "Throughput"
+    );
     println!("{}", "-".repeat(75));
     println!(
         "| {:20} | {:>15.0} | {:>15.2} | {:>15.2} kbps |",
-        "Unencrypted", plain_rate, plain_rate * plain_size as f64 / 1024.0, plain_throughput_kbps
+        "Unencrypted",
+        plain_rate,
+        plain_rate * plain_size as f64 / 1024.0,
+        plain_throughput_kbps
     );
     println!(
         "| {:20} | {:>15.0} | {:>15.2} | {:>15.2} kbps |",
-        "Encrypted", enc_rate, enc_rate * enc_size as f64 / 1024.0, enc_throughput_kbps
+        "Encrypted",
+        enc_rate,
+        enc_rate * enc_size as f64 / 1024.0,
+        enc_throughput_kbps
     );
     println!("{}", "-".repeat(75));
     println!();
@@ -315,7 +319,10 @@ fn test_encryption_correctness() {
     let doc_bytes = sender.build_document();
 
     // Verify it's encrypted (starts with marker 0xAE)
-    assert_eq!(doc_bytes[0], 0xAE, "Document should be encrypted (marker 0xAE)");
+    assert_eq!(
+        doc_bytes[0], 0xAE,
+        "Document should be encrypted (marker 0xAE)"
+    );
 
     // Receiver should be able to process it
     let result = receiver.on_ble_data("sender", &doc_bytes, now);

@@ -574,7 +574,11 @@ impl PeripheralManager {
 
     /// Send notification to subscribed centrals
     #[allow(dead_code)] // Will be used for GATT notifications
-    pub(super) async fn send_notification(&self, characteristic_uuid: &str, value: &[u8]) -> Result<bool> {
+    pub(super) async fn send_notification(
+        &self,
+        characteristic_uuid: &str,
+        value: &[u8],
+    ) -> Result<bool> {
         // Use sync lock for characteristics (contains non-Send types)
         let chars = self.characteristics.read().unwrap();
         let characteristic = chars.get(characteristic_uuid).ok_or_else(|| {

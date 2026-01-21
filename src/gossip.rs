@@ -524,6 +524,7 @@ mod tests {
         let result = MergeResult {
             source_node: NodeId::new(1),
             event: None,
+            peer_peripheral: None,
             counter_changed: true,
             emergency_changed: false,
             chat_changed: false,
@@ -535,6 +536,7 @@ mod tests {
         let result = MergeResult {
             source_node: NodeId::new(1),
             event: None,
+            peer_peripheral: None,
             counter_changed: false,
             emergency_changed: true,
             chat_changed: false,
@@ -546,6 +548,7 @@ mod tests {
         let result = MergeResult {
             source_node: NodeId::new(1),
             event: None,
+            peer_peripheral: None,
             counter_changed: false,
             emergency_changed: false,
             chat_changed: false,

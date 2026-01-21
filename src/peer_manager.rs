@@ -358,6 +358,21 @@ impl PeerManager {
         id_map.get(identifier).copied()
     }
 
+    /// Register an identifier to NodeId mapping
+    ///
+    /// Used to handle BLE address rotation where the same peer may connect
+    /// from different addresses. This registers the mapping so future lookups
+    /// using `get_node_id()` will succeed.
+    pub fn register_identifier(&self, identifier: &str, node_id: NodeId) {
+        let mut id_map = self.identifier_map.write().unwrap();
+        id_map.insert(identifier.to_string(), node_id);
+        log::debug!(
+            "Registered identifier {} -> {:08X}",
+            identifier,
+            node_id.as_u32()
+        );
+    }
+
     /// Get peer count
     pub fn peer_count(&self) -> usize {
         self.peers.read().unwrap().len()

@@ -1,63 +1,213 @@
-.PHONY: help build-android build-android-demo deploy-android clean check-android
+.PHONY: help build test clippy fmt fmt-check doc clean \
+        build-android build-android-all build-aar publish-maven-local verify-jni \
+        build-android-demo deploy-android android check-android \
+        ci ci-rust ci-android \
+        publish-crates publish-maven-central
 
 # ============================================
-# HIVE BLE Android Build & Deploy
+# HIVE-BTLE Build System
 # ============================================
 
 # Configuration
 ANDROID_SDK ?= $(HOME)/Android/Sdk
 ADB ?= $(ANDROID_SDK)/platform-tools/adb
-JAVA_HOME := $(HOME)/.local/share/mise/installs/java/temurin-17.0.17+10
+JAVA_HOME ?= $(HOME)/.local/share/mise/installs/java/temurin-17.0.17+10
 DEMO_APK ?= ../examples/android-hive-demo/app/build/outputs/apk/debug/app-debug.apk
 
+# Android architectures
+ANDROID_TARGETS = arm64-v8a armeabi-v7a x86_64
+
+# ============================================
+# Help
+# ============================================
+
 help:
-	@echo "HIVE BLE Android Build & Deploy"
+	@echo "HIVE-BTLE Build System"
 	@echo ""
-	@echo "Targets:"
-	@echo "  build-android      - Build native library for Android (arm64-v8a)"
-	@echo "  build-android-demo - Build the Android demo APK"
-	@echo "  deploy-android     - Deploy demo APK to connected device"
-	@echo "  android            - Build everything and deploy to device"
-	@echo "  check-android      - Check for Kotlin compilation errors"
-	@echo "  clean              - Clean build artifacts"
+	@echo "Rust Targets:"
+	@echo "  build          - Build library (linux feature)"
+	@echo "  test           - Run all tests"
+	@echo "  clippy         - Run clippy lints"
+	@echo "  fmt            - Format code"
+	@echo "  fmt-check      - Check code formatting"
+	@echo "  doc            - Generate documentation"
 	@echo ""
-	@echo "Configuration (override with make VAR=value):"
-	@echo "  ANDROID_SDK=$(ANDROID_SDK)"
-	@echo "  JAVA_HOME=$(JAVA_HOME)"
+	@echo "Android Targets:"
+	@echo "  build-android  - Build native libs (arm64, armv7, x86_64)"
+	@echo "  build-aar      - Build AAR package"
+	@echo "  publish-maven-local - Publish AAR to Maven Local"
+	@echo "  verify-jni     - Verify JNI symbols match Kotlin declarations"
+	@echo ""
+	@echo "Demo Targets:"
+	@echo "  build-android-demo - Build demo APK"
+	@echo "  deploy-android     - Deploy demo to device"
+	@echo "  android            - Build and deploy demo"
+	@echo ""
+	@echo "CI Targets:"
+	@echo "  ci             - Run full CI pipeline"
+	@echo "  ci-rust        - Run Rust CI checks"
+	@echo "  ci-android     - Run Android CI checks"
+	@echo ""
+	@echo "Release Targets:"
+	@echo "  publish-crates       - Publish to crates.io"
+	@echo "  publish-maven-central - Publish to Maven Central"
+	@echo ""
+	@echo "Other:"
+	@echo "  clean          - Clean all build artifacts"
+	@echo ""
 
-# Build native library for Android (both architectures)
+# ============================================
+# Rust Targets
+# ============================================
+
+build:
+	@echo "Building hive-btle (linux)..."
+	cargo build --features linux
+	@echo "✓ Build complete"
+
+test:
+	@echo "Running tests..."
+	cargo test --features linux
+	@echo "✓ Tests passed"
+
+clippy:
+	@echo "Running clippy..."
+	cargo clippy --features linux -- -D warnings
+	@echo "✓ Clippy passed"
+
+fmt:
+	@echo "Formatting code..."
+	cargo fmt
+	@echo "✓ Formatted"
+
+fmt-check:
+	@echo "Checking formatting..."
+	cargo fmt --check
+	@echo "✓ Formatting OK"
+
+doc:
+	@echo "Generating documentation..."
+	cargo doc --features linux --no-deps
+	@echo "✓ Docs generated: target/doc/hive_btle/index.html"
+
+# ============================================
+# Android Targets
+# ============================================
+
 build-android:
-	@echo "Building hive-btle native library for Android (arm64-v8a, armeabi-v7a)..."
-	CXXFLAGS="-include cstdint" cargo ndk -t arm64-v8a -t armeabi-v7a -o android/src/main/jniLibs build --release -p hive-btle --features android
+	@echo "Building native libraries for Android..."
+	cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 \
+		-o android/src/main/jniLibs \
+		build --release --features android
 	@echo "✓ Native libraries built:"
-	@echo "  - android/src/main/jniLibs/arm64-v8a/libhive_btle.so"
-	@echo "  - android/src/main/jniLibs/armeabi-v7a/libhive_btle.so"
+	@ls -la android/src/main/jniLibs/*/libhive_btle.so
 
-# Build Android demo APK
+build-aar: build-android
+	@echo "Building AAR..."
+	cd android && ./gradlew assembleRelease --no-configuration-cache
+	@echo "✓ AAR built: android/build/outputs/aar/"
+
+publish-maven-local: build-android
+	@echo "Publishing to Maven Local..."
+	cd android && ./gradlew publishToMavenLocal --no-configuration-cache
+	@echo "✓ Published to ~/.m2/repository/com/revolveteam/hive/"
+
+# Verify JNI symbols match Kotlin native method declarations
+# Focus on HiveMesh class which has the critical peripheral state methods
+verify-jni: build-android
+	@echo "Verifying JNI symbols for HiveMesh..."
+	@echo ""
+	@echo "Extracting HiveMesh native method declarations from Kotlin..."
+	@grep "private external fun native" android/src/main/java/com/revolveteam/hive/HiveMesh.kt \
+		| sed 's/.*fun \(native[^(]*\).*/\1/' \
+		| sort -u > /tmp/kotlin_natives.txt
+	@echo "Found $$(wc -l < /tmp/kotlin_natives.txt) HiveMesh native declarations"
+	@cat /tmp/kotlin_natives.txt
+	@echo ""
+	@echo "Extracting HiveMesh JNI symbols from .so..."
+	@nm -D android/src/main/jniLibs/arm64-v8a/libhive_btle.so \
+		| grep "T Java_com_revolveteam_hive_HiveMesh_native" \
+		| sed 's/.*HiveMesh_//' \
+		| sed 's/<.*//' \
+		| sort -u > /tmp/jni_symbols.txt
+	@echo "Found $$(wc -l < /tmp/jni_symbols.txt) HiveMesh JNI symbols"
+	@cat /tmp/jni_symbols.txt
+	@echo ""
+	@echo "Checking for missing implementations..."
+	@missing=$$(comm -23 /tmp/kotlin_natives.txt /tmp/jni_symbols.txt); \
+	if [ -n "$$missing" ]; then \
+		echo ""; \
+		echo "❌ ERROR: Missing JNI implementations:"; \
+		echo "$$missing"; \
+		echo ""; \
+		echo "These Kotlin native methods have no corresponding Rust JNI binding."; \
+		echo "Add implementations in src/platform/android/jni_bridge.rs"; \
+		exit 1; \
+	else \
+		echo "✓ All HiveMesh native methods have JNI implementations"; \
+	fi
+
+# ============================================
+# Demo Targets
+# ============================================
+
 build-android-demo: build-android
 	@echo "Building Android demo APK..."
-	JAVA_HOME=$(JAVA_HOME) ../examples/android-hive-demo/gradlew -p ../examples/android-hive-demo assembleDebug
+	JAVA_HOME=$(JAVA_HOME) ../examples/android-hive-demo/gradlew \
+		-p ../examples/android-hive-demo assembleDebug
 	@echo "✓ APK built: $(DEMO_APK)"
 
-# Deploy to connected Android device
 deploy-android:
 	@echo "Deploying to Android device..."
 	$(ADB) install -r $(DEMO_APK)
 	@echo "✓ Deployed to device"
 
-# Full build and deploy
 android: build-android-demo deploy-android
 	@echo "✓ Build and deploy complete"
 
-# Check for Kotlin compilation errors
 check-android:
-	@echo "Checking Android demo for compilation errors..."
-	JAVA_HOME=$(JAVA_HOME) ../examples/android-hive-demo/gradlew -p ../examples/android-hive-demo compileDebugKotlin 2>&1 | grep -E "e:|error:|Error:" || true
+	@echo "Checking Android compilation..."
+	cd android && ./gradlew compileReleaseKotlin --no-configuration-cache
+	@echo "✓ Kotlin compilation OK"
 
-# Clean build artifacts
+# ============================================
+# CI Targets
+# ============================================
+
+ci: ci-rust ci-android
+	@echo ""
+	@echo "============================================"
+	@echo "✓ Full CI pipeline passed"
+	@echo "============================================"
+
+ci-rust: fmt-check clippy test
+	@echo "✓ Rust CI passed"
+
+ci-android: build-android verify-jni check-android
+	@echo "✓ Android CI passed"
+
+# ============================================
+# Release Targets
+# ============================================
+
+publish-crates:
+	@echo "Publishing to crates.io..."
+	cargo publish
+	@echo "✓ Published to crates.io"
+
+publish-maven-central: build-android
+	@echo "Publishing to Maven Central..."
+	cd android && ./gradlew publishToMavenCentral --no-configuration-cache
+	@echo "✓ Published to Maven Central"
+
+# ============================================
+# Clean
+# ============================================
+
 clean:
-	@echo "Cleaning Android build artifacts..."
-	rm -rf android/src/main/jniLibs/arm64-v8a/libhive_btle.so
-	rm -rf android/src/main/jniLibs/armeabi-v7a/libhive_btle.so
+	@echo "Cleaning build artifacts..."
+	cargo clean
+	rm -rf android/src/main/jniLibs/*/libhive_btle.so
+	rm -rf android/build
 	rm -rf ../examples/android-hive-demo/app/build
 	@echo "✓ Clean complete"

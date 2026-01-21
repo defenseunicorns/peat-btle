@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.1.0-rc3"  // RC3 with HiveBtle encryption integration
+version = "0.1.0-rc11"  // RC11 with peripheral data in DataReceivedResult
 
 android {
     namespace = "com.revolveteam.hive"
@@ -38,6 +38,21 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
+
+        // Build-time configuration for mesh credentials
+        // Set via environment variables when building:
+        //   HIVE_ENCRYPTION_SECRET=<64-char-hex> ./gradlew assembleRelease
+        //   HIVE_MESH_ID=ALPHA ./gradlew assembleRelease
+        // Downstream projects can override in their build.gradle.kts:
+        //   buildConfigField("String", "HIVE_ENCRYPTION_SECRET", "\"...\"")
+        buildConfigField("String", "HIVE_ENCRYPTION_SECRET",
+            "\"${System.getenv("HIVE_ENCRYPTION_SECRET") ?: ""}\"")
+        buildConfigField("String", "HIVE_MESH_ID",
+            "\"${System.getenv("HIVE_MESH_ID") ?: ""}\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {

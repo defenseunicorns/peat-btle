@@ -325,6 +325,73 @@ class HiveBtle(
         @JvmStatic
         external fun nativeDeriveNodeId(macAddress: String): Long
 
+        // ==================== Build-time Configuration ====================
+
+        /**
+         * Get the build-time embedded encryption secret, if configured.
+         *
+         * Set via environment variable when building:
+         * ```
+         * HIVE_ENCRYPTION_SECRET=0102030405060708091011121314151617181920212223242526272829303132 \
+         *   ./gradlew assembleRelease
+         * ```
+         *
+         * Or override in downstream project's build.gradle.kts:
+         * ```
+         * buildConfigField("String", "HIVE_ENCRYPTION_SECRET", "\"<64-char-hex>\"")
+         * ```
+         *
+         * @return 32-byte secret array, or null if not configured or invalid
+         */
+        @JvmStatic
+        fun getEmbeddedEncryptionSecret(): ByteArray? {
+            val hex = BuildConfig.HIVE_ENCRYPTION_SECRET
+            if (hex.isNullOrEmpty() || hex.length != 64) return null
+            return try {
+                hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            } catch (e: NumberFormatException) {
+                Log.w(TAG, "Invalid HIVE_ENCRYPTION_SECRET format: $e")
+                null
+            }
+        }
+
+        /**
+         * Get the build-time embedded mesh ID, if configured.
+         *
+         * Set via environment variable when building:
+         * ```
+         * HIVE_MESH_ID=ALPHA ./gradlew assembleRelease
+         * ```
+         *
+         * @return Mesh ID string, or null if not configured
+         */
+        @JvmStatic
+        fun getEmbeddedMeshId(): String? {
+            val meshId = BuildConfig.HIVE_MESH_ID
+            return if (meshId.isNullOrEmpty()) null else meshId
+        }
+
+        /**
+         * Check if build-time encryption credentials are configured.
+         */
+        @JvmStatic
+        fun hasEmbeddedEncryption(): Boolean {
+            return getEmbeddedEncryptionSecret() != null
+        }
+
+        /**
+         * Get effective mesh ID, checking embedded config first, then environment.
+         *
+         * Priority:
+         * 1. Build-time HIVE_MESH_ID
+         * 2. Runtime environment/system property
+         * 3. DEFAULT_MESH_ID ("DEMO")
+         */
+        @JvmStatic
+        fun getEffectiveMeshId(): String {
+            return getEmbeddedMeshId() ?: getMeshIdFromEnvironment()
+        }
+
         init {
             try {
                 System.loadLibrary("hive_btle")
@@ -467,8 +534,12 @@ class HiveBtle(
         // Get LE advertiser (may be null if not supported)
         leAdvertiser = bluetoothAdapter?.bluetoothLeAdvertiser
 
-        // Auto-generate nodeId from adapter address if not provided
-        if (_nodeId == null) {
+        // Use identity.nodeId when identity is provided (Ed25519-derived),
+        // otherwise auto-generate from Bluetooth adapter MAC address
+        if (identity != null) {
+            _nodeId = identity.nodeId
+            Log.i(TAG, "Using identity-derived nodeId: ${String.format("%08X", nodeId)}")
+        } else if (_nodeId == null) {
             _nodeId = generateNodeIdFromAdapter()
             Log.i(TAG, "Auto-generated nodeId from adapter: ${String.format("%08X", nodeId)}")
         }
@@ -864,8 +935,16 @@ class HiveBtle(
                 Log.d(TAG, "Read request from $address for ${characteristic.uuid}")
 
                 if (characteristic.uuid == HIVE_CHAR_DOCUMENT) {
-                    // Return current document state with peripheral data (location, health, etc.)
-                    val documentBytes = HiveDocument.encode(nodeId, localCounter, localPeripheral)
+                    // Return current document state
+                    // When encryption is enabled, use native mesh to get properly encrypted document
+                    val documentBytes = if (isEncryptionEnabled() && _mesh != null) {
+                        // Sync local peripheral state to native before building document
+                        syncLocalPeripheralToNative(System.currentTimeMillis())
+                        Log.d(TAG, "[ENCRYPTED] Read request: using native buildDocument")
+                        _mesh!!.buildDocument()
+                    } else {
+                        HiveDocument.encode(nodeId, localCounter, localPeripheral)
+                    }
                     val response = if (offset > documentBytes.size) {
                         ByteArray(0)
                     } else {
@@ -1052,8 +1131,108 @@ class HiveBtle(
                             // Handle document content (pass raw bytes for CRDT merge)
                             handlePeerDocumentInternal(peer, document, value, address)
                         }
+                    } else if (value.isNotEmpty() && value[0] == 0xAE.toByte()) {
+                        // Encrypted document (0xAE marker) - pass directly to native mesh for decryption
+                        Log.d(TAG, "[ENCRYPTED] Received ${value.size} byte encrypted document from $address")
+
+                        val now = System.currentTimeMillis()
+
+                        // Use anonymous decryption path - decrypts first, extracts source_node from
+                        // decrypted document header, and registers the identifier->nodeId mapping.
+                        // This handles BLE address rotation where peer connects from different address.
+                        val chatCountBefore = _mesh?.chatCount() ?: 0
+                        val result = _mesh?.onBleDataReceivedAnonymous(address, value)
+                        if (result != null) {
+                            Log.i(TAG, "[ENCRYPTED-MERGE] sourceNode=${String.format("%08X", result.sourceNode)}, counterChanged=${result.counterChanged}, total=${result.totalCount}")
+
+                            // Update peer mapping with source node from decrypted document
+                            val sourceNodeId = result.sourceNode
+                            if (sourceNodeId != 0L && sourceNodeId != nodeId) {
+                                addressToNodeId[address] = sourceNodeId
+                                var peer = peers[sourceNodeId]
+                                if (peer == null) {
+                                    // New peer discovered through encrypted document
+                                    val peerName = generateDeviceName(meshId, sourceNodeId)
+                                    peer = HivePeer(
+                                        nodeId = sourceNodeId,
+                                        address = address,
+                                        name = peerName,
+                                        meshId = meshId,
+                                        rssi = 0,
+                                        isConnected = true,
+                                        lastDocument = null,
+                                        lastSeen = now
+                                    )
+                                    peers[sourceNodeId] = peer
+                                    Log.i(TAG, "[ENCRYPTED] Added peer from encrypted doc: ${peer.displayName()}")
+                                    // Update native mesh with proper peer info
+                                    _mesh?.onBleDiscovered(address, peerName, 0, meshId, now)
+                                    _mesh?.onBleConnected(address, now)
+                                    // Notify listener about new peer - triggers platform creation
+                                    handler.post {
+                                        meshListener?.onPeerConnected(peer)
+                                    }
+                                } else {
+                                    // Existing peer - update last seen and ensure listener is notified
+                                    peer.lastSeen = now
+                                    peer.isConnected = true
+                                }
+
+                                // Check for new chat messages and notify listener
+                                val chatCountAfter = _mesh?.chatCount() ?: 0
+                                if (chatCountAfter > chatCountBefore) {
+                                    Log.i(TAG, "[ENCRYPTED-CHAT] ${chatCountAfter - chatCountBefore} new chat message(s)")
+                                    val allChats = getAllChatMessages()
+                                    for (chat in allChats) {
+                                        val key = "${chat.originNode}:${chat.timestamp}"
+                                        if (!processedChatMessages.contains(key)) {
+                                            processedChatMessages.add(key)
+                                            if (chat.originNode != nodeId) {
+                                                Log.i(TAG, "[ENCRYPTED-CHAT] New message from ${chat.sender}: ${chat.message}")
+                                                val sourcePeer = peer
+                                                handler.post {
+                                                    meshListener?.onChatReceived(chat, sourcePeer)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Notify document synced callback with peripheral data from result
+                                // Build HivePeripheral from DataReceivedResult fields
+                                val eventType = HiveEventType.fromValue(result.eventType ?: 0)
+                                val peerPeripheral = HivePeripheral(
+                                    id = sourceNodeId,
+                                    parentNode = sourceNodeId,
+                                    peripheralType = HivePeripheralType.SOLDIER_SENSOR,
+                                    callsign = result.callsign ?: "",
+                                    health = HiveHealthStatus(
+                                        batteryPercent = result.batteryPercent ?: 0,
+                                        heartRate = result.heartRate,
+                                        activityLevel = 0,
+                                        alerts = 0
+                                    ),
+                                    lastEvent = if (eventType != HiveEventType.NONE)
+                                        HivePeripheralEvent(eventType, System.currentTimeMillis()) else null,
+                                    location = if (result.latitude != null && result.longitude != null)
+                                        HiveLocation(result.latitude, result.longitude, result.altitude ?: 0f) else null,
+                                    timestamp = System.currentTimeMillis()
+                                )
+                                val syntheticDoc = HiveDocument(
+                                    version = 1,
+                                    nodeId = sourceNodeId,
+                                    counter = emptyList(),
+                                    peripheral = if (result.callsign != null) peerPeripheral else null
+                                )
+                                handler.post {
+                                    meshListener?.onDocumentSynced(syntheticDoc)
+                                }
+                            }
+                        } else {
+                            Log.w(TAG, "[ENCRYPTED-MERGE] onBleDataReceived returned null - decryption may have failed")
+                        }
                     } else {
-                        Log.w(TAG, "Failed to decode document from $address")
+                        Log.w(TAG, "Failed to decode document from $address (${value.size} bytes, first byte: ${if (value.isNotEmpty()) String.format("0x%02X", value[0]) else "empty"})")
                     }
 
                     if (responseNeeded) {
@@ -1335,7 +1514,56 @@ class HiveBtle(
             Log.d(TAG, "Emergency bypass: cleared peer sync state for full document sync")
         }
 
-        val documentBytes = HiveDocument.encode(nodeId, localCounter, peripheral)
+        // When encryption is enabled, use native mesh for document building
+        // This ensures documents have correct format (0xAE encrypted header)
+        val documentBytes = if (isEncryptionEnabled()) {
+            val mesh = _mesh
+            if (mesh == null) {
+                Log.w(TAG, "Encryption enabled but mesh not initialized, using unencrypted encoding")
+                HiveDocument.encode(nodeId, localCounter, peripheral)
+            } else {
+                // Update native peripheral state BEFORE building document
+                // This ensures location, callsign, and other state is included in encrypted docs
+                val nativeEventType: Int? = when (eventType) {
+                    HiveEventType.PING -> EventType.PING
+                    HiveEventType.NEED_ASSIST -> EventType.NEED_ASSIST
+                    HiveEventType.EMERGENCY -> EventType.EMERGENCY
+                    HiveEventType.MOVING -> EventType.MOVING
+                    HiveEventType.IN_POSITION -> EventType.IN_POSITION
+                    HiveEventType.ACK -> EventType.ACK
+                    else -> null
+                }
+                mesh.updatePeripheralState(
+                    callsign = callsign.take(12),
+                    batteryPercent = battery,
+                    heartRate = heartRate,
+                    latitude = location?.latitude?.toFloat(),
+                    longitude = location?.longitude?.toFloat(),
+                    altitude = location?.altitude?.toFloat(),
+                    eventType = nativeEventType,
+                    timestamp = System.currentTimeMillis()
+                )
+                Log.d(TAG, "[ENCRYPTED] Updated native peripheral state: location=${location != null}, callsign=$callsign")
+
+                when (eventType) {
+                    HiveEventType.EMERGENCY -> {
+                        Log.d(TAG, "[ENCRYPTED] Using native sendEmergency")
+                        mesh.sendEmergency(System.currentTimeMillis())
+                    }
+                    HiveEventType.ACK -> {
+                        Log.d(TAG, "[ENCRYPTED] Using native sendAck")
+                        mesh.sendAck(System.currentTimeMillis())
+                    }
+                    else -> {
+                        // For non-emergency events, use buildDocument which includes all CRDT state
+                        Log.d(TAG, "[ENCRYPTED] Using native buildDocument for event type: $eventType")
+                        mesh.buildDocument()
+                    }
+                }
+            }
+        } else {
+            HiveDocument.encode(nodeId, localCounter, peripheral)
+        }
 
         // Send to all connected peripherals (devices we connected to as Central)
         for ((address, gatt) in connections) {
@@ -1699,6 +1927,9 @@ class HiveBtle(
     }
 
     private fun handlePeerDocument(peer: HivePeer, data: ByteArray) {
+        val firstByte = if (data.isNotEmpty()) String.format("0x%02X", data[0]) else "empty"
+        Log.i(TAG, "[DOC-RX] From ${peer.displayName()}: ${data.size} bytes, first=$firstByte")
+
         // Check for marker document (0xAC)
         if (data.isNotEmpty() && data[0] == MARKER_SECTION_MARKER) {
             handlePeerMarkerDocument(peer, data)
@@ -2379,6 +2610,42 @@ class HiveBtle(
         }
     }
 
+    /**
+     * Sync localPeripheral state to native HiveMesh.
+     *
+     * This ensures that when buildDocument() is called on the native side,
+     * it includes the current location, callsign, health, and event data.
+     * Without this, encrypted documents would be missing positional data.
+     */
+    private fun syncLocalPeripheralToNative(timestamp: Long) {
+        val mesh = _mesh ?: return
+        val peripheral = localPeripheral ?: return
+
+        // Map Kotlin event type to native event type
+        val nativeEventType: Int? = peripheral.lastEvent?.let { event ->
+            when (event.eventType) {
+                HiveEventType.PING -> EventType.PING
+                HiveEventType.NEED_ASSIST -> EventType.NEED_ASSIST
+                HiveEventType.EMERGENCY -> EventType.EMERGENCY
+                HiveEventType.MOVING -> EventType.MOVING
+                HiveEventType.IN_POSITION -> EventType.IN_POSITION
+                HiveEventType.ACK -> EventType.ACK
+                else -> null
+            }
+        }
+
+        mesh.updatePeripheralState(
+            callsign = peripheral.callsign,
+            batteryPercent = peripheral.health.batteryPercent,
+            heartRate = peripheral.health.heartRate,
+            latitude = peripheral.location?.latitude?.toFloat(),
+            longitude = peripheral.location?.longitude?.toFloat(),
+            altitude = peripheral.location?.altitude?.toFloat(),
+            eventType = nativeEventType,
+            timestamp = timestamp
+        )
+    }
+
     private fun syncWithPeers() {
         if (connections.isEmpty() && connectedCentrals.isEmpty()) return
 
@@ -2422,6 +2689,10 @@ class HiveBtle(
                             state.syncCount % FULL_SYNC_INTERVAL == 0
 
         if (needsFullSync) {
+            // Sync local peripheral state to native before building document
+            // This ensures location and other state is included in encrypted docs
+            syncLocalPeripheralToNative(now)
+
             // Full document sync - use native builder which includes chat CRDT
             val documentBytes = _mesh?.buildDocument() ?: return null
             state.lastSentTimestamp = now

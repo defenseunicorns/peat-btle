@@ -29,7 +29,7 @@
 //! ```
 
 use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue};
-use jni::sys::{jboolean, jint, jlong};
+use jni::sys::{jboolean, jbyte, jfloat, jint, jlong, jstring};
 use jni::{JNIEnv, JavaVM};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -38,6 +38,7 @@ use tokio::sync::mpsc;
 use crate::config::BlePhy;
 use crate::error::{BleError, Result};
 use crate::platform::{ConnectionEvent, DisconnectReason, DiscoveredDevice};
+use crate::sync::crdt::EventType;
 use crate::NodeId;
 
 /// HIVE BLE Service UUID (canonical: f47ac10b-58cc-4372-a567-0e02b2c3d479)
@@ -1584,18 +1585,132 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeOnBleDataReceive
 
     match result {
         Some(r) => {
-            // Encode result: [source_node: 4][is_emergency: 1][is_ack: 1][counter_changed: 1][total_count: 8]
-            let mut encoded = Vec::with_capacity(15);
+            // Encode result:
+            // [source_node: 4][is_emergency: 1][is_ack: 1][counter_changed: 1][total_count: 8]
+            // [callsign: 12 bytes, null-padded]
+            // [battery_percent: 1, 0=not set]
+            // [heart_rate: 1, 0=not set]
+            // [event_type: 1, 0xFF=not set]
+            // [has_location: 1]
+            // [latitude: 4][longitude: 4][altitude: 4, NaN=not set]
+            let mut encoded = Vec::with_capacity(43);
             encoded.extend_from_slice(&r.source_node.as_u32().to_le_bytes());
             encoded.push(if r.is_emergency { 1 } else { 0 });
             encoded.push(if r.is_ack { 1 } else { 0 });
             encoded.push(if r.counter_changed { 1 } else { 0 });
             encoded.extend_from_slice(&r.total_count.to_le_bytes());
 
+            // Callsign (12 bytes, null-padded)
+            let mut callsign_bytes = [0u8; 12];
+            if let Some(ref cs) = r.callsign {
+                let cs_bytes = cs.as_bytes();
+                let len = cs_bytes.len().min(12);
+                callsign_bytes[..len].copy_from_slice(&cs_bytes[..len]);
+            }
+            encoded.extend_from_slice(&callsign_bytes);
+
+            // Battery, heart rate, event type
+            encoded.push(r.battery_percent.unwrap_or(0));
+            encoded.push(r.heart_rate.unwrap_or(0));
+            encoded.push(r.event_type.unwrap_or(0xFF));
+
+            // Location
+            let has_location = r.latitude.is_some() && r.longitude.is_some();
+            encoded.push(if has_location { 1 } else { 0 });
+            encoded.extend_from_slice(&r.latitude.unwrap_or(0.0).to_le_bytes());
+            encoded.extend_from_slice(&r.longitude.unwrap_or(0.0).to_le_bytes());
+            encoded.extend_from_slice(&r.altitude.unwrap_or(f32::NAN).to_le_bytes());
+
             env.byte_array_from_slice(&encoded)
                 .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
         }
         None => env.new_byte_array(0).expect("Failed to create byte array"),
+    }
+}
+
+/// Called when encrypted BLE data is received from an unknown peer
+///
+/// This handles BLE address rotation where a peer connects from a different address
+/// than they advertised from. It decrypts first, extracts source_node, and registers
+/// the identifier.
+///
+/// Returns encoded result: [source_node: 4][is_emergency: 1][is_ack: 1][counter_changed: 1][total_count: 8]
+///
+/// JNI Signature: (JLjava/lang/String;[BJ)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeOnBleDataReceivedAnonymous<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    identifier: JString<'local>,
+    data: JByteArray<'local>,
+    now_ms: jlong,
+) -> JByteArray<'local> {
+    let identifier: String = env
+        .get_string(&identifier)
+        .map(|s| s.into())
+        .unwrap_or_default();
+
+    let data_bytes: Vec<u8> = env.convert_byte_array(data).unwrap_or_default();
+
+    log::debug!(
+        "[JNI] nativeOnBleDataReceivedAnonymous: identifier={}, data_size={}",
+        identifier,
+        data_bytes.len()
+    );
+
+    let result = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .and_then(|m| m.on_ble_data_received_anonymous(&identifier, &data_bytes, now_ms as u64))
+    } else {
+        None
+    };
+
+    match result {
+        Some(r) => {
+            log::info!(
+                "[JNI] Anonymous decryption success: source_node={:08X}",
+                r.source_node.as_u32()
+            );
+            // Encode result with peripheral data (same format as nativeOnBleDataReceived)
+            let mut encoded = Vec::with_capacity(43);
+            encoded.extend_from_slice(&r.source_node.as_u32().to_le_bytes());
+            encoded.push(if r.is_emergency { 1 } else { 0 });
+            encoded.push(if r.is_ack { 1 } else { 0 });
+            encoded.push(if r.counter_changed { 1 } else { 0 });
+            encoded.extend_from_slice(&r.total_count.to_le_bytes());
+
+            // Callsign (12 bytes, null-padded)
+            let mut callsign_bytes = [0u8; 12];
+            if let Some(ref cs) = r.callsign {
+                let cs_bytes = cs.as_bytes();
+                let len = cs_bytes.len().min(12);
+                callsign_bytes[..len].copy_from_slice(&cs_bytes[..len]);
+            }
+            encoded.extend_from_slice(&callsign_bytes);
+
+            // Battery, heart rate, event type
+            encoded.push(r.battery_percent.unwrap_or(0));
+            encoded.push(r.heart_rate.unwrap_or(0));
+            encoded.push(r.event_type.unwrap_or(0xFF));
+
+            // Location
+            let has_location = r.latitude.is_some() && r.longitude.is_some();
+            encoded.push(if has_location { 1 } else { 0 });
+            encoded.extend_from_slice(&r.latitude.unwrap_or(0.0).to_le_bytes());
+            encoded.extend_from_slice(&r.longitude.unwrap_or(0.0).to_le_bytes());
+            encoded.extend_from_slice(&r.altitude.unwrap_or(f32::NAN).to_le_bytes());
+
+            env.byte_array_from_slice(&encoded)
+                .unwrap_or_else(|_| env.new_byte_array(0).expect("Failed to create byte array"))
+        }
+        None => {
+            log::debug!("[JNI] Anonymous decryption failed or returned no result");
+            env.new_byte_array(0).expect("Failed to create byte array")
+        }
     }
 }
 
@@ -1747,6 +1862,77 @@ pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeMatchesMesh<'loc
             .unwrap_or(0)
     } else {
         0
+    }
+}
+
+/// Get a peer's callsign by node ID
+///
+/// JNI Signature: (JJ)Ljava/lang/String;
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetPeerCallsign<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    node_id: jlong,
+) -> jstring {
+    use crate::NodeId;
+
+    let result = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .and_then(|m| m.get_peer_callsign(NodeId::new(node_id as u32)))
+    } else {
+        None
+    };
+
+    match result {
+        Some(callsign) => env
+            .new_string(&callsign)
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut()),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Get a peer's full peripheral data by node ID
+///
+/// Returns the peripheral as encoded bytes, or null if not found.
+/// Kotlin should decode this using HivePeripheral.fromBytes().
+///
+/// JNI Signature: (JJ)[B
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeGetPeerPeripheral<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    node_id: jlong,
+) -> JByteArray<'local> {
+    use crate::NodeId;
+
+    let result = if let Ok(storage) = get_mesh_storage().lock() {
+        storage
+            .get(&handle)
+            .and_then(|m| m.get_peer_peripheral(NodeId::new(node_id as u32)))
+            .map(|p| p.encode())
+    } else {
+        None
+    };
+
+    match result {
+        Some(bytes) => {
+            let array = env
+                .new_byte_array(bytes.len() as i32)
+                .expect("Failed to create byte array");
+            // Safe: u8 and i8 have the same memory layout
+            let signed_bytes: &[i8] =
+                unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const i8, bytes.len()) };
+            env.set_byte_array_region(&array, 0, signed_bytes)
+                .expect("Failed to copy bytes");
+            array
+        }
+        None => env
+            .new_byte_array(0)
+            .expect("Failed to create empty byte array"),
     }
 }
 
@@ -3200,6 +3386,204 @@ pub extern "system" fn Java_com_revolveteam_hive_IdentityAttestation_nativeGetPu
             .byte_array_from_slice(&att.public_key)
             .unwrap_or_else(|_| JByteArray::default()),
         None => JByteArray::default(),
+    }
+}
+
+// ============================================================================
+// JNI Native Method Exports - Peripheral State Methods
+// ============================================================================
+
+/// Update peripheral location
+///
+/// JNI Signature: (JFFFZ)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeUpdateLocation<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    latitude: jfloat,
+    longitude: jfloat,
+    altitude: jfloat,
+    has_altitude: jboolean,
+) {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            let alt = if has_altitude != 0 {
+                Some(altitude)
+            } else {
+                None
+            };
+            mesh.update_location(latitude, longitude, alt);
+        }
+    }
+}
+
+/// Clear peripheral location
+///
+/// JNI Signature: (J)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeClearLocation<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            mesh.clear_location();
+        }
+    }
+}
+
+/// Update peripheral callsign
+///
+/// JNI Signature: (JLjava/lang/String;)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeUpdateCallsign<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    callsign: JString<'local>,
+) {
+    let callsign_str: String = match env.get_string(&callsign) {
+        Ok(s) => s.into(),
+        Err(_) => return,
+    };
+
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            mesh.update_callsign(&callsign_str);
+        }
+    }
+}
+
+/// Update peripheral heart rate
+///
+/// JNI Signature: (JB)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeUpdateHeartRate<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    heart_rate: jbyte,
+) {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            mesh.update_heart_rate(heart_rate as u8);
+        }
+    }
+}
+
+/// Set peripheral event type
+///
+/// event_type_code: 0=None, 1=Ping, 2=NeedAssist, 3=Emergency, 4=Moving, 5=InPosition, 6=Ack
+///
+/// JNI Signature: (JBJ)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeSetPeripheralEvent<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    event_type_code: jbyte,
+    timestamp: jlong,
+) {
+    let event_type = match event_type_code {
+        1 => EventType::Ping,
+        2 => EventType::NeedAssist,
+        3 => EventType::Emergency,
+        4 => EventType::Moving,
+        5 => EventType::InPosition,
+        6 => EventType::Ack,
+        _ => return, // Invalid or 0 (None) - use clear instead
+    };
+
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            mesh.set_peripheral_event(event_type, timestamp as u64);
+        }
+    }
+}
+
+/// Clear peripheral event
+///
+/// JNI Signature: (J)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeClearPeripheralEvent<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) {
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            mesh.clear_peripheral_event();
+        }
+    }
+}
+
+/// Update full peripheral state in one call
+///
+/// This is the most efficient method when updating multiple fields at once.
+/// Pass -1 for latitude/longitude to clear location.
+/// Pass -1 for event_type_code to skip event update.
+///
+/// event_type_code: -1=skip, 0=clear, 1=Ping, 2=NeedAssist, 3=Emergency, 4=Moving, 5=InPosition, 6=Ack
+///
+/// JNI Signature: (JLjava/lang/String;BBZFFZFBJ)V
+#[no_mangle]
+pub extern "system" fn Java_com_revolveteam_hive_HiveMesh_nativeUpdatePeripheralState<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    callsign: JString<'local>,
+    battery_percent: jbyte,
+    heart_rate: jbyte,
+    has_heart_rate: jboolean,
+    latitude: jfloat,
+    longitude: jfloat,
+    has_location: jboolean,
+    altitude: jfloat,
+    event_type_code: jbyte,
+    timestamp: jlong,
+) {
+    let callsign_str: String = match env.get_string(&callsign) {
+        Ok(s) => s.into(),
+        Err(_) => return,
+    };
+
+    let hr = if has_heart_rate != 0 {
+        Some(heart_rate as u8)
+    } else {
+        None
+    };
+
+    let (lat, lon, alt) = if has_location != 0 {
+        (Some(latitude), Some(longitude), Some(altitude))
+    } else {
+        (None, None, None)
+    };
+
+    let event = match event_type_code {
+        1 => Some(EventType::Ping),
+        2 => Some(EventType::NeedAssist),
+        3 => Some(EventType::Emergency),
+        4 => Some(EventType::Moving),
+        5 => Some(EventType::InPosition),
+        6 => Some(EventType::Ack),
+        _ => None, // 0 or negative = no event update
+    };
+
+    if let Ok(storage) = get_mesh_storage().lock() {
+        if let Some(mesh) = storage.get(&handle) {
+            mesh.update_peripheral_state(
+                &callsign_str,
+                battery_percent as u8,
+                hr,
+                lat,
+                lon,
+                alt,
+                event,
+                timestamp as u64,
+            );
+        }
     }
 }
 

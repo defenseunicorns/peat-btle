@@ -56,6 +56,8 @@
 #[cfg(not(feature = "std"))]
 use alloc::{string::String, sync::Arc, vec::Vec};
 #[cfg(feature = "std")]
+use std::collections::HashMap;
+#[cfg(feature = "std")]
 use std::sync::Arc;
 
 use crate::document::{ENCRYPTED_MARKER, KEY_EXCHANGE_MARKER, PEER_E2EE_MARKER};
@@ -75,7 +77,7 @@ use crate::security::{
     DeviceIdentity, IdentityAttestation, IdentityRegistry, KeyExchangeMessage, MeshEncryptionKey,
     PeerEncryptedMessage, PeerSessionManager, RegistryResult, SessionState,
 };
-use crate::sync::crdt::{EventType, PeripheralType};
+use crate::sync::crdt::{EventType, Peripheral, PeripheralType};
 use crate::sync::delta::{DeltaEncoder, DeltaStats};
 use crate::sync::delta_document::{DeltaDocument, Operation};
 use crate::NodeId;
@@ -305,6 +307,12 @@ pub struct HiveMesh {
     ///
     /// Maps node_id to public key on first contact, rejects mismatches.
     identity_registry: std::sync::Mutex<IdentityRegistry>,
+
+    /// Peripheral state received from peers
+    ///
+    /// Stores the most recent peripheral data (callsign, location, etc.)
+    /// received from each peer via document sync.
+    peer_peripherals: std::sync::RwLock<HashMap<NodeId, Peripheral>>,
 }
 
 #[cfg(feature = "std")]
@@ -354,6 +362,7 @@ impl HiveMesh {
             delta_encoder: std::sync::Mutex::new(delta_encoder),
             identity: None,
             identity_registry: std::sync::Mutex::new(IdentityRegistry::new()),
+            peer_peripherals: std::sync::RwLock::new(HashMap::new()),
         }
     }
 
@@ -403,6 +412,7 @@ impl HiveMesh {
             delta_encoder: std::sync::Mutex::new(delta_encoder),
             identity: Some(identity),
             identity_registry: std::sync::Mutex::new(IdentityRegistry::new()),
+            peer_peripherals: std::sync::RwLock::new(HashMap::new()),
         }
     }
 
@@ -1154,8 +1164,15 @@ impl HiveMesh {
         let mut is_emergency = false;
         let mut is_ack = false;
         let mut event_timestamp = 0u64;
+        let mut peer_peripheral: Option<crate::sync::crdt::Peripheral> = None;
 
+        log::debug!(
+            "Delta document from {:08X}: {} operations",
+            delta.origin_node.as_u32(),
+            delta.operations.len()
+        );
         for op in &delta.operations {
+            log::debug!("  Operation: {}", op.key());
             match op {
                 Operation::IncrementCounter {
                     node_id, amount, ..
@@ -1174,7 +1191,16 @@ impl HiveMesh {
                         counter_changed = true;
                     }
                 }
-                Operation::UpdatePeripheral { timestamp, .. } => {
+                Operation::UpdatePeripheral {
+                    peripheral,
+                    timestamp,
+                } => {
+                    // Store peer peripheral for callsign lookup
+                    if let Ok(mut peripherals) = self.peer_peripherals.write() {
+                        peripherals.insert(delta.origin_node, peripheral.clone());
+                    }
+                    // Track the peripheral for the result
+                    peer_peripheral = Some(peripheral.clone());
                     // Track the timestamp for the result
                     if *timestamp > event_timestamp {
                         event_timestamp = *timestamp;
@@ -1244,6 +1270,9 @@ impl HiveMesh {
             });
         }
 
+        let (callsign, battery_percent, heart_rate, event_type, latitude, longitude, altitude) =
+            DataReceivedResult::peripheral_fields(&peer_peripheral);
+
         Some(DataReceivedResult {
             source_node: delta.origin_node,
             is_emergency,
@@ -1255,6 +1284,13 @@ impl HiveMesh {
             relay_data,
             origin_node,
             hop_count,
+            callsign,
+            battery_percent,
+            heart_rate,
+            event_type,
+            latitude,
+            longitude,
+            altitude,
         })
     }
 
@@ -1500,6 +1536,29 @@ impl HiveMesh {
             self.config.mesh_id,
             self.config.node_id.as_u32()
         )
+    }
+
+    /// Get a peer's callsign by node ID
+    ///
+    /// Returns the callsign from the peer's most recently received peripheral data,
+    /// or None if no peripheral data has been received from this peer.
+    pub fn get_peer_callsign(&self, node_id: NodeId) -> Option<String> {
+        self.peer_peripherals.read().ok().and_then(|peripherals| {
+            peripherals
+                .get(&node_id)
+                .map(|p| p.callsign_str().to_string())
+        })
+    }
+
+    /// Get a peer's full peripheral data by node ID
+    ///
+    /// Returns a clone of the peripheral data from the peer's most recently received
+    /// document, or None if no peripheral data has been received from this peer.
+    pub fn get_peer_peripheral(&self, node_id: NodeId) -> Option<Peripheral> {
+        self.peer_peripherals
+            .read()
+            .ok()
+            .and_then(|peripherals| peripherals.get(&node_id).cloned())
     }
 
     // ==================== Observer Management ====================
@@ -1940,6 +1999,13 @@ impl HiveMesh {
         // Merge the document (legacy wire format v1)
         let result = self.document_sync.merge_document(&decrypted)?;
 
+        // Store peer peripheral if present (for callsign lookup)
+        if let Some(ref peripheral) = result.peer_peripheral {
+            if let Ok(mut peripherals) = self.peer_peripherals.write() {
+                peripherals.insert(result.source_node, peripheral.clone());
+            }
+        }
+
         // Record sync
         self.peer_manager.record_sync(source_node, now_ms);
 
@@ -1971,6 +2037,9 @@ impl HiveMesh {
             });
         }
 
+        let (callsign, battery_percent, heart_rate, event_type, latitude, longitude, altitude) =
+            DataReceivedResult::peripheral_fields(&result.peer_peripheral);
+
         Some(DataReceivedResult {
             source_node: result.source_node,
             is_emergency: result.is_emergency(),
@@ -1982,6 +2051,13 @@ impl HiveMesh {
             relay_data,
             origin_node,
             hop_count,
+            callsign,
+            battery_percent,
+            heart_rate,
+            event_type,
+            latitude,
+            longitude,
+            altitude,
         })
     }
 
@@ -2072,6 +2148,134 @@ impl HiveMesh {
         self.process_document_data(node_id, data, now_ms, None, None, 0)
     }
 
+    /// Called when encrypted data is received from an unknown peer
+    ///
+    /// This handles the case where we receive an encrypted document from a BLE address
+    /// that isn't registered in our peer manager (e.g., due to BLE address rotation).
+    /// The function decrypts first using the mesh key, then extracts the source_node
+    /// from the decrypted document header and registers the peer.
+    ///
+    /// Returns `Some(DataReceivedResult)` if decryption and processing succeed.
+    /// Returns `None` if decryption fails or the document is invalid.
+    pub fn on_ble_data_received_anonymous(
+        &self,
+        identifier: &str,
+        data: &[u8],
+        now_ms: u64,
+    ) -> Option<DataReceivedResult> {
+        // Only handle encrypted documents with this path
+        if data.len() < 10 || data[0] != ENCRYPTED_MARKER {
+            log::debug!("on_ble_data_received_anonymous: not an encrypted document");
+            return None;
+        }
+
+        // Try to decrypt using mesh key
+        let decrypted = self.decrypt_document(data, Some(identifier))?;
+
+        // Extract source_node from decrypted document header
+        // Header format: [version: 4 bytes (LE)][node_id: 4 bytes (LE)]
+        if decrypted.len() < 8 {
+            log::warn!("Decrypted document too short to extract source_node");
+            return None;
+        }
+
+        let source_node_u32 =
+            u32::from_le_bytes([decrypted[4], decrypted[5], decrypted[6], decrypted[7]]);
+        let source_node = NodeId::new(source_node_u32);
+
+        log::info!(
+            "Anonymous document from {}: decrypted, source_node={:08X}",
+            identifier,
+            source_node_u32
+        );
+
+        // Register the peer with this identifier so future lookups work
+        // This handles BLE address rotation
+        self.peer_manager
+            .register_identifier(identifier, source_node);
+
+        // Check if this is a delta document
+        let is_delta = DeltaDocument::is_delta_document(&decrypted);
+        log::info!(
+            "Document format: delta={}, first_byte=0x{:02X}, len={}",
+            is_delta,
+            decrypted.first().copied().unwrap_or(0),
+            decrypted.len()
+        );
+
+        if is_delta {
+            return self.process_delta_document_internal(
+                source_node,
+                &decrypted,
+                now_ms,
+                None,
+                None,
+                0,
+            );
+        }
+
+        // Merge the document (legacy wire format v1)
+        log::info!(
+            "Processing legacy document from {:08X}",
+            source_node.as_u32()
+        );
+        let result = self.document_sync.merge_document(&decrypted)?;
+
+        // Log what we got from the merge
+        log::info!(
+            "Merge result: peer_peripheral={}, counter_changed={}",
+            result.peer_peripheral.is_some(),
+            result.counter_changed
+        );
+        if let Some(ref p) = result.peer_peripheral {
+            log::info!("Peripheral callsign: '{}'", p.callsign_str());
+        }
+
+        // Record sync
+        self.peer_manager.record_sync(source_node, now_ms);
+
+        // Generate events
+        if result.is_emergency() {
+            self.notify(HiveEvent::EmergencyReceived {
+                from_node: result.source_node,
+            });
+        } else if result.is_ack() {
+            self.notify(HiveEvent::AckReceived {
+                from_node: result.source_node,
+            });
+        }
+
+        if result.counter_changed {
+            self.notify(HiveEvent::DocumentSynced {
+                from_node: result.source_node,
+                total_count: result.total_count,
+            });
+        }
+
+        let (callsign, battery_percent, heart_rate, event_type, latitude, longitude, altitude) =
+            DataReceivedResult::peripheral_fields(&result.peer_peripheral);
+
+        Some(DataReceivedResult {
+            source_node: result.source_node,
+            is_emergency: result.is_emergency(),
+            is_ack: result.is_ack(),
+            counter_changed: result.counter_changed,
+            emergency_changed: result.emergency_changed,
+            total_count: result.total_count,
+            event_timestamp: result.event.as_ref().map(|e| e.timestamp).unwrap_or(0),
+            relay_data: None,
+            origin_node: None,
+            hop_count: 0,
+            callsign,
+            battery_percent,
+            heart_rate,
+            event_type,
+            latitude,
+            longitude,
+            altitude,
+        })
+    }
+
     /// Internal: Process document data (shared by direct and relay paths)
     fn process_document_data(
         &self,
@@ -2100,6 +2304,13 @@ impl HiveMesh {
 
         // Merge the document (legacy wire format v1)
         let result = self.document_sync.merge_document(&decrypted)?;
+
+        // Store peer peripheral if present (for callsign lookup)
+        if let Some(ref peripheral) = result.peer_peripheral {
+            if let Ok(mut peripherals) = self.peer_peripherals.write() {
+                peripherals.insert(result.source_node, peripheral.clone());
+            }
+        }
 
         // Record sync
         self.peer_manager.record_sync(source_node, now_ms);
@@ -2132,6 +2343,9 @@ impl HiveMesh {
             });
         }
 
+        let (callsign, battery_percent, heart_rate, event_type, latitude, longitude, altitude) =
+            DataReceivedResult::peripheral_fields(&result.peer_peripheral);
+
         Some(DataReceivedResult {
             source_node: result.source_node,
             is_emergency: result.is_emergency(),
@@ -2143,6 +2357,13 @@ impl HiveMesh {
             relay_data,
             origin_node,
             hop_count,
+            callsign,
+            battery_percent,
+            heart_rate,
+            event_type,
+            latitude,
+            longitude,
+            altitude,
         })
     }
 
@@ -2262,6 +2483,9 @@ impl HiveMesh {
             });
         }
 
+        let (callsign, battery_percent, heart_rate, event_type, latitude, longitude, altitude) =
+            DataReceivedResult::peripheral_fields(&result.peer_peripheral);
+
         Some(DataReceivedResult {
             source_node: result.source_node,
             is_emergency: result.is_emergency(),
@@ -2273,6 +2497,13 @@ impl HiveMesh {
             relay_data,
             origin_node,
             hop_count,
+            callsign,
+            battery_percent,
+            heart_rate,
+            event_type,
+            latitude,
+            longitude,
+            altitude,
         })
     }
 
@@ -2605,6 +2836,66 @@ impl HiveMesh {
             .update_health_full(battery_percent, activity);
     }
 
+    /// Update heart rate
+    pub fn update_heart_rate(&self, heart_rate: u8) {
+        self.document_sync.update_heart_rate(heart_rate);
+    }
+
+    /// Update location
+    pub fn update_location(&self, latitude: f32, longitude: f32, altitude: Option<f32>) {
+        self.document_sync
+            .update_location(latitude, longitude, altitude);
+    }
+
+    /// Clear location
+    pub fn clear_location(&self) {
+        self.document_sync.clear_location();
+    }
+
+    /// Update callsign
+    pub fn update_callsign(&self, callsign: &str) {
+        self.document_sync.update_callsign(callsign);
+    }
+
+    /// Set peripheral event type
+    pub fn set_peripheral_event(&self, event_type: EventType, timestamp: u64) {
+        self.document_sync
+            .set_peripheral_event(event_type, timestamp);
+    }
+
+    /// Clear peripheral event
+    pub fn clear_peripheral_event(&self) {
+        self.document_sync.clear_peripheral_event();
+    }
+
+    /// Update full peripheral state in one call
+    ///
+    /// This is the most efficient way to update all peripheral data before
+    /// calling `build_document()` for encrypted transmission.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_peripheral_state(
+        &self,
+        callsign: &str,
+        battery_percent: u8,
+        heart_rate: Option<u8>,
+        latitude: Option<f32>,
+        longitude: Option<f32>,
+        altitude: Option<f32>,
+        event_type: Option<EventType>,
+        timestamp: u64,
+    ) {
+        self.document_sync.update_peripheral_state(
+            callsign,
+            battery_percent,
+            heart_rate,
+            latitude,
+            longitude,
+            altitude,
+            event_type,
+            timestamp,
+        );
+    }
+
     /// Build current document for transmission
     ///
     /// If encryption is enabled, the document is encrypted.
@@ -2667,6 +2958,70 @@ pub struct DataReceivedResult {
 
     /// Current hop count (for relayed messages)
     pub hop_count: u8,
+
+    // ========== Peripheral data from sender ==========
+    /// Sender's callsign (up to 12 chars)
+    pub callsign: Option<String>,
+
+    /// Sender's battery percentage (0-100)
+    pub battery_percent: Option<u8>,
+
+    /// Sender's heart rate (BPM)
+    pub heart_rate: Option<u8>,
+
+    /// Sender's event type (from PeripheralEvent)
+    pub event_type: Option<u8>,
+
+    /// Sender's latitude
+    pub latitude: Option<f32>,
+
+    /// Sender's longitude
+    pub longitude: Option<f32>,
+
+    /// Sender's altitude (meters)
+    pub altitude: Option<f32>,
+}
+
+impl DataReceivedResult {
+    /// Extract peripheral fields from an Option<Peripheral>
+    #[allow(clippy::type_complexity)]
+    fn peripheral_fields(
+        peripheral: &Option<crate::sync::crdt::Peripheral>,
+    ) -> (
+        Option<String>,
+        Option<u8>,
+        Option<u8>,
+        Option<u8>,
+        Option<f32>,
+        Option<f32>,
+        Option<f32>,
+    ) {
+        match peripheral {
+            Some(p) => {
+                let callsign = {
+                    let s = p.callsign_str();
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s.to_string())
+                    }
+                };
+                let battery = if p.health.battery_percent > 0 {
+                    Some(p.health.battery_percent)
+                } else {
+                    None
+                };
+                let heart_rate = p.health.heart_rate;
+                let event_type = p.last_event.as_ref().map(|e| e.event_type as u8);
+                let (lat, lon, alt) = match &p.location {
+                    Some(loc) => (Some(loc.latitude), Some(loc.longitude), loc.altitude),
+                    None => (None, None, None),
+                };
+                (callsign, battery, heart_rate, event_type, lat, lon, alt)
+            }
+            None => (None, None, None, None, None, None, None),
+        }
+    }
 }
 
 /// Decision from processing a relay envelope

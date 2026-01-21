@@ -647,6 +647,12 @@ pub struct MergeResult {
     /// Event contained in the document (if any)
     pub event: Option<PeripheralEvent>,
 
+    /// Peripheral data from the document (if any)
+    ///
+    /// Contains the sender's callsign, location, health data etc.
+    /// This allows tracking peer state from received documents.
+    pub peer_peripheral: Option<Peripheral>,
+
     /// Whether the counter changed (indicates new data)
     pub counter_changed: bool,
 
@@ -770,6 +776,7 @@ mod tests {
         let result = MergeResult {
             source_node: NodeId::new(0x12345678),
             event: Some(emergency_event),
+            peer_peripheral: None,
             counter_changed: true,
             emergency_changed: false,
             chat_changed: false,
@@ -783,6 +790,7 @@ mod tests {
         let result = MergeResult {
             source_node: NodeId::new(0x12345678),
             event: Some(ack_event),
+            peer_peripheral: None,
             counter_changed: false,
             emergency_changed: false,
             chat_changed: false,
