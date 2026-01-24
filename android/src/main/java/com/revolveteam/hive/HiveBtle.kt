@@ -1143,7 +1143,7 @@ class HiveBtle(
                         val chatCountBefore = _mesh?.chatCount() ?: 0
                         val result = _mesh?.onBleDataReceivedAnonymous(address, value)
                         if (result != null) {
-                            Log.i(TAG, "[ENCRYPTED-MERGE] sourceNode=${String.format("%08X", result.sourceNode)}, counterChanged=${result.counterChanged}, total=${result.totalCount}")
+                            Log.i(TAG, "[ENCRYPTED-MERGE] sourceNode=${String.format("%08X", result.sourceNode)}, isAck=${result.isAck}, counterChanged=${result.counterChanged}, total=${result.totalCount}")
 
                             // Update peer mapping with source node from decrypted document
                             val sourceNodeId = result.sourceNode
