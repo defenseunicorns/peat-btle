@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use objc2::rc::Retained;
-use objc2::{msg_send, ClassType};
+use objc2::msg_send;
 use objc2_core_bluetooth::{CBCentralManager, CBPeripheral, CBUUID};
 use objc2_foundation::{NSArray, NSString};
 use tokio::sync::{mpsc, RwLock};
@@ -166,37 +166,44 @@ impl CentralManager {
         _config: &DiscoveryConfig,
         service_uuids: Option<Vec<String>>,
     ) -> Result<()> {
-        // Build service UUID filter array if provided
-        let uuid_filter: Option<Retained<NSArray<CBUUID>>> = service_uuids.map(|uuids| unsafe {
-            let cb_uuids: Vec<Retained<CBUUID>> = uuids
-                .iter()
-                .map(|uuid_str| {
-                    let ns_str = NSString::from_str(uuid_str);
-                    CBUUID::UUIDWithString(&ns_str)
-                })
-                .collect();
+        // Track filter count for logging (before we drop the non-Send types)
+        let filter_count = service_uuids.as_ref().map(|v| v.len());
 
-            // Convert to array with proper retain semantics
-            let uuid_refs: Vec<Retained<CBUUID>> = cb_uuids
-                .into_iter()
-                .map(|uuid| {
-                    let ptr: *mut CBUUID = msg_send![Retained::as_ptr(&uuid), retain];
-                    Retained::from_raw(ptr).unwrap()
-                })
-                .collect();
-            NSArray::from_vec(uuid_refs)
-        });
+        // Build service UUID filter array if provided and start scanning
+        // All ObjC work must complete before any await points (CBUUID is not Send)
+        {
+            let uuid_filter: Option<Retained<NSArray<CBUUID>>> =
+                service_uuids.map(|uuids| unsafe {
+                    let cb_uuids: Vec<Retained<CBUUID>> = uuids
+                        .iter()
+                        .map(|uuid_str| {
+                            let ns_str = NSString::from_str(uuid_str);
+                            CBUUID::UUIDWithString(&ns_str)
+                        })
+                        .collect();
 
-        // Start scanning with service UUID filter (if provided)
-        // TODO: Create proper options dictionary based on config for allow duplicates etc.
-        unsafe {
-            self.manager
-                .scanForPeripheralsWithServices_options(uuid_filter.as_deref(), None);
+                    // Convert to array with proper retain semantics
+                    let uuid_refs: Vec<Retained<CBUUID>> = cb_uuids
+                        .into_iter()
+                        .map(|uuid| {
+                            let ptr: *mut CBUUID = msg_send![Retained::as_ptr(&uuid), retain];
+                            Retained::from_raw(ptr).unwrap()
+                        })
+                        .collect();
+                    NSArray::from_vec(uuid_refs)
+                });
+
+            // Start scanning with service UUID filter (if provided)
+            // TODO: Create proper options dictionary based on config for allow duplicates etc.
+            unsafe {
+                self.manager
+                    .scanForPeripheralsWithServices_options(uuid_filter.as_deref(), None);
+            }
         }
+        // uuid_filter is dropped here, before the await
 
-        let filter_desc = uuid_filter
-            .as_ref()
-            .map(|arr| format!("filtering by {} service UUID(s)", arr.len()))
+        let filter_desc = filter_count
+            .map(|count| format!("filtering by {} service UUID(s)", count))
             .unwrap_or_else(|| "no filter".to_string());
         log::info!("Started BLE scanning ({})", filter_desc);
         *self.scanning.write().await = true;
