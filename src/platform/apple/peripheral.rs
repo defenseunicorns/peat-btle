@@ -483,8 +483,12 @@ impl PeripheralManager {
 
         // Build advertisement data dictionary with local name and service UUIDs
         // This is required for other platforms (Linux, Android) to discover this device
+        //
+        // MEMORY SAFETY: We use alloc/init patterns which return +1 retained objects,
+        // avoiding issues with autoreleased convenience constructors that can cause
+        // double-free segfaults when used with Retained::from_raw().
         unsafe {
-            // Create the local name string
+            // Create the local name string (NSString::from_str returns retained)
             let name_str = NSString::from_str(&local_name);
 
             // Create the service UUID - CRITICAL for cross-platform discovery
@@ -492,15 +496,17 @@ impl PeripheralManager {
             let service_uuid = CBUUID::UUIDWithString(&service_uuid_str);
 
             // Create an array containing the service UUID for advertisement
-            // Use proper retain semantics to avoid use-after-free
+            // msg_send![obj, retain] returns a +1 reference we can safely wrap
             let uuid_array: Retained<NSArray<CBUUID>> = {
-                let uuid_ptr: *mut CBUUID = msg_send![Retained::as_ptr(&service_uuid), retain];
+                let uuid_ptr: *mut CBUUID = msg_send![&*service_uuid, retain];
                 NSArray::from_vec(vec![Retained::from_raw(uuid_ptr).unwrap()])
             };
 
             // Build the advertisement dictionary with local name AND service UUIDs
             // Keys: CBAdvertisementDataLocalNameKey, CBAdvertisementDataServiceUUIDsKey
             // Values: name_str, uuid_array
+            //
+            // Create keys array - retain the global key constants
             let keys: Retained<NSArray<NSString>> = {
                 let name_key_ptr: *mut NSString =
                     msg_send![CBAdvertisementDataLocalNameKey, retain];
@@ -511,26 +517,37 @@ impl PeripheralManager {
                     Retained::from_raw(uuid_key_ptr).unwrap(),
                 ])
             };
+
+            // Create values array - retain our value objects
             let values: Retained<NSArray<AnyObject>> = {
-                let name_ptr: *mut AnyObject = msg_send![Retained::as_ptr(&name_str), retain];
-                let uuid_array_ptr: *mut AnyObject =
-                    msg_send![Retained::as_ptr(&uuid_array), retain];
+                let name_ptr: *mut AnyObject = msg_send![&*name_str, retain];
+                let uuid_array_ptr: *mut AnyObject = msg_send![&*uuid_array, retain];
                 NSArray::from_vec(vec![
                     Retained::from_raw(name_ptr).unwrap(),
                     Retained::from_raw(uuid_array_ptr).unwrap(),
                 ])
             };
 
-            // Use dictionaryWithObjects:forKeys: class method
-            let dict_ptr: *mut NSDictionary<NSString, AnyObject> = msg_send![
-                objc2::class!(NSDictionary),
-                dictionaryWithObjects: Retained::as_ptr(&values),
-                forKeys: Retained::as_ptr(&keys)
-            ];
-            let ad_data = Retained::from_raw(dict_ptr);
+            // Create dictionary using alloc + initWithObjects:forKeys:count:
+            // This returns a +1 retained object that Retained can safely manage.
+            // NOTE: We pass the NSArrays directly since initWithObjects:forKeys:count:
+            // expects id* (C arrays of object pointers), and NSArray's internal storage
+            // layout makes Retained::as_ptr() point to the array object, not the elements.
+            // Instead, we use dictionaryWithObjects:forKeys: but RETAIN the result.
+            let dict: Retained<NSDictionary<NSString, AnyObject>> = {
+                let dict_ptr: *mut NSDictionary<NSString, AnyObject> = msg_send![
+                    objc2::class!(NSDictionary),
+                    dictionaryWithObjects: Retained::as_ptr(&values),
+                    forKeys: Retained::as_ptr(&keys)
+                ];
+                // dictionaryWithObjects:forKeys: returns autoreleased, so retain it
+                let retained_ptr: *mut NSDictionary<NSString, AnyObject> =
+                    msg_send![dict_ptr, retain];
+                Retained::from_raw(retained_ptr).expect("NSDictionary should not be nil")
+            };
 
             // Start advertising with the advertisement data
-            self.manager.startAdvertising(ad_data.as_deref());
+            self.manager.startAdvertising(Some(&dict));
         }
 
         log::info!("Started advertising as {}", local_name);

@@ -450,7 +450,8 @@ impl RustCentralManagerDelegate {
         if let Some(uuids_any) = uuids_obj {
             // The value should be an NSArray of CBUUID objects
             // We need to cast the AnyObject to NSArray<CBUUID>
-            let uuids_ptr = uuids_any as *const objc2::runtime::AnyObject;
+            // Use Retained::as_ptr() to get the raw pointer
+            let uuids_ptr: *const objc2::runtime::AnyObject = Retained::as_ptr(&uuids_any);
             let uuids_array: &NSArray<CBUUID> = &*(uuids_ptr as *const NSArray<CBUUID>);
 
             for i in 0..uuids_array.len() {
