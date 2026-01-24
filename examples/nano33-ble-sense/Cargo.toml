@@ -1,0 +1,40 @@
+[package]
+name = "nano33-ble-sense-hive"
+version = "0.1.0"
+edition = "2021"
+authors = ["(r)evolve - Revolve Team LLC"]
+license = "Apache-2.0"
+description = "HIVE sensor beacon on Arduino Nano 33 BLE Sense (nRF52840)"
+
+[dependencies]
+# Embassy async runtime - use git for version compatibility
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = ["arch-cortex-m", "executor-thread", "defmt"] }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", features = ["defmt", "defmt-timestamp-uptime"] }
+
+# Embassy nRF HAL (for time driver - uses RTC1, SoftDevice uses RTC0)
+embassy-nrf = { git = "https://github.com/embassy-rs/embassy", features = ["defmt", "nrf52840", "gpiote", "time-driver-rtc1"] }
+
+# nRF SoftDevice BLE stack - use git for version compatibility
+nrf-softdevice = { git = "https://github.com/embassy-rs/nrf-softdevice", features = ["defmt", "nrf52840", "s140", "ble-peripheral", "ble-gatt-server", "critical-section-impl"] }
+nrf-softdevice-s140 = { git = "https://github.com/embassy-rs/nrf-softdevice" }
+
+# Cortex-M support (critical-section provided by nrf-softdevice)
+cortex-m = { version = "0.7" }
+cortex-m-rt = "0.7"
+
+# Defmt logging (lightweight, RTT-based)
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+
+# Async utilities
+futures = { version = "0.3", default-features = false }
+
+[profile.release]
+debug = 2
+lto = true
+opt-level = "s"
+
+[profile.dev]
+debug = 2
+opt-level = 1
