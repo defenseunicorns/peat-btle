@@ -1218,11 +1218,17 @@ class HiveBtle(
                                         HiveLocation(result.latitude, result.longitude, result.altitude ?: 0f) else null,
                                     timestamp = System.currentTimeMillis()
                                 )
+                                // Include peripheral if ANY data is present (callsign, location, battery, etc.)
+                                val hasPeripheralData = result.callsign != null ||
+                                    result.latitude != null ||
+                                    result.batteryPercent != null ||
+                                    result.heartRate != null ||
+                                    result.eventType != null
                                 val syntheticDoc = HiveDocument(
                                     version = 1,
                                     nodeId = sourceNodeId,
                                     counter = emptyList(),
-                                    peripheral = if (result.callsign != null) peerPeripheral else null
+                                    peripheral = if (hasPeripheralData) peerPeripheral else null
                                 )
                                 handler.post {
                                     meshListener?.onDocumentSynced(syntheticDoc)

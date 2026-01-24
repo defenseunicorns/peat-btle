@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.1.0-rc11"  // RC11 with peripheral data in DataReceivedResult
+version = "0.1.0-rc12"  // RC12 fix: include peripheral when ANY data present (location, battery, etc.)
 
 android {
     namespace = "com.revolveteam.hive"
