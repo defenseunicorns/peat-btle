@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.1.0-rc28"  // RC28: UniFFI migration - replaced JNI with auto-generated bindings
+version = "0.1.0-rc29"  // RC29: UniFFI + Apple fix + CI - replaced JNI with auto-generated bindings
 
 android {
     namespace = "com.revolveteam.hive"
