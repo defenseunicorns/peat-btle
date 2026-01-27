@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.28] - 2026-01-26
+
+### Changed
+- **BREAKING**: Migrated Android bindings from manual JNI to UniFFI
+  - All Rust types now accessed via `uniffi.hive_btle` package
+  - HiveMesh construction uses `newFromGenesis()` or `newWithPeripheral()` factory methods
+  - Method parameters now use Kotlin unsigned types (UInt, ULong, UByte)
+  - BLE callback timestamps require `.toULong()` conversion
+
+### Added
+- UniFFI bindings module (`src/uniffi_bindings.rs`) with full HiveMesh API
+- Generated Kotlin bindings (`android/src/main/kotlin/uniffi/hive_btle/hive_btle.kt`)
+- Chat methods exposed via UniFFI: `sendChat`, `sendChatReply`, `chatCount`, `getAllChatMessages`, `getChatMessagesSince`
+- `updatePeripheralState` method for efficient encrypted state updates
+- `deriveNodeIdFromMac` standalone function
+- Peer state types via UniFFI: `ConnectionState`, `PeerConnectionState`, `StateCountSummary`, `FullStateCountSummary`, `IndirectPeer`, `ViaPeerRoute`
+- Peer state methods: `getPeerConnectionState`, `getDegradedPeers`, `getLostPeers`, `getConnectionStateCounts`, `getIndirectPeers`, `getFullStateCounts`
+
+### Fixed
+- Removed JNI native method calls from callback proxies (`ScanCallbackProxy`, `GattCallbackProxy`, `AdvertiseCallbackProxy`) that caused `UnsatisfiedLinkError` at runtime
+
+### Removed
+- Manual JNI bridge (`src/platform/android/jni_bridge.rs`)
+- JNI-based Kotlin files: `HiveMesh.kt`, `DeviceIdentity.kt`, `MeshGenesis.kt`, `IdentityAttestation.kt`
+- JNI native method declarations from callback proxy classes
+- `System.loadLibrary("hive_btle")` calls (UniFFI/JNA handles library loading automatically)
+- `jni` and `ndk` crate dependencies
+
+### Migration Guide
+See `docs/UNIFFI_MIGRATION.md` for Android integration updates.
+
 ## [0.0.12] - 2026-01-19
 
 ### Added

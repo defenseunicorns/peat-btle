@@ -2,6 +2,11 @@
 # Goa CI script for hive-btle
 # Triggered when changes are detected on the Radicle repo
 #
+# Architecture:
+#   - CI machine (kitlab): Runs fmt, clippy, tests, examples
+#   - Raspberry Pi (loopback rig): Runs functional BLE test via SSH
+#     - Requires: 2 BT adapters (onboard + USB), repo cloned, SSH key access
+#
 # Security: Only runs CI for:
 #   - Patches from delegates (automatic)
 #   - Community patches approved by delegate comment "ok-to-test"
@@ -73,15 +78,10 @@ EXAMPLES_STATUS="skip"
 FUNCTIONAL_STATUS="skip"
 HAS_FAILURE=0
 
-# Check if functional test hardware is available (two BT adapters)
-HAS_FUNCTIONAL_HW=0
-if command -v hciconfig &>/dev/null; then
-    BT_ADAPTERS=$(hciconfig -a 2>/dev/null | grep -c "^hci" || echo "0")
-    if [[ "$BT_ADAPTERS" -ge 2 ]]; then
-        HAS_FUNCTIONAL_HW=1
-        echo "Functional test hardware detected ($BT_ADAPTERS BT adapters)"
-    fi
-fi
+# Raspberry Pi loopback test rig configuration
+# The Pi should have 2 BT adapters (onboard + USB dongle) and SSH access
+LOOPBACK_HOST="${LOOPBACK_HOST:-pi@raspberrypi.local}"
+LOOPBACK_REPO="${LOOPBACK_REPO:-/home/pi/hive-btle}"
 
 # Run CI checks with timeouts
 CI_TIMEOUT=300  # 5 minutes per step
@@ -123,18 +123,20 @@ else
 fi
 
 echo ""
-echo "--- Functional Test ---"
-if [[ $HAS_FUNCTIONAL_HW -eq 1 ]]; then
-    # Run functional BLE loopback test (requires two BT adapters)
-    if timeout 120 ./scripts/functional-test.sh --timeout 60; then
-        FUNCTIONAL_STATUS="pass"
+echo "--- Functional Test (Remote: $LOOPBACK_HOST) ---"
+# SSH to Raspberry Pi loopback rig and run functional BLE test
+# The Pi must have: 2 BT adapters, repo cloned, SSH key access
+if ssh -o ConnectTimeout=10 -o BatchMode=yes "$LOOPBACK_HOST" "cd $LOOPBACK_REPO && git fetch origin && git checkout ${GOA_COMMIT_OID:-HEAD} && ./scripts/functional-test.sh --timeout 60" 2>&1; then
+    FUNCTIONAL_STATUS="pass"
+else
+    SSH_EXIT=$?
+    if [[ $SSH_EXIT -eq 255 ]]; then
+        echo "Skipped (loopback rig unreachable: $LOOPBACK_HOST)"
+        FUNCTIONAL_STATUS="skip"
     else
         FUNCTIONAL_STATUS="FAIL"
         HAS_FAILURE=1
     fi
-else
-    echo "Skipped (no hardware - need 2 BT adapters)"
-    FUNCTIONAL_STATUS="skip"
 fi
 
 echo ""
