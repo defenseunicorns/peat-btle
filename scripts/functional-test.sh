@@ -16,6 +16,9 @@
 
 set -euo pipefail
 
+# Ensure cargo is in PATH (for non-interactive SSH sessions)
+[ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+
 # Defaults
 RESPONDER_ADAPTER="${RESPONDER_ADAPTER:-hci0}"
 CLIENT_ADAPTER="${CLIENT_ADAPTER:-hci1}"
