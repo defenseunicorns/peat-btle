@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.29] - 2026-01-27
+
+### Added
+- Functional BLE loopback test automation (kitlab ↔ Pi)
+- `ble_responder` and `ble_test_client` example binaries
+- Delta sync auto-registration on peer connect/disconnect
+- `decrypt_only()` API for transport-only decryption
+
+### Fixed
+- UInt formatting in Android logs (`.toLong()` for `String.format`)
+- Added `updatePeripheralState()` convenience method (ATAK team contribution)
+
+### Changed
+- CI now runs functional BLE test via SSH to Raspberry Pi
+
 ## [0.1.0-rc.28] - 2026-01-26
 
 ### Changed
