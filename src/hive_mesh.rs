@@ -61,6 +61,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::document::{ENCRYPTED_MARKER, KEY_EXCHANGE_MARKER, PEER_E2EE_MARKER};
+
+/// App-layer message marker byte (0xAF).
+/// Messages with this marker are passed through to apps via relay_data.
+/// hive-btle is transport-only; apps use hive-lite to decode these.
+const APP_LAYER_MARKER: u8 = 0xAF;
 use crate::document_sync::DocumentSync;
 use crate::gossip::{GossipStrategy, RandomFanout};
 use crate::observer::{DisconnectReason, HiveEvent, HiveObserver, SecurityViolationKind};
@@ -587,17 +592,40 @@ impl HiveMesh {
         data: &'a [u8],
         source_hint: Option<&str>,
     ) -> Option<std::borrow::Cow<'a, [u8]>> {
+        log::debug!(
+            "decrypt_document: len={}, first_byte=0x{:02X}, source={:?}",
+            data.len(),
+            data.first().copied().unwrap_or(0),
+            source_hint
+        );
+
         // Check for encrypted marker
         if data.len() >= 2 && data[0] == ENCRYPTED_MARKER {
             // Encrypted document
             let _reserved = data[1];
             let encrypted_payload = &data[2..];
 
+            log::debug!(
+                "decrypt_document: encrypted payload len={}, nonce+ciphertext",
+                encrypted_payload.len()
+            );
+
             match &self.encryption_key {
                 Some(key) => match key.decrypt_from_bytes(encrypted_payload) {
-                    Ok(plaintext) => Some(std::borrow::Cow::Owned(plaintext)),
+                    Ok(plaintext) => {
+                        log::debug!(
+                            "decrypt_document: SUCCESS, plaintext len={}",
+                            plaintext.len()
+                        );
+                        Some(std::borrow::Cow::Owned(plaintext))
+                    }
                     Err(e) => {
-                        log::warn!("Decryption failed (wrong key or corrupted): {}", e);
+                        log::warn!(
+                            "decrypt_document: FAILED (wrong key or corrupted): {} [payload_len={}, source={:?}]",
+                            e,
+                            encrypted_payload.len(),
+                            source_hint
+                        );
                         self.notify(HiveEvent::SecurityViolation {
                             kind: SecurityViolationKind::DecryptionFailed,
                             source: source_hint.map(String::from),
@@ -606,7 +634,9 @@ impl HiveMesh {
                     }
                 },
                 None => {
-                    log::warn!("Received encrypted document but encryption not enabled");
+                    log::warn!(
+                        "decrypt_document: encryption not enabled but received encrypted doc"
+                    );
                     None
                 }
             }
@@ -628,6 +658,24 @@ impl HiveMesh {
                 Some(std::borrow::Cow::Borrowed(data))
             }
         }
+    }
+
+    // ==================== Transport Layer API ====================
+
+    /// Decrypt data without parsing (transport-only operation)
+    ///
+    /// This method provides raw decrypted bytes for apps that want to handle
+    /// message parsing themselves (using hive-lite or other libraries).
+    ///
+    /// # Arguments
+    /// * `data` - Potentially encrypted data (0xAE marker indicates encryption)
+    ///
+    /// # Returns
+    /// * `Some(plaintext)` - Decrypted bytes if successful, or original bytes if unencrypted
+    /// * `None` - If decryption failed (wrong key, corrupted, or strict mode violation)
+    pub fn decrypt_only(&self, data: &[u8]) -> Option<Vec<u8>> {
+        self.decrypt_document(data, None)
+            .map(|cow| cow.into_owned())
     }
 
     // ==================== Identity ====================
@@ -1812,6 +1860,9 @@ impl HiveMesh {
             graph.on_connected(node_id, now_ms);
         }
 
+        // Register peer for delta sync tracking
+        self.register_peer_for_delta(&node_id);
+
         self.notify(HiveEvent::PeerConnected { node_id });
         self.notify_mesh_state_changed();
         Some(node_id)
@@ -1844,6 +1895,9 @@ impl HiveMesh {
                 .unwrap_or(0);
             graph.on_disconnected(node_id, platform_reason, now_ms);
         }
+
+        // Unregister peer from delta sync tracking
+        self.unregister_peer_for_delta(&node_id);
 
         self.notify(HiveEvent::PeerDisconnected {
             node_id,
@@ -1885,6 +1939,9 @@ impl HiveMesh {
                 graph.on_disconnected(node_id, platform_reason, now_ms);
             }
 
+            // Unregister peer from delta sync tracking
+            self.unregister_peer_for_delta(&node_id);
+
             self.notify(HiveEvent::PeerDisconnected { node_id, reason });
             self.notify_mesh_state_changed();
         }
@@ -1913,6 +1970,9 @@ impl HiveMesh {
             }
             graph.on_connected(node_id, now_ms);
         }
+
+        // Register peer for delta sync tracking
+        self.register_peer_for_delta(&node_id);
 
         if is_new {
             if let Some(peer) = self.peer_manager.get_peer(node_id) {
@@ -2163,14 +2223,36 @@ impl HiveMesh {
         data: &[u8],
         now_ms: u64,
     ) -> Option<DataReceivedResult> {
+        log::debug!(
+            "on_ble_data_received_anonymous: identifier={}, len={}, marker=0x{:02X}",
+            identifier,
+            data.len(),
+            data.first().copied().unwrap_or(0)
+        );
+
         // Only handle encrypted documents with this path
         if data.len() < 10 || data[0] != ENCRYPTED_MARKER {
-            log::debug!("on_ble_data_received_anonymous: not an encrypted document");
+            log::debug!(
+                "on_ble_data_received_anonymous: not encrypted (len={}, marker=0x{:02X})",
+                data.len(),
+                data.first().copied().unwrap_or(0)
+            );
             return None;
         }
 
         // Try to decrypt using mesh key
-        let decrypted = self.decrypt_document(data, Some(identifier))?;
+        log::debug!("on_ble_data_received_anonymous: attempting decryption...");
+        let decrypted = match self.decrypt_document(data, Some(identifier)) {
+            Some(d) => d,
+            None => {
+                log::warn!(
+                    "on_ble_data_received_anonymous: decryption FAILED for {} byte doc from {}",
+                    data.len(),
+                    identifier
+                );
+                return None;
+            }
+        };
 
         // Extract source_node from decrypted document header
         // Header format: [version: 4 bytes (LE)][node_id: 4 bytes (LE)]
@@ -2212,6 +2294,35 @@ impl HiveMesh {
                 None,
                 0,
             );
+        }
+
+        // Check for app-layer message (0xAF marker) - return raw bytes for app to handle
+        // hive-btle is transport-only; apps use hive-lite to decode these messages
+        if decrypted.first().copied() == Some(APP_LAYER_MARKER) {
+            log::info!(
+                "App-layer message detected (0xAF), returning {} bytes for app",
+                decrypted.len()
+            );
+            // Return decrypted bytes via relay_data for app layer to process
+            return Some(DataReceivedResult {
+                source_node,
+                is_emergency: false,
+                is_ack: false,
+                counter_changed: false,
+                emergency_changed: false,
+                total_count: 0,
+                event_timestamp: 0,
+                relay_data: Some(decrypted.into_owned()), // Raw bytes for app to decode
+                origin_node: None,
+                hop_count: 0,
+                callsign: None,
+                battery_percent: None,
+                heart_rate: None,
+                event_type: None,
+                latitude: None,
+                longitude: None,
+                altitude: None,
+            });
         }
 
         // Merge the document (legacy wire format v1)
@@ -2619,6 +2730,65 @@ impl HiveMesh {
         }
 
         None
+    }
+
+    /// Periodic tick returning per-peer delta documents
+    ///
+    /// Unlike `tick()` which broadcasts a single document to all peers,
+    /// this returns targeted deltas that only include changes each peer
+    /// hasn't seen. Use this for platforms that support per-peer transmission.
+    ///
+    /// Returns a list of (NodeId, encrypted_delta) tuples, one per connected peer.
+    /// Empty vector if no sync is needed (interval not elapsed or no connected peers).
+    pub fn tick_with_peer_deltas(&self, now_ms: u64) -> Vec<(NodeId, Vec<u8>)> {
+        use std::sync::atomic::Ordering;
+        let now_ms_32 = now_ms as u32;
+
+        // Cleanup stale peers (same as tick())
+        let last_cleanup = self.last_cleanup_ms.load(Ordering::Relaxed);
+        let cleanup_elapsed = now_ms_32.wrapping_sub(last_cleanup);
+        if cleanup_elapsed >= self.config.peer_config.cleanup_interval_ms as u32 {
+            self.last_cleanup_ms.store(now_ms_32, Ordering::Relaxed);
+            let removed = self.peer_manager.cleanup_stale(now_ms);
+            for node_id in &removed {
+                self.notify(HiveEvent::PeerLost { node_id: *node_id });
+            }
+            if !removed.is_empty() {
+                self.notify_mesh_state_changed();
+            }
+
+            // Run connection graph maintenance
+            {
+                let mut graph = self.connection_graph.lock().unwrap();
+                let newly_lost = graph.tick(now_ms);
+                graph.cleanup_lost(self.config.peer_config.peer_timeout_ms, now_ms);
+                drop(graph);
+
+                for node_id in newly_lost {
+                    if !removed.contains(&node_id) {
+                        self.notify(HiveEvent::PeerLost { node_id });
+                    }
+                }
+            }
+        }
+
+        // Check if sync is needed
+        let last_sync = self.last_sync_ms.load(Ordering::Relaxed);
+        let sync_elapsed = now_ms_32.wrapping_sub(last_sync);
+        if sync_elapsed >= self.config.sync_interval_ms as u32 {
+            self.last_sync_ms.store(now_ms_32, Ordering::Relaxed);
+
+            // Build document for each connected peer
+            let doc = self.document_sync.build_document();
+            let encrypted = self.encrypt_document(&doc);
+            let mut results = Vec::new();
+            for peer in self.get_connected_peers() {
+                results.push((peer.node_id, encrypted.clone()));
+            }
+            return results;
+        }
+
+        Vec::new()
     }
 
     // ==================== State Queries ====================

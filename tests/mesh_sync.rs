@@ -521,3 +521,144 @@ async fn test_encrypted_document_includes_location() {
     println!("Encrypted document size: {} bytes", doc_bytes.len());
     println!("Receiver processed document successfully with location data");
 }
+
+#[tokio::test]
+async fn test_chat_sync_unencrypted() {
+    // Test that chat messages sync between nodes WITHOUT encryption
+    // This verifies the basic chat CRDT sync works before adding encryption complexity.
+
+    // Create sender mesh (no encryption)
+    let sender_config = HiveMeshConfig::new(NodeId::new(0x111), "SENDER", "TEST");
+    let sender = HiveMesh::new(sender_config);
+
+    // Create receiver mesh (no encryption)
+    let receiver_config = HiveMeshConfig::new(NodeId::new(0x222), "RECEIVER", "TEST");
+    let receiver = HiveMesh::new(receiver_config);
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    // Sender adds a chat message
+    let msg_doc = sender.send_chat("ALPHA", "Hello from sender!", now_ms);
+    assert!(msg_doc.is_some(), "Sender should add chat message");
+
+    // Verify sender has the message
+    let sender_chat_count = sender.chat_count();
+    assert_eq!(sender_chat_count, 1, "Sender should have 1 chat message");
+
+    // Build document from sender
+    let doc_bytes = sender.build_document();
+    println!("Unencrypted document size: {} bytes", doc_bytes.len());
+
+    // Document should start with version (not 0xAE encrypted marker)
+    assert_ne!(doc_bytes[0], 0xAE, "Document should NOT be encrypted");
+
+    // Decode and inspect the document
+    let decoded = HiveDocument::decode(&doc_bytes);
+    assert!(decoded.is_some(), "Document should decode");
+    let doc = decoded.unwrap();
+
+    // Check that chat is included
+    assert!(doc.chat.is_some(), "Document should have chat CRDT");
+    let chat = doc.chat.unwrap();
+    assert!(!chat.is_empty(), "Chat CRDT should have messages");
+    assert_eq!(chat.len(), 1, "Chat CRDT should have 1 message");
+
+    // Now receiver processes the document
+    // First, discover and connect the sender
+    receiver.on_ble_discovered(
+        "device-sender",
+        Some("HIVE_TEST-00000111"),
+        -60,
+        Some("TEST"),
+        now_ms,
+    );
+    receiver.on_ble_connected("device-sender", now_ms);
+
+    let result = receiver.on_ble_data_received("device-sender", &doc_bytes, now_ms + 100);
+    assert!(result.is_some(), "Receiver should process document");
+
+    // Verify receiver now has the chat message
+    let receiver_chat_count = receiver.chat_count();
+    assert_eq!(
+        receiver_chat_count, 1,
+        "Receiver should have 1 chat message after sync"
+    );
+
+    println!("Chat sync (unencrypted) works correctly!");
+}
+
+#[tokio::test]
+async fn test_chat_sync_encrypted() {
+    // Test that chat messages sync between nodes WITH encryption
+    // This is the critical test that verifies the reported bug.
+
+    // Create sender mesh with encryption
+    let sender_config =
+        HiveMeshConfig::new(NodeId::new(0x111), "SENDER", "TEST").with_encryption(TEST_SECRET);
+    let sender = HiveMesh::new(sender_config);
+
+    // Create receiver mesh with same encryption key
+    let receiver_config =
+        HiveMeshConfig::new(NodeId::new(0x222), "RECEIVER", "TEST").with_encryption(TEST_SECRET);
+    let receiver = HiveMesh::new(receiver_config);
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
+    // Sender adds a chat message
+    let msg_doc = sender.send_chat("ALPHA", "Hello from encrypted sender!", now_ms);
+    assert!(msg_doc.is_some(), "Sender should add chat message");
+
+    // Verify sender has the message
+    let sender_chat_count = sender.chat_count();
+    assert_eq!(sender_chat_count, 1, "Sender should have 1 chat message");
+
+    // Build encrypted document from sender
+    let doc_bytes = sender.build_document();
+    println!("Encrypted document size: {} bytes", doc_bytes.len());
+
+    // Document should start with 0xAE (encrypted marker)
+    assert_eq!(doc_bytes[0], 0xAE, "Document should be encrypted");
+
+    // Now receiver processes the encrypted document
+    // First, discover and connect the sender
+    receiver.on_ble_discovered(
+        "device-sender",
+        Some("HIVE_TEST-00000111"),
+        -60,
+        Some("TEST"),
+        now_ms,
+    );
+    receiver.on_ble_connected("device-sender", now_ms);
+
+    let result = receiver.on_ble_data_received("device-sender", &doc_bytes, now_ms + 100);
+    assert!(
+        result.is_some(),
+        "Receiver should decrypt and process document"
+    );
+
+    // Verify receiver now has the chat message
+    let receiver_chat_count = receiver.chat_count();
+    assert_eq!(
+        receiver_chat_count, 1,
+        "Receiver should have 1 chat message after encrypted sync"
+    );
+
+    // Verify the message content was preserved
+    let messages = receiver.all_chat_messages();
+    assert_eq!(messages.len(), 1, "Should have exactly 1 message");
+    let (origin, _timestamp, sender_name, text, _reply_node, _reply_ts) = &messages[0];
+    assert_eq!(*origin, 0x111, "Message origin should be sender's node ID");
+    assert_eq!(sender_name, "ALPHA", "Sender name should be preserved");
+    assert_eq!(
+        text, "Hello from encrypted sender!",
+        "Message text should be preserved"
+    );
+
+    println!("Chat sync (encrypted) works correctly!");
+}
