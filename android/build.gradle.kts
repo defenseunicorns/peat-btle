@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.1.0-rc12"  // RC12 fix: include peripheral when ANY data present (location, battery, etc.)
+version = "0.1.0-rc28"  // RC28: UniFFI migration - replaced JNI with auto-generated bindings
 
 android {
     namespace = "com.revolveteam.hive"
@@ -93,6 +93,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.annotation:annotation:1.7.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // UniFFI uses JNA for FFI
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

@@ -1,6 +1,6 @@
 [package]
 name = "hive-btle"
-version = "0.1.0-rc.12"
+version = "0.1.0-rc.28"
 edition = "2021"
 authors = ["(r)evolve - Revolve Team LLC"]
 license = "Apache-2.0"
@@ -10,7 +10,7 @@ keywords = ["bluetooth", "ble", "mesh", "hive", "tactical"]
 categories = ["network-programming", "embedded"]
 
 [lib]
-# Build as both a Rust library and a C dynamic library (for Android JNI)
+# Build as both a Rust library and a C dynamic library (for UniFFI bindings)
 crate-type = ["rlib", "cdylib"]
 
 [features]
@@ -19,9 +19,15 @@ default = ["std"]
 # Standard library support (disable for embedded)
 std = ["thiserror/std", "uuid/std"]
 
+# Legacy chat support (deprecated, will be removed in 0.2.0)
+legacy-chat = []
+
+# UniFFI bindings (generates Kotlin + Swift)
+uniffi = ["dep:uniffi"]
+
 # Platform-specific features
 linux = ["dep:bluer", "dep:tokio", "dep:tokio-stream"]
-android = ["dep:jni", "dep:ndk", "dep:tokio"]
+android = ["uniffi", "dep:tokio", "dep:android_logger"]
 macos = ["dep:objc2", "dep:block2", "dep:tokio", "dep:objc2-foundation", "dep:objc2-core-bluetooth"]
 ios = ["dep:objc2", "dep:block2", "dep:tokio", "dep:objc2-foundation", "dep:objc2-core-bluetooth"]
 windows = ["dep:windows", "dep:tokio"]
@@ -64,6 +70,9 @@ blake3 = "1.5"
 # no_std HashMap for IdentityRegistry
 hashbrown = "0.15"
 
+# UniFFI for cross-language bindings (optional)
+uniffi = { version = "0.31", optional = true }
+
 # Async runtime (optional, for std platforms)
 tokio = { version = "1.42", features = ["sync", "time", "macros", "rt-multi-thread"], optional = true }
 
@@ -71,9 +80,8 @@ tokio = { version = "1.42", features = ["sync", "time", "macros", "rt-multi-thre
 bluer = { version = "0.17", features = ["bluetoothd"], optional = true }
 tokio-stream = { version = "0.1", optional = true }
 
-# Android JNI (optional)
-jni = { version = "0.21", optional = true }
-ndk = { version = "0.9", optional = true }
+# Android logging (optional)
+android_logger = { version = "0.14", optional = true }
 
 # Apple CoreBluetooth (optional)
 objc2 = { version = "0.5", optional = true }
@@ -99,7 +107,10 @@ esp-idf-hal = { version = "0.45", optional = true }
 [dev-dependencies]
 tokio-test = "0.4"
 env_logger = "0.11"
-tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "signal"] }
+
+[build-dependencies]
+uniffi = { version = "0.31", features = ["build"] }
 
 [package.metadata.docs.rs]
 features = ["linux"]

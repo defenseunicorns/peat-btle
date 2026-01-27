@@ -15,55 +15,35 @@
 
 //! Android platform implementation
 //!
-//! This module provides the BLE adapter implementation for Android using
-//! JNI bindings to the Android Bluetooth API.
-//!
-//! ## Requirements
-//!
-//! - Android 6.0 (API 23) or later
-//! - `BLUETOOTH`, `BLUETOOTH_ADMIN`, `ACCESS_FINE_LOCATION` permissions
-//! - For BLE 5.0 features: Android 8.0 (API 26) or later
+//! This module provides stubs for the Android BLE adapter. The actual BLE
+//! operations are handled by the Kotlin HiveBtle class using Android APIs,
+//! with mesh logic provided by UniFFI bindings to Rust HiveMesh.
 //!
 //! ## Architecture
 //!
-//! The Android implementation uses JNI to call Android Bluetooth APIs:
-//!
 //! ```text
 //! ┌─────────────────────────────────────────┐
-//! │           AndroidAdapter (Rust)          │
+//! │        Kotlin HiveBtle (Android BLE)    │
 //! ├─────────────────────────────────────────┤
-//! │                JNI Bridge                │
+//! │   UniFFI Bindings (uniffi.hive_btle)   │
 //! ├─────────────────────────────────────────┤
-//! │  BluetoothAdapter / BluetoothLeScanner  │
-//! │  BluetoothLeAdvertiser / BluetoothGatt  │
+//! │           Rust HiveMesh Core            │
 //! └─────────────────────────────────────────┘
 //! ```
 //!
-//! ## Usage
+//! The Kotlin layer handles:
+//! - BLE scanning and advertising
+//! - GATT client/server operations
+//! - Android permission management
 //!
-//! ```ignore
-//! use hive_btle::platform::android::AndroidAdapter;
-//! use hive_btle::{BleConfig, NodeId};
-//!
-//! // Must be called from Android app with JNI environment
-//! let config = BleConfig::new(NodeId::new(0x12345678));
-//! let mut adapter = AndroidAdapter::new(jni_env, context)?;
-//! adapter.init(&config).await?;
-//! adapter.start().await?;
-//! ```
-//!
-//! ## JNI Callbacks
-//!
-//! The implementation registers JNI callbacks for:
-//! - Scan results (`onScanResult`)
-//! - Connection state changes (`onConnectionStateChange`)
-//! - GATT service discovery (`onServicesDiscovered`)
-//! - Characteristic reads/writes (`onCharacteristicRead`, `onCharacteristicWrite`)
-//! - Notifications (`onCharacteristicChanged`)
+//! The Rust layer (via UniFFI) handles:
+//! - Mesh state management
+//! - CRDT document sync
+//! - Encryption/decryption
+//! - Peer management
 
 mod adapter;
 mod connection;
-mod jni_bridge;
 
 pub use adapter::AndroidAdapter;
 pub use connection::AndroidConnection;

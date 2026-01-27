@@ -22,15 +22,15 @@ import android.bluetooth.le.ScanSettings
 import android.util.Log
 
 /**
- * Proxy class that forwards BLE scan results to native Rust code via JNI.
+ * Proxy class that forwards BLE scan results to the HiveBtle layer.
  *
- * This class extends Android's ScanCallback and bridges scan events to the
- * hive-btle Rust implementation. When a BLE device is discovered, the scan
- * result is parsed and forwarded to native code for processing.
+ * This class extends Android's ScanCallback and parses scan events into
+ * DiscoveredDevice objects. The actual mesh processing happens in HiveBtle
+ * via UniFFI bindings to the Rust HiveMesh.
  *
  * Usage:
  * ```kotlin
- * val proxy = ScanCallbackProxy()
+ * val proxy = ScanCallbackProxy { device -> hiveBtle.onDeviceDiscovered(device) }
  * bluetoothLeScanner.startScan(filters, settings, proxy)
  * ```
  */
@@ -40,23 +40,13 @@ class ScanCallbackProxy(
 
     companion object {
         private const val TAG = "HiveBtle.ScanCallback"
-
-        init {
-            // Load native library
-            try {
-                System.loadLibrary("hive_btle")
-                Log.i(TAG, "Loaded hive_btle native library")
-            } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "Failed to load hive_btle native library", e)
-            }
-        }
     }
 
     /**
      * Called when a BLE device is discovered during scanning.
      *
-     * Extracts device information from the ScanResult and forwards it to
-     * native code for HIVE protocol processing.
+     * Extracts device information from the ScanResult and invokes the
+     * onDeviceFound callback for HIVE protocol processing.
      *
      * @param callbackType Type of callback (CALLBACK_TYPE_ALL_MATCHES, etc.)
      * @param result The scan result containing device information
@@ -132,19 +122,9 @@ class ScanCallbackProxy(
                 isHiveDevice = isHiveDevice
             )
 
-            // Invoke Kotlin callback for UI updates
+            // Invoke Kotlin callback for processing
             onDeviceFound?.invoke(discoveredDevice)
 
-            // Forward to native code
-            nativeOnScanResult(
-                callbackType,
-                address,
-                name,
-                rssi,
-                serviceUuids.toTypedArray(),
-                hiveServiceData,
-                result.timestampNanos
-            )
         } catch (e: Exception) {
             Log.e(TAG, "Error processing scan result", e)
         }
@@ -178,37 +158,5 @@ class ScanCallbackProxy(
             else -> "Unknown error"
         }
         Log.e(TAG, "Scan failed: $errorMsg (code=$errorCode)")
-        nativeOnScanFailed(errorCode, errorMsg)
     }
-
-    // Native methods implemented in Rust via JNI
-
-    /**
-     * Native callback for scan results.
-     *
-     * @param callbackType Type of scan callback
-     * @param address Bluetooth device address (MAC)
-     * @param name Device name (may be empty)
-     * @param rssi Signal strength in dBm
-     * @param serviceUuids Array of advertised service UUIDs
-     * @param hiveServiceData HIVE service data bytes (may be null)
-     * @param timestampNanos Timestamp of the scan result
-     */
-    private external fun nativeOnScanResult(
-        callbackType: Int,
-        address: String,
-        name: String,
-        rssi: Int,
-        serviceUuids: Array<String>,
-        hiveServiceData: ByteArray?,
-        timestampNanos: Long
-    )
-
-    /**
-     * Native callback for scan failures.
-     *
-     * @param errorCode Android scan error code
-     * @param errorMessage Human-readable error message
-     */
-    private external fun nativeOnScanFailed(errorCode: Int, errorMessage: String)
 }

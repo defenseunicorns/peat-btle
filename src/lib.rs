@@ -170,6 +170,14 @@ pub mod security;
 pub mod sync;
 pub mod transport;
 
+// UniFFI bindings (generates Kotlin + Swift)
+#[cfg(feature = "uniffi")]
+pub mod uniffi_bindings;
+
+// UniFFI scaffolding - must be at crate root
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
+
 // Re-exports for convenience
 pub use config::{
     BleConfig, BlePhy, DiscoveryConfig, GattConfig, MeshConfig, PowerProfile, DEFAULT_MESH_ID,

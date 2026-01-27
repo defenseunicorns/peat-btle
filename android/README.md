@@ -4,14 +4,15 @@ Android library providing Bluetooth Low Energy mesh transport for the HIVE Proto
 
 ## Overview
 
-This library enables HIVE mesh networking over BLE on Android devices, including
-Wear OS smartwatches. It provides:
+This library is a **transport-only** layer for HIVE mesh networking over BLE on Android devices, including Wear OS smartwatches. It provides:
 
 - **BLE Scanning & Advertising**: Discover and advertise HIVE nodes
 - **GATT Client & Server**: Bidirectional BLE connections
-- **CRDT Document Sync**: Conflict-free replicated data types for mesh sync
+- **Encryption/Decryption**: ChaCha20-Poly1305 mesh-wide encryption
 - **Mesh Peer Management**: Automatic peer discovery and connection management
-- **Event Propagation**: Emergency/ACK events with mesh-wide delivery
+- **Raw Data Callback**: `onDecryptedData()` for app-layer message handling
+
+For app-layer messaging (CannedMessage, tactical status codes), use **hive-lite** as a separate dependency. See [docs/INTEGRATION.md](../docs/INTEGRATION.md) for details.
 
 ## Requirements
 
@@ -85,10 +86,7 @@ dependencies {
 ### Basic Usage
 
 ```kotlin
-import com.hive.btle.HiveBtle
-import com.hive.btle.HiveMeshListener
-import com.hive.btle.HivePeer
-import com.hive.btle.HiveEventType
+import com.revolveteam.hive.*
 
 class MainActivity : AppCompatActivity(), HiveMeshListener {
 
@@ -120,17 +118,26 @@ class MainActivity : AppCompatActivity(), HiveMeshListener {
         Log.d("HIVE", "Peers: ${peers.size}")
     }
 
+    // Transport layer callback - receives raw decrypted bytes
+    override fun onDecryptedData(peer: HivePeer?, data: ByteArray) {
+        if (data.isEmpty()) return
+
+        when (data[0]) {
+            0xAF.toByte() -> {
+                // App-layer message (e.g., CannedMessage)
+                // Decode with your app's protocol or hive-lite
+                handleAppLayerMessage(peer, data)
+            }
+        }
+    }
+
+    // Legacy callback - still works for backward compatibility
     override fun onPeerEvent(peer: HivePeer, eventType: HiveEventType) {
         when (eventType) {
             HiveEventType.EMERGENCY -> handleEmergency(peer)
             HiveEventType.ACK -> handleAck(peer)
             else -> {}
         }
-    }
-
-    // Send events
-    fun sendEmergency() {
-        hiveBtle.sendEvent(HiveEventType.EMERGENCY)
     }
 
     override fun onDestroy() {
@@ -146,8 +153,8 @@ class MainActivity : AppCompatActivity(), HiveMeshListener {
 For direct access to the native Rust mesh implementation:
 
 ```kotlin
-import com.hive.btle.HiveMesh
-import com.hive.btle.PeripheralType
+import com.revolveteam.hive.HiveMesh
+import com.revolveteam.hive.PeripheralType
 
 // Create mesh with configuration
 val mesh = HiveMesh(
@@ -157,17 +164,21 @@ val mesh = HiveMesh(
     peripheralType = PeripheralType.SOLDIER_SENSOR
 )
 
-// Send emergency event
-val emergencyDoc = mesh.sendEmergency()
-// ... broadcast emergencyDoc via your BLE implementation
-
-// Process received data
-val result = mesh.onBleDataReceived(peerAddress, receivedBytes)
-if (result?.isEmergency == true) {
-    // Handle emergency from peer
+// Transport layer: Decrypt received data
+val decrypted = mesh.decryptOnly(encryptedBytes)
+if (decrypted.isNotEmpty()) {
+    when (decrypted[0]) {
+        0xAF.toByte() -> {
+            // App-layer message - decode with your protocol
+        }
+    }
 }
 
-// Periodic sync
+// Encrypt and send app-layer data
+val encrypted = mesh.encryptDocument(myAppLayerData)
+// ... broadcast encrypted via BLE
+
+// Periodic sync (for mesh state)
 val syncDoc = mesh.tick()
 if (syncDoc.isNotEmpty()) {
     // ... broadcast syncDoc to peers
@@ -285,7 +296,7 @@ This indicates MTU negotiation failed or wasn't performed. Check:
 
 ### HiveBtle
 
-Main entry point for BLE operations.
+Main entry point for BLE operations (transport layer).
 
 | Method | Description |
 |--------|-------------|
@@ -293,9 +304,19 @@ Main entry point for BLE operations.
 | `hasPermissions()` | Check if BLE permissions are granted |
 | `startMesh(listener)` | Start mesh networking |
 | `stopMesh()` | Stop mesh networking |
-| `sendEvent(type)` | Broadcast an event to all peers |
+| `broadcastDocument(data)` | Send encrypted data to all peers |
 | `getPeers()` | Get list of known peers |
 | `shutdown()` | Clean up resources |
+
+### HiveMeshListener
+
+Callback interface for mesh events.
+
+| Method | Description |
+|--------|-------------|
+| `onDecryptedData(peer, data)` | **Primary callback** - raw decrypted bytes |
+| `onMeshUpdated(peers)` | Peer list changed |
+| `onPeerEvent(peer, type)` | Legacy callback for events |
 
 ### HiveMesh
 
@@ -303,14 +324,13 @@ Native Rust mesh implementation wrapper.
 
 | Method | Description |
 |--------|-------------|
-| `sendEmergency()` | Create emergency document |
-| `sendAck()` | Create acknowledgment document |
+| `decryptOnly(data)` | Decrypt without parsing (transport layer) |
+| `encryptDocument(data)` | Encrypt data with mesh key |
 | `buildDocument()` | Build current state document |
 | `onBleDataReceived()` | Process received BLE data |
-| `tick()` | Periodic maintenance |
+| `tick()` | Periodic maintenance / sync |
 | `getPeerCount()` | Total known peers |
 | `getConnectedCount()` | Currently connected peers |
-| `isEmergencyActive()` | Check for active emergencies |
 
 ### HiveEventType
 
