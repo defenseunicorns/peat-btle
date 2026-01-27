@@ -4,8 +4,8 @@
 #
 # Architecture:
 #   - CI machine (kitlab): Runs fmt, clippy, tests, examples
-#   - Raspberry Pi (loopback rig): Runs functional BLE test via SSH
-#     - Requires: 2 BT adapters (onboard + USB), repo cloned, SSH key access
+#   - Raspberry Pi (loopback rig): Builds and runs functional BLE test via SSH
+#     - Requires: 2 BT adapters (onboard + USB), SSH key access, cargo
 #
 # Security: Only runs CI for:
 #   - Patches from delegates (automatic)
@@ -124,18 +124,59 @@ fi
 
 echo ""
 echo "--- Functional Test (Remote: $LOOPBACK_HOST) ---"
-# SSH to Raspberry Pi loopback rig and run functional BLE test
-# The Pi must have: 2 BT adapters, repo cloned, SSH key access
-if ssh -o ConnectTimeout=10 -o BatchMode=yes "$LOOPBACK_HOST" "cd $LOOPBACK_REPO && git fetch origin && git checkout ${GOA_COMMIT_OID:-HEAD} && ./scripts/functional-test.sh --timeout 60" 2>&1; then
-    FUNCTIONAL_STATUS="pass"
+# Sync source to Pi, build there, and run functional BLE test
+# Pi needs: 2 BT adapters, SSH access, cargo
+
+# Check if Pi is reachable
+if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$LOOPBACK_HOST" "true" 2>/dev/null; then
+    echo "Skipped (loopback rig unreachable: $LOOPBACK_HOST)"
+    FUNCTIONAL_STATUS="skip"
 else
-    SSH_EXIT=$?
-    if [[ $SSH_EXIT -eq 255 ]]; then
-        echo "Skipped (loopback rig unreachable: $LOOPBACK_HOST)"
+    # Check if Pi has 2 BT adapters
+    BT_COUNT=$(ssh -o BatchMode=yes "$LOOPBACK_HOST" "hciconfig 2>/dev/null | grep -c '^hci' || echo 0")
+    if [[ "$BT_COUNT" -lt 2 ]]; then
+        echo "Skipped (need 2 BT adapters, found $BT_COUNT)"
         FUNCTIONAL_STATUS="skip"
     else
-        FUNCTIONAL_STATUS="FAIL"
-        HAS_FAILURE=1
+        echo "Pi has $BT_COUNT BT adapters, syncing source..."
+
+        # Sync source to Pi (excludes target dir, android build artifacts)
+        rsync -az --delete \
+            --exclude 'target/' \
+            --exclude 'android/build/' \
+            --exclude 'android/.gradle/' \
+            --exclude '.git/' \
+            ./ "$LOOPBACK_HOST:$LOOPBACK_REPO/"
+
+        echo "Building and running test on Pi..."
+        if ssh -o BatchMode=yes "$LOOPBACK_HOST" bash -s << REMOTE_TEST
+            set -e
+            cd $LOOPBACK_REPO
+            source ~/.cargo/env
+
+            # Build test binaries
+            cargo build --release --features linux --example ble_responder --example ble_test_client
+
+            # Start responder on hci0
+            ./target/release/examples/ble_responder --mesh-id TEST --callsign PI-RESP > /tmp/responder.log 2>&1 &
+            RESPONDER_PID=\$!
+            sleep 3
+
+            # Run client on hci1
+            RESULT=0
+            timeout 60 ./target/release/examples/ble_test_client --adapter hci1 --mesh-id TEST --timeout 30 || RESULT=\$?
+
+            # Cleanup
+            kill \$RESPONDER_PID 2>/dev/null || true
+
+            exit \$RESULT
+REMOTE_TEST
+        then
+            FUNCTIONAL_STATUS="pass"
+        else
+            FUNCTIONAL_STATUS="FAIL"
+            HAS_FAILURE=1
+        fi
     fi
 fi
 
