@@ -1173,7 +1173,7 @@ class HiveBtle(
                         val chatCountBefore = _mesh?.chatCount()?.toInt() ?: 0
                         val result = _mesh?.onBleDataReceivedAnonymous(address, value, now.toULong())
                         if (result != null) {
-                            Log.i(TAG, "[ENCRYPTED-MERGE] sourceNode=${String.format("%08X", result.sourceNode)}, isAck=${result.isAck}, counterChanged=${result.counterChanged}, total=${result.totalCount}")
+                            Log.i(TAG, "[ENCRYPTED-MERGE] sourceNode=${String.format("%08X", result.sourceNode.toLong())}, isAck=${result.isAck}, counterChanged=${result.counterChanged}, total=${result.totalCount}")
 
                             // Update peer mapping with source node from decrypted document
                             val sourceNodeId = result.sourceNode.toLong()
@@ -1525,6 +1525,44 @@ class HiveBtle(
         meshListener = null
 
         Log.i(TAG, "Mesh stopped")
+    }
+
+    /**
+     * Update local peripheral state for document sync.
+     *
+     * This sets the peripheral data that will be included in documents
+     * sent during periodic syncWithPeers(). Unlike sendEvent(), this does
+     * NOT trigger an immediate send - the next sync cycle will include
+     * the updated peripheral data.
+     *
+     * @param callsign Device callsign (max 12 chars)
+     * @param batteryPercent Battery level 0-100
+     * @param heartRate Optional heart rate
+     * @param location Optional location
+     * @param eventType Optional event type (PING, ACK, etc.)
+     */
+    fun updatePeripheralState(
+        callsign: String = "ANDROID",
+        batteryPercent: Int = 100,
+        heartRate: Int? = null,
+        location: HiveLocation? = null,
+        eventType: HiveEventType? = null
+    ) {
+        val peripheral = HivePeripheral(
+            id = nodeId,
+            parentNode = 0,
+            peripheralType = HivePeripheralType.SOLDIER_SENSOR,
+            callsign = callsign.take(12),
+            health = HiveHealthStatus(batteryPercent, heartRate, 0, 0),
+            lastEvent = eventType?.let { HivePeripheralEvent(it, System.currentTimeMillis()) },
+            location = location,
+            timestamp = System.currentTimeMillis()
+        )
+
+        localPeripheral = peripheral
+        Log.d(TAG, "Updated peripheral state: callsign=$callsign, battery=$batteryPercent%, " +
+                "location=${location?.let { "(${it.latitude}, ${it.longitude})" } ?: "null"}, " +
+                "event=$eventType")
     }
 
     /**
@@ -2347,7 +2385,7 @@ class HiveBtle(
                 ((data[offset + 1].toInt() and 0xFF) shl 8)
         offset += 2
 
-        Log.i(TAG, "[MARKER-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId)}): $markerCount markers")
+        Log.i(TAG, "[MARKER-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId.toLong())}): $markerCount markers")
 
         // Find the source peer (might be relayed)
         val sourcePeer = peers[sourceNodeId] ?: peer
@@ -2394,13 +2432,13 @@ class HiveBtle(
         synchronized(seenMessagesLock) {
             val lastSeen = seenMessages[messageHash]
             if (lastSeen != null && (now - lastSeen) < 30_000) {
-                Log.v(TAG, "[CHAT-RX] Skipping duplicate chat from ${String.format("%08X", sourceNodeId)}")
+                Log.v(TAG, "[CHAT-RX] Skipping duplicate chat from ${String.format("%08X", sourceNodeId.toLong())}")
                 return
             }
             seenMessages[messageHash] = now
         }
 
-        Log.i(TAG, "[CHAT-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId)}): '${chat.sender}' says '${chat.message}'")
+        Log.i(TAG, "[CHAT-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId.toLong())}): '${chat.sender}' says '${chat.message}'")
 
         // Find the source peer (might be relayed)
         val sourcePeer = peers[sourceNodeId] ?: peer
@@ -2523,7 +2561,7 @@ class HiveBtle(
         val chatCountBefore = _mesh?.chatCount()?.toInt() ?: 0
         val result = _mesh?.onBleDataReceivedAnonymous(address, data, System.currentTimeMillis().toULong())
         if (result != null) {
-            Log.i(TAG, "[ENCRYPTED-MERGE] sourceNode=${String.format("%08X", result.sourceNode)}, isAck=${result.isAck}, counterChanged=${result.counterChanged}, total=${result.totalCount}")
+            Log.i(TAG, "[ENCRYPTED-MERGE] sourceNode=${String.format("%08X", result.sourceNode.toLong())}, isAck=${result.isAck}, counterChanged=${result.counterChanged}, total=${result.totalCount}")
 
             val sourceNodeId = result.sourceNode.toLong()
             if (sourceNodeId != 0L && sourceNodeId != nodeId) {
@@ -2678,7 +2716,7 @@ class HiveBtle(
                     } else {
                         localCounter.add(GCounterEntry(op.nodeId, op.amount))
                     }
-                    Log.v(TAG, "  - IncrementCounter: node=${String.format("%08X", op.nodeId)}, +${op.amount}")
+                    Log.v(TAG, "  - IncrementCounter: node=${String.format("%08X", op.nodeId.toLong())}, +${op.amount}")
                 }
 
                 is DeltaOperation.UpdatePeripheral -> {
@@ -2722,7 +2760,7 @@ class HiveBtle(
                 }
 
                 is DeltaOperation.SetEmergency -> {
-                    Log.i(TAG, "  - SetEmergency: source=${String.format("%08X", op.sourceNode)}")
+                    Log.i(TAG, "  - SetEmergency: source=${String.format("%08X", op.sourceNode.toLong())}")
                     peers[op.sourceNode]?.let { emergencyPeer ->
                         handler.post {
                             meshListener?.onPeerEvent(emergencyPeer, HiveEventType.EMERGENCY)
@@ -2731,7 +2769,7 @@ class HiveBtle(
                 }
 
                 is DeltaOperation.AckEmergency -> {
-                    Log.i(TAG, "  - AckEmergency: from=${String.format("%08X", op.nodeId)}")
+                    Log.i(TAG, "  - AckEmergency: from=${String.format("%08X", op.nodeId.toLong())}")
                     peers[op.nodeId]?.let { ackPeer ->
                         handler.post {
                             meshListener?.onPeerEvent(ackPeer, HiveEventType.ACK)
