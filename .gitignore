@@ -12,8 +12,9 @@ target/
 .DS_Store
 Thumbs.db
 
-# Local scripts
+# Local scripts (but allow CI scripts)
 /scripts/
+!/scripts/functional-test.sh
 
 # Android build artifacts
 android/.gradle/

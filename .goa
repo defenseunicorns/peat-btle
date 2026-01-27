@@ -70,7 +70,18 @@ FMT_STATUS="skip"
 CLIPPY_STATUS="skip"
 TESTS_STATUS="skip"
 EXAMPLES_STATUS="skip"
+FUNCTIONAL_STATUS="skip"
 HAS_FAILURE=0
+
+# Check if functional test hardware is available (two BT adapters)
+HAS_FUNCTIONAL_HW=0
+if command -v hciconfig &>/dev/null; then
+    BT_ADAPTERS=$(hciconfig -a 2>/dev/null | grep -c "^hci" || echo "0")
+    if [[ "$BT_ADAPTERS" -ge 2 ]]; then
+        HAS_FUNCTIONAL_HW=1
+        echo "Functional test hardware detected ($BT_ADAPTERS BT adapters)"
+    fi
+fi
 
 # Run CI checks with timeouts
 CI_TIMEOUT=300  # 5 minutes per step
@@ -86,7 +97,7 @@ fi
 
 echo ""
 echo "--- Clippy ---"
-if timeout $CI_TIMEOUT cargo clippy -- -D warnings; then
+if timeout $CI_TIMEOUT cargo clippy --features linux -- -D warnings; then
     CLIPPY_STATUS="pass"
 else
     CLIPPY_STATUS="FAIL"
@@ -95,7 +106,7 @@ fi
 
 echo ""
 echo "--- Tests ---"
-if timeout $CI_TIMEOUT cargo test; then
+if timeout $CI_TIMEOUT cargo test --features linux; then
     TESTS_STATUS="pass"
 else
     TESTS_STATUS="FAIL"
@@ -104,7 +115,7 @@ fi
 
 echo ""
 echo "--- Examples ---"
-if timeout $CI_TIMEOUT cargo check --examples; then
+if timeout $CI_TIMEOUT cargo check --examples --features linux; then
     EXAMPLES_STATUS="pass"
 else
     EXAMPLES_STATUS="FAIL"
@@ -112,9 +123,24 @@ else
 fi
 
 echo ""
+echo "--- Functional Test ---"
+if [[ $HAS_FUNCTIONAL_HW -eq 1 ]]; then
+    # Run functional BLE loopback test (requires two BT adapters)
+    if timeout 120 ./scripts/functional-test.sh --timeout 60; then
+        FUNCTIONAL_STATUS="pass"
+    else
+        FUNCTIONAL_STATUS="FAIL"
+        HAS_FAILURE=1
+    fi
+else
+    echo "Skipped (no hardware - need 2 BT adapters)"
+    FUNCTIONAL_STATUS="skip"
+fi
+
+echo ""
 
 # Build status message
-STATUS_MSG="fmt: ${FMT_STATUS}, clippy: ${CLIPPY_STATUS}, tests: ${TESTS_STATUS}, examples: ${EXAMPLES_STATUS}"
+STATUS_MSG="fmt: ${FMT_STATUS}, clippy: ${CLIPPY_STATUS}, tests: ${TESTS_STATUS}, examples: ${EXAMPLES_STATUS}, functional: ${FUNCTIONAL_STATUS}"
 
 # Report results to patch if this is a patch trigger
 if [ -n "${GOA_PATCH_ID:-}" ]; then
