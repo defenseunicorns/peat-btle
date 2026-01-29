@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30] - 2026-01-29
+
+### Added
+- `MembershipToken`: Lightweight authority-signed tokens (128 bytes) for constrained devices
+  - Binds public_key to callsign with mesh_id and expiration
+  - Wire format: `[pubkey:32][mesh_id:4][callsign:12][issued:8][expires:8][sig:64]`
+- `SignedPayload`: Transport-agnostic signing utilities for BLE and WiFi/IP
+  - Wire format: `[marker:1][payload:N][signature:64]`
+- `IdentityRegistry` extended with callsign support:
+  - `register_member()` validates and stores membership tokens
+  - `get_callsign()` / `find_by_callsign()` for lookups
+  - Persistence format v2 with backwards compatibility
+
 ## [0.1.0-rc.29] - 2026-01-27
 
 ### Added
