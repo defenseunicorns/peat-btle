@@ -74,6 +74,7 @@
 
 mod genesis;
 mod identity;
+mod membership_token;
 mod mesh_key;
 mod peer_key;
 mod peer_session;
@@ -91,6 +92,9 @@ pub use registry::{IdentityRecord, IdentityRegistry, RegistryResult};
 
 // Mesh genesis and credentials
 pub use genesis::{MembershipPolicy, MeshCredentials, MeshGenesis};
+
+// Membership tokens (tactical trust)
+pub use membership_token::{MembershipToken, MAX_CALLSIGN_LEN, MESH_ID_SIZE, TOKEN_WIRE_SIZE};
 
 // Phase 1: Mesh-wide encryption
 pub use mesh_key::{EncryptedDocument, EncryptionError, MeshEncryptionKey};

@@ -48,7 +48,8 @@
 use alloc::vec::Vec;
 use hashbrown::HashMap;
 
-use super::identity::IdentityAttestation;
+use super::identity::{node_id_from_public_key, IdentityAttestation};
+use super::membership_token::{MembershipToken, MAX_CALLSIGN_LEN};
 use crate::NodeId;
 
 /// Result of identity verification
@@ -96,6 +97,32 @@ pub struct IdentityRecord {
 
     /// Number of successful verifications
     pub verification_count: u32,
+
+    /// Optional callsign assigned via MembershipToken
+    /// None = unknown (TOFU identity only), Some = verified member
+    pub callsign: Option<[u8; MAX_CALLSIGN_LEN]>,
+
+    /// When the membership token expires (0 = never, None = no token)
+    pub token_expires_ms: Option<u64>,
+}
+
+impl IdentityRecord {
+    /// Get the callsign as a string (trimmed of null padding)
+    pub fn callsign_str(&self) -> Option<&str> {
+        self.callsign.as_ref().map(|cs| {
+            let len = cs.iter().position(|&b| b == 0).unwrap_or(MAX_CALLSIGN_LEN);
+            core::str::from_utf8(&cs[..len]).unwrap_or("")
+        })
+    }
+
+    /// Check if the membership token has expired
+    pub fn is_token_expired(&self, now_ms: u64) -> bool {
+        match self.token_expires_ms {
+            Some(0) => false, // Never expires
+            Some(expires) => now_ms > expires,
+            None => false, // No token = not expired (just TOFU)
+        }
+    }
 }
 
 /// TOFU Identity Registry
@@ -187,6 +214,8 @@ impl IdentityRegistry {
                     first_seen_ms: now_ms,
                     last_seen_ms: now_ms,
                     verification_count: 1,
+                    callsign: None,
+                    token_expires_ms: None,
                 },
             );
             RegistryResult::Registered
@@ -249,22 +278,104 @@ impl IdentityRegistry {
                 first_seen_ms: now_ms,
                 last_seen_ms: now_ms,
                 verification_count: 0,
+                callsign: None,
+                token_expires_ms: None,
             },
         );
     }
 
+    /// Register a member via MembershipToken
+    ///
+    /// Validates the token signature and stores the callsign binding.
+    /// Returns the NodeId for the registered member.
+    ///
+    /// # Arguments
+    /// * `token` - The membership token to register
+    /// * `authority_public_key` - The mesh authority's public key for verification
+    /// * `now_ms` - Current time for expiration checking
+    ///
+    /// # Returns
+    /// * `Ok(NodeId)` - The node was registered successfully
+    /// * `Err(RegistryResult)` - Registration failed (invalid signature or key mismatch)
+    pub fn register_member(
+        &mut self,
+        token: &MembershipToken,
+        authority_public_key: &[u8; 32],
+        now_ms: u64,
+    ) -> Result<NodeId, RegistryResult> {
+        // Verify token signature
+        if !token.verify(authority_public_key) {
+            return Err(RegistryResult::InvalidSignature);
+        }
+
+        // Check expiration
+        if token.is_expired(now_ms) {
+            return Err(RegistryResult::InvalidSignature); // Reuse for now
+        }
+
+        let node_id = node_id_from_public_key(&token.public_key);
+
+        // Check for key mismatch if already known
+        if let Some(existing) = self.known.get(&node_id) {
+            if existing.public_key != token.public_key {
+                return Err(RegistryResult::KeyMismatch { node_id });
+            }
+        }
+
+        // Register or update
+        self.known.insert(
+            node_id,
+            IdentityRecord {
+                public_key: token.public_key,
+                first_seen_ms: now_ms,
+                last_seen_ms: now_ms,
+                verification_count: 1,
+                callsign: Some(token.callsign),
+                token_expires_ms: Some(token.expires_at_ms),
+            },
+        );
+
+        Ok(node_id)
+    }
+
+    /// Get the callsign for a known node
+    pub fn get_callsign(&self, node_id: NodeId) -> Option<&str> {
+        self.known.get(&node_id).and_then(|r| r.callsign_str())
+    }
+
+    /// Find a node by callsign
+    pub fn find_by_callsign(&self, callsign: &str) -> Option<NodeId> {
+        for (node_id, record) in &self.known {
+            if let Some(cs) = record.callsign_str() {
+                if cs == callsign {
+                    return Some(*node_id);
+                }
+            }
+        }
+        None
+    }
+
     /// Encode registry for persistence
     ///
-    /// Format per entry:
-    /// - node_id (4 bytes)
-    /// - public_key (32 bytes)
-    /// - first_seen_ms (8 bytes)
-    /// - last_seen_ms (8 bytes)
-    /// - verification_count (4 bytes)
-    ///
-    /// Total: 56 bytes per entry
+    /// Format v2:
+    /// - version (1 byte) = 2
+    /// - count (4 bytes)
+    /// - Per entry (77 bytes):
+    ///   - node_id (4 bytes)
+    ///   - public_key (32 bytes)
+    ///   - first_seen_ms (8 bytes)
+    ///   - last_seen_ms (8 bytes)
+    ///   - verification_count (4 bytes)
+    ///   - has_callsign (1 byte): 0 = no callsign, 1 = has callsign
+    ///   - callsign (12 bytes, only if has_callsign)
+    ///   - token_expires_ms (8 bytes, only if has_callsign)
     pub fn encode(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(4 + self.known.len() * 56);
+        // Calculate size: version + count + entries
+        let entry_size = 4 + 32 + 8 + 8 + 4 + 1 + MAX_CALLSIGN_LEN + 8; // 77 bytes
+        let mut buf = Vec::with_capacity(1 + 4 + self.known.len() * entry_size);
+
+        // Version byte
+        buf.push(2);
 
         // Number of entries
         buf.extend_from_slice(&(self.known.len() as u32).to_le_bytes());
@@ -275,13 +386,41 @@ impl IdentityRegistry {
             buf.extend_from_slice(&record.first_seen_ms.to_le_bytes());
             buf.extend_from_slice(&record.last_seen_ms.to_le_bytes());
             buf.extend_from_slice(&record.verification_count.to_le_bytes());
+
+            // Callsign and token expiration
+            if let Some(callsign) = &record.callsign {
+                buf.push(1); // has_callsign
+                buf.extend_from_slice(callsign);
+                buf.extend_from_slice(&record.token_expires_ms.unwrap_or(0).to_le_bytes());
+            } else {
+                buf.push(0); // no callsign
+                buf.extend_from_slice(&[0u8; MAX_CALLSIGN_LEN]);
+                buf.extend_from_slice(&0u64.to_le_bytes());
+            }
         }
 
         buf
     }
 
-    /// Decode registry from bytes
+    /// Decode registry from bytes (supports v1 and v2 formats)
     pub fn decode(data: &[u8]) -> Option<Self> {
+        if data.is_empty() {
+            return None;
+        }
+
+        // Check version byte
+        let version = data[0];
+
+        match version {
+            2 => Self::decode_v2(data),
+            // v1 format: first byte is part of count (no version byte)
+            // v1 count is u32 LE, so if first byte is small (0-255), it's likely v1
+            _ => Self::decode_v1(data),
+        }
+    }
+
+    /// Decode v1 format (legacy, no callsign)
+    fn decode_v1(data: &[u8]) -> Option<Self> {
         if data.len() < 4 {
             return None;
         }
@@ -347,6 +486,112 @@ impl IdentityRegistry {
                     first_seen_ms,
                     last_seen_ms,
                     verification_count,
+                    callsign: None,
+                    token_expires_ms: None,
+                },
+            );
+        }
+
+        Some(registry)
+    }
+
+    /// Decode v2 format (with callsign support)
+    fn decode_v2(data: &[u8]) -> Option<Self> {
+        if data.len() < 5 {
+            return None;
+        }
+
+        // Skip version byte
+        let count = u32::from_le_bytes([data[1], data[2], data[3], data[4]]) as usize;
+        let entry_size = 77; // 4 + 32 + 8 + 8 + 4 + 1 + 12 + 8
+
+        if data.len() < 5 + count * entry_size {
+            return None;
+        }
+
+        let mut registry = Self::new();
+        let mut offset = 5;
+
+        for _ in 0..count {
+            let node_id = NodeId::new(u32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]));
+            offset += 4;
+
+            let mut public_key = [0u8; 32];
+            public_key.copy_from_slice(&data[offset..offset + 32]);
+            offset += 32;
+
+            let first_seen_ms = u64::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+                data[offset + 4],
+                data[offset + 5],
+                data[offset + 6],
+                data[offset + 7],
+            ]);
+            offset += 8;
+
+            let last_seen_ms = u64::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+                data[offset + 4],
+                data[offset + 5],
+                data[offset + 6],
+                data[offset + 7],
+            ]);
+            offset += 8;
+
+            let verification_count = u32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]);
+            offset += 4;
+
+            let has_callsign = data[offset] != 0;
+            offset += 1;
+
+            let (callsign, token_expires_ms) = if has_callsign {
+                let mut cs = [0u8; MAX_CALLSIGN_LEN];
+                cs.copy_from_slice(&data[offset..offset + MAX_CALLSIGN_LEN]);
+                offset += MAX_CALLSIGN_LEN;
+
+                let expires = u64::from_le_bytes([
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
+                    data[offset + 4],
+                    data[offset + 5],
+                    data[offset + 6],
+                    data[offset + 7],
+                ]);
+                offset += 8;
+
+                (Some(cs), Some(expires))
+            } else {
+                offset += MAX_CALLSIGN_LEN + 8; // Skip empty fields
+                (None, None)
+            };
+
+            registry.known.insert(
+                node_id,
+                IdentityRecord {
+                    public_key,
+                    first_seen_ms,
+                    last_seen_ms,
+                    verification_count,
+                    callsign,
+                    token_expires_ms,
                 },
             );
         }
@@ -402,7 +647,7 @@ mod tests {
         // the attacker can't sign for a node_id derived from a different key)
         // But we can test the key mismatch path by pre-registering
 
-        let identity2 = DeviceIdentity::generate();
+        let _identity2 = DeviceIdentity::generate();
         let node_id = identity1.node_id();
 
         // Manually create a conflicting record
@@ -413,6 +658,8 @@ mod tests {
                 first_seen_ms: 0,
                 last_seen_ms: 0,
                 verification_count: 1,
+                callsign: None,
+                token_expires_ms: None,
             },
         );
 
@@ -530,5 +777,107 @@ mod tests {
         for node_id in expected_nodes {
             assert!(known.contains(&node_id));
         }
+    }
+
+    #[test]
+    fn test_register_member_with_token() {
+        use crate::security::{MembershipPolicy, MeshGenesis};
+
+        let mut registry = IdentityRegistry::new();
+        let authority = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("ALPHA", &authority, MembershipPolicy::Controlled);
+        let member = DeviceIdentity::generate();
+
+        let token = MembershipToken::issue(
+            &authority,
+            &genesis,
+            member.public_key(),
+            "BRAVO-07",
+            3600_000, // 1 hour
+        );
+
+        let now = 1000u64;
+        let result = registry.register_member(&token, &authority.public_key(), now);
+        assert!(result.is_ok());
+
+        let node_id = result.unwrap();
+        assert!(registry.is_known(node_id));
+        assert_eq!(registry.get_callsign(node_id), Some("BRAVO-07"));
+    }
+
+    #[test]
+    fn test_find_by_callsign() {
+        use crate::security::{MembershipPolicy, MeshGenesis};
+
+        let mut registry = IdentityRegistry::new();
+        let authority = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("ALPHA", &authority, MembershipPolicy::Controlled);
+
+        // Register multiple members
+        let member1 = DeviceIdentity::generate();
+        let token1 =
+            MembershipToken::issue(&authority, &genesis, member1.public_key(), "ALPHA-01", 0);
+        let node1 = registry
+            .register_member(&token1, &authority.public_key(), 0)
+            .unwrap();
+
+        let member2 = DeviceIdentity::generate();
+        let token2 =
+            MembershipToken::issue(&authority, &genesis, member2.public_key(), "BRAVO-02", 0);
+        let _node2 = registry
+            .register_member(&token2, &authority.public_key(), 0)
+            .unwrap();
+
+        // Find by callsign
+        assert_eq!(registry.find_by_callsign("ALPHA-01"), Some(node1));
+        assert_eq!(registry.find_by_callsign("CHARLIE-03"), None);
+    }
+
+    #[test]
+    fn test_register_member_wrong_authority() {
+        use crate::security::{MembershipPolicy, MeshGenesis};
+
+        let mut registry = IdentityRegistry::new();
+        let authority = DeviceIdentity::generate();
+        let other = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("ALPHA", &authority, MembershipPolicy::Controlled);
+        let member = DeviceIdentity::generate();
+
+        let token =
+            MembershipToken::issue(&authority, &genesis, member.public_key(), "BRAVO-07", 0);
+
+        // Try to register with wrong authority key
+        let result = registry.register_member(&token, &other.public_key(), 0);
+        assert!(matches!(result, Err(RegistryResult::InvalidSignature)));
+    }
+
+    #[test]
+    fn test_encode_decode_with_callsign() {
+        use crate::security::{MembershipPolicy, MeshGenesis};
+
+        let mut registry = IdentityRegistry::new();
+        let authority = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("ALPHA", &authority, MembershipPolicy::Controlled);
+
+        // Register member with callsign
+        let member = DeviceIdentity::generate();
+        let token =
+            MembershipToken::issue(&authority, &genesis, member.public_key(), "ALPHA-01", 0);
+        let node_id = registry
+            .register_member(&token, &authority.public_key(), 0)
+            .unwrap();
+
+        // Also register a plain TOFU identity (no callsign)
+        let plain = DeviceIdentity::generate();
+        let attestation = plain.create_attestation(0);
+        registry.verify_or_register(&attestation);
+
+        // Encode and decode
+        let encoded = registry.encode();
+        let decoded = IdentityRegistry::decode(&encoded).unwrap();
+
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded.get_callsign(node_id), Some("ALPHA-01"));
+        assert_eq!(decoded.get_callsign(plain.node_id()), None);
     }
 }
