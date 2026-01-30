@@ -72,10 +72,13 @@ class ScanCallbackProxy(
                 android.os.ParcelUuid.fromString(HiveBtle.HIVE_SERVICE_UUID_16.toString())
             )
 
-            // Check if this is a HIVE device (by name prefix or service UUID)
+            // Check if this is a HIVE device (by name prefix, WearTAK pattern, or service UUID)
             // Look for canonical 128-bit UUID "f47ac10b" or 16-bit alias 0xF47A (expands to 0000f47a-0000-1000-8000-00805f9b34fb)
+            // Also match WearTAK devices by name pattern (WT-WEAROS-XXXX)
+            val isWearTakDevice = name.startsWith("WT-WEAROS-") || name.startsWith("WEAROS-")
             val isHiveDevice = name.startsWith(HiveBtle.HIVE_MESH_PREFIX) ||
                 name.startsWith(HiveBtle.HIVE_NAME_PREFIX) ||
+                isWearTakDevice ||
                 serviceUuids.any {
                     it.contains("f47ac10b", ignoreCase = true) ||  // Full 128-bit HIVE service UUID
                     it.startsWith("0000f47a-0000-1000", ignoreCase = true)  // 16-bit alias (0xF47A) used by ESP32/Core2
@@ -102,6 +105,26 @@ class ScanCallbackProxy(
                     meshId = String(hiveServiceData, 4, hiveServiceData.size - 4, Charsets.UTF_8)
                 }
                 Log.i(TAG, "HIVE device found via service data: nodeId=${nodeId?.let { String.format("%08X", it) }}, meshId=$meshId")
+            }
+
+            // For WearTAK devices, derive nodeId from name suffix and assume WEARTAK mesh
+            // Format: WT-WEAROS-XXXX or WEAROS-XXXX where XXXX is a 4-digit suffix
+            if (isWearTakDevice && nodeId == null) {
+                val suffix = name.substringAfterLast("-", "")
+                if (suffix.isNotEmpty() && suffix.all { it.isDigit() }) {
+                    // Derive nodeId from last 4 bytes of address + suffix for uniqueness
+                    val addressBytes = address.replace(":", "").takeLast(8)
+                    try {
+                        nodeId = java.lang.Long.parseLong(addressBytes, 16)
+                    } catch (e: NumberFormatException) {
+                        nodeId = suffix.toLongOrNull()
+                    }
+                }
+                // WearTAK devices are part of the WEARTAK mesh by default
+                if (meshId == null) {
+                    meshId = "WEARTAK"
+                }
+                Log.i(TAG, "WearTAK device found via name pattern: $name -> nodeId=${nodeId?.let { String.format("%08X", it) }}, meshId=$meshId")
             }
 
             // Debug: log service data if present

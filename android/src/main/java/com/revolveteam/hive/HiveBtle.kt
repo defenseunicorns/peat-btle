@@ -497,12 +497,30 @@ class HiveBtle(
     private val PEER_TIMEOUT_MS = 30000L // Remove peers after 30s without advertisement
     private val CLEANUP_INTERVAL_MS = 10000L // Cleanup check interval
     private val SYNC_INTERVAL_MS = 3000L // Sync documents every 3s
+    private val RECONNECT_INTERVAL_MS = 5000L // Check for lost peers every 5s
+    private val RECONNECT_BASE_DELAY_MS = 2000L // Base delay for exponential backoff
+    private val RECONNECT_MAX_DELAY_MS = 60000L // Max 60s between reconnection attempts
+    private val RECONNECT_MAX_ATTEMPTS = 10 // Give up after 10 attempts
+
+    // Track reconnection attempts per peer for exponential backoff
+    private val reconnectAttempts = ConcurrentHashMap<String, Int>() // address -> attempt count
+    private val lastReconnectAttempt = ConcurrentHashMap<String, Long>() // address -> timestamp
 
     private val cleanupRunnable = object : Runnable {
         override fun run() {
             cleanupStalePeers()
             if (isMeshRunning) {
                 handler.postDelayed(this, CLEANUP_INTERVAL_MS)
+            }
+        }
+    }
+
+    // Periodic reconnection runnable - attempts to reconnect lost peers
+    private val reconnectRunnable = object : Runnable {
+        override fun run() {
+            reconnectLostPeers()
+            if (isMeshRunning) {
+                handler.postDelayed(this, RECONNECT_INTERVAL_MS)
             }
         }
     }
@@ -1497,6 +1515,7 @@ class HiveBtle(
         // Start periodic tasks
         handler.post(cleanupRunnable)
         handler.postDelayed(syncRunnable, SYNC_INTERVAL_MS)
+        handler.postDelayed(reconnectRunnable, RECONNECT_INTERVAL_MS)
 
         Log.i(TAG, "Mesh started for HIVE-${String.format("%08X", nodeId)} with GATT server")
     }
@@ -1510,6 +1529,9 @@ class HiveBtle(
         isMeshRunning = false
         handler.removeCallbacks(cleanupRunnable)
         handler.removeCallbacks(syncRunnable)
+        handler.removeCallbacks(reconnectRunnable)
+        reconnectAttempts.clear()
+        lastReconnectAttempt.clear()
 
         stopScan()
         stopAdvertising()
@@ -1821,6 +1843,42 @@ class HiveBtle(
     }
 
     /**
+     * Broadcast raw bytes to all connected peers.
+     *
+     * Takes raw payload bytes, encrypts them (if encryption is enabled),
+     * and sends to all connected peripherals and centrals.
+     *
+     * This is useful for sending extension data like CannedMessages from hive-lite.
+     *
+     * @param payload The raw bytes to broadcast
+     */
+    fun broadcastBytes(payload: ByteArray) {
+        if (!isMeshRunning) {
+            Log.w(TAG, "Mesh not running, cannot broadcast bytes")
+            return
+        }
+
+        val mesh = _mesh
+        if (mesh == null) {
+            Log.w(TAG, "Mesh not initialized, cannot broadcast bytes")
+            return
+        }
+
+        // Encrypt the payload
+        val docBytes = mesh.broadcastBytes(payload)
+
+        Log.i(TAG, "[BROADCAST] Sending ${docBytes.size} bytes to ${connections.size} peripherals and ${connectedCentrals.size} centrals")
+
+        // Send to all connected peripherals
+        for ((_, gatt) in connections) {
+            writeDocumentToGatt(gatt, docBytes)
+        }
+
+        // Send to all connected centrals
+        notifyConnectedCentrals(docBytes)
+    }
+
+    /**
      * Get the number of chat messages stored in the local CRDT.
      *
      * @return Number of messages, or 0 if mesh not initialized
@@ -2019,6 +2077,8 @@ class HiveBtle(
                         _mesh?.onBleConnected(peer.address, System.currentTimeMillis().toULong())
                         // Notify listener of peer connection for immediate UI update
                         currentPeer?.let { notifyPeerConnected(it) }
+                        // Reset reconnection tracking on successful connection
+                        resetReconnectTracking(peer.address)
                     } else {
                         // Update HiveMesh ConnectionStateGraph
                         _mesh?.onBleDisconnected(peer.address, DisconnectReason.LINK_LOSS)
@@ -2029,15 +2089,8 @@ class HiveBtle(
                         // Clean up write queue for disconnected peer
                         writeQueues.remove(peer.address)
                         writeInProgress.remove(peer.address)
-                        // Retry connection after a delay if mesh is still running
-                        if (isMeshRunning && currentPeer != null) {
-                            handler.postDelayed({
-                                if (isMeshRunning && !connections.containsKey(peer.address)) {
-                                    Log.i(TAG, "Retrying connection to ${currentPeer.displayName()}")
-                                    connectToPeer(currentPeer)
-                                }
-                            }, 2000)
-                        }
+                        // Note: reconnection is handled by reconnectLostPeers() with exponential backoff
+                        Log.d(TAG, "Peer ${peer.displayName()} disconnected, will retry via reconnectLostPeers()")
                     }
                     notifyMeshUpdated()
                 }
@@ -3199,10 +3252,73 @@ class HiveBtle(
                 peer?.let {
                     addressToNodeId.remove(it.address)
                     disconnect(it.address)
+                    // Clear reconnection tracking for removed peers
+                    reconnectAttempts.remove(it.address)
+                    lastReconnectAttempt.remove(it.address)
                 }
             }
             notifyMeshUpdated()
         }
+    }
+
+    /**
+     * Attempt to reconnect lost peers using exponential backoff.
+     *
+     * This runs periodically and tries to reconnect peers that:
+     * - Were previously connected but are now disconnected
+     * - Haven't exceeded the max reconnection attempts
+     * - Enough time has passed since the last attempt (exponential backoff)
+     */
+    private fun reconnectLostPeers() {
+        if (!isMeshRunning) return
+
+        val now = System.currentTimeMillis()
+        val lostPeers = peers.values.filter { peer ->
+            !peer.isConnected && !connections.containsKey(peer.address)
+        }
+
+        if (lostPeers.isEmpty()) return
+
+        Log.d(TAG, "[RECONNECT] Found ${lostPeers.size} disconnected peers to check")
+
+        for (peer in lostPeers) {
+            val attempts = reconnectAttempts[peer.address] ?: 0
+            val lastAttempt = lastReconnectAttempt[peer.address] ?: 0L
+
+            // Skip if we've exceeded max attempts
+            if (attempts >= RECONNECT_MAX_ATTEMPTS) {
+                Log.d(TAG, "[RECONNECT] Skipping ${peer.displayName()} - max attempts ($attempts) reached")
+                continue
+            }
+
+            // Calculate delay with exponential backoff: 2s, 4s, 8s, 16s, 32s, 60s (capped)
+            val delay = minOf(RECONNECT_BASE_DELAY_MS * (1L shl attempts), RECONNECT_MAX_DELAY_MS)
+
+            // Check if enough time has passed
+            if (now - lastAttempt < delay) {
+                Log.v(TAG, "[RECONNECT] Skipping ${peer.displayName()} - waiting ${delay - (now - lastAttempt)}ms more")
+                continue
+            }
+
+            // Attempt reconnection
+            Log.i(TAG, "[RECONNECT] Attempting to reconnect to ${peer.displayName()} (attempt ${attempts + 1}/$RECONNECT_MAX_ATTEMPTS)")
+            reconnectAttempts[peer.address] = attempts + 1
+            lastReconnectAttempt[peer.address] = now
+
+            try {
+                connectToPeer(peer)
+            } catch (e: Exception) {
+                Log.e(TAG, "[RECONNECT] Failed to reconnect to ${peer.displayName()}: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Reset reconnection tracking for a peer (called when connection succeeds).
+     */
+    private fun resetReconnectTracking(address: String) {
+        reconnectAttempts.remove(address)
+        lastReconnectAttempt.remove(address)
     }
 
     private fun notifyMeshUpdated() {
