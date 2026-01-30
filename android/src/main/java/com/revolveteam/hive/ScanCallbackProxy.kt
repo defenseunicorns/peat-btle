@@ -74,11 +74,12 @@ class ScanCallbackProxy(
 
             // Check if this is a HIVE device (by name prefix, WearTAK pattern, or service UUID)
             // Look for canonical 128-bit UUID "f47ac10b" or 16-bit alias 0xF47A (expands to 0000f47a-0000-1000-8000-00805f9b34fb)
-            // Also match WearTAK devices by name pattern (WT-WEAROS-XXXX)
+            // WearTAK devices (WT-WEAROS-XXXX) are accepted by name pattern to handle BLE address rotation
+            // (WearOS rotates BLE addresses for privacy, and not all advertisements include service data)
             val isWearTakDevice = name.startsWith("WT-WEAROS-") || name.startsWith("WEAROS-")
             val isHiveDevice = name.startsWith(HiveBtle.HIVE_MESH_PREFIX) ||
                 name.startsWith(HiveBtle.HIVE_NAME_PREFIX) ||
-                isWearTakDevice ||
+                isWearTakDevice ||  // Accept WearTAK by name (handle address rotation)
                 serviceUuids.any {
                     it.contains("f47ac10b", ignoreCase = true) ||  // Full 128-bit HIVE service UUID
                     it.startsWith("0000f47a-0000-1000", ignoreCase = true)  // 16-bit alias (0xF47A) used by ESP32/Core2
@@ -107,24 +108,22 @@ class ScanCallbackProxy(
                 Log.i(TAG, "HIVE device found via service data: nodeId=${nodeId?.let { String.format("%08X", it) }}, meshId=$meshId")
             }
 
-            // For WearTAK devices, derive nodeId from name suffix and assume WEARTAK mesh
+            // For WearTAK devices, derive a stable nodeId from the name suffix
             // Format: WT-WEAROS-XXXX or WEAROS-XXXX where XXXX is a 4-digit suffix
+            // IMPORTANT: Use name suffix (not BLE address) for stability across address rotation.
+            // WearOS rotates BLE addresses for privacy, but name suffix stays constant.
+            // The correct mesh ID comes from service data when available.
             if (isWearTakDevice && nodeId == null) {
                 val suffix = name.substringAfterLast("-", "")
                 if (suffix.isNotEmpty() && suffix.all { it.isDigit() }) {
-                    // Derive nodeId from last 4 bytes of address + suffix for uniqueness
-                    val addressBytes = address.replace(":", "").takeLast(8)
-                    try {
-                        nodeId = java.lang.Long.parseLong(addressBytes, 16)
-                    } catch (e: NumberFormatException) {
-                        nodeId = suffix.toLongOrNull()
-                    }
+                    // Use name suffix as base for stable nodeId across address rotations
+                    // Combine suffix with a hash of the full name to reduce collision risk
+                    val nameHash = name.hashCode().toLong() and 0xFFFF0000L
+                    nodeId = nameHash or (suffix.toLongOrNull() ?: 0L)
                 }
-                // WearTAK devices are part of the WEARTAK mesh by default
-                if (meshId == null) {
-                    meshId = "WEARTAK"
-                }
-                Log.i(TAG, "WearTAK device found via name pattern: $name -> nodeId=${nodeId?.let { String.format("%08X", it) }}, meshId=$meshId")
+                // Don't default to WEARTAK mesh - let HiveBtle use service data mesh
+                // meshId stays null until we get proper service data
+                Log.i(TAG, "WearTAK device found via name pattern: $name -> nodeId=${nodeId?.let { String.format("%08X", it) }}, meshId=${meshId ?: "unknown (waiting for service data)"}")
             }
 
             // Debug: log service data if present

@@ -1,5 +1,5 @@
 .PHONY: help build test clippy fmt fmt-check doc clean \
-        build-android build-android-all build-aar publish-maven-local verify-jni \
+        build-android generate-bindings build-aar publish-maven-local verify-jni \
         build-android-demo deploy-android android check-android \
         ci ci-rust ci-android \
         publish-crates publish-maven-central
@@ -33,10 +33,11 @@ help:
 	@echo "  doc            - Generate documentation"
 	@echo ""
 	@echo "Android Targets:"
-	@echo "  build-android  - Build native libs (arm64, armv7, x86_64)"
-	@echo "  build-aar      - Build AAR package"
+	@echo "  build-android      - Build native libs (arm64, armv7, x86_64)"
+	@echo "  generate-bindings  - Regenerate Kotlin bindings from UniFFI"
+	@echo "  build-aar          - Build AAR package (native + bindings)"
 	@echo "  publish-maven-local - Publish AAR to Maven Local"
-	@echo "  verify-jni     - Verify JNI symbols match Kotlin declarations"
+	@echo "  verify-jni         - Verify JNI symbols match Kotlin declarations"
 	@echo ""
 	@echo "Demo Targets:"
 	@echo "  build-android-demo - Build demo APK"
@@ -102,7 +103,15 @@ build-android:
 	@echo "✓ Native libraries built:"
 	@ls -la android/src/main/jniLibs/*/libhive_btle.so
 
-build-aar: build-android
+generate-bindings: build-android
+	@echo "Generating Kotlin bindings from UniFFI..."
+	uniffi-bindgen generate \
+		--library android/src/main/jniLibs/arm64-v8a/libhive_btle.so \
+		--language kotlin \
+		--out-dir android/src/main/kotlin
+	@echo "✓ Kotlin bindings generated: android/src/main/kotlin/uniffi/hive_btle/hive_btle.kt"
+
+build-aar: generate-bindings
 	@echo "Building AAR..."
 	cd android && ./gradlew assembleRelease --no-configuration-cache
 	@echo "✓ AAR built: android/build/outputs/aar/"

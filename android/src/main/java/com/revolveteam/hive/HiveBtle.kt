@@ -1972,6 +1972,29 @@ class HiveBtle(
             return
         }
 
+        // For WearTAK devices, check if we already have a peer with the same name
+        // This handles BLE address rotation - the name (WT-WEAROS-XXXX) stays constant
+        val isWearTakDevice = device.name.startsWith("WT-WEAROS-") || device.name.startsWith("WEAROS-")
+        if (isWearTakDevice && device.name.isNotEmpty()) {
+            val existingPeerByName = peers.values.find { it.name == device.name }
+            if (existingPeerByName != null) {
+                // Update existing peer and map new address to its nodeId
+                existingPeerByName.rssi = device.rssi
+                existingPeerByName.lastSeen = System.currentTimeMillis()
+                addressToNodeId[device.address] = existingPeerByName.nodeId
+                Log.d(TAG, "WearTAK device ${device.name} seen from new address ${device.address}, mapped to existing nodeId ${String.format("%08X", existingPeerByName.nodeId)}")
+
+                // If service data now available, update peer's meshId if not set
+                if (device.meshId != null && existingPeerByName.meshId == null) {
+                    // Note: HivePeer.meshId is val, can't update directly
+                    // The meshId will be correct for connection purposes
+                    Log.i(TAG, "WearTAK device ${device.name} mesh confirmed: ${device.meshId}")
+                }
+                notifyMeshUpdated()
+                return
+            }
+        }
+
         // Derive nodeId from name, service data, or address for new peers
         val peerNodeId = device.nodeId ?: nativeDeriveNodeId(device.address)
 

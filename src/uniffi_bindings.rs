@@ -488,6 +488,16 @@ impl HiveMesh {
         self.inner.is_ack_active()
     }
 
+    /// Broadcast arbitrary bytes over the mesh.
+    ///
+    /// Takes raw payload bytes, encrypts them (if encryption is enabled),
+    /// and returns bytes ready to send to all connected peers.
+    ///
+    /// This is useful for sending extension data like CannedMessages from hive-lite.
+    pub fn broadcast_bytes(&self, payload: &[u8]) -> Vec<u8> {
+        self.inner.broadcast_bytes(payload)
+    }
+
     // ==================== BLE Callbacks ====================
 
     /// Call when a BLE device is discovered

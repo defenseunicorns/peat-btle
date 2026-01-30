@@ -656,6 +656,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_hive_btle_checksum_method_deviceidentity_sign(
     ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_broadcast_bytes(
+    ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_build_document(
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_chat_count(
@@ -822,6 +824,8 @@ external fun uniffi_hive_btle_fn_constructor_hivemesh_new_from_genesis(`callsign
 ): Long
 external fun uniffi_hive_btle_fn_constructor_hivemesh_new_with_peripheral(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,`peripheralType`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+external fun uniffi_hive_btle_fn_method_hivemesh_broadcast_bytes(`ptr`: Long,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_build_document(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_chat_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1101,6 +1105,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_hive_btle_checksum_method_deviceidentity_sign() != 62994.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_broadcast_bytes() != 18696.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_build_document() != 34635.toShort()) {
@@ -2108,6 +2115,16 @@ public object FfiConverterTypeDeviceIdentity: FfiConverter<DeviceIdentity, Long>
 public interface HiveMeshInterface {
     
     /**
+     * Broadcast arbitrary bytes over the mesh.
+     *
+     * Takes raw payload bytes, encrypts them (if encryption is enabled),
+     * and returns bytes ready to send to all connected peers.
+     *
+     * This is useful for sending extension data like CannedMessages from hive-lite.
+     */
+    fun `broadcastBytes`(`payload`: kotlin.ByteArray): kotlin.ByteArray
+    
+    /**
      * Build the current document for transmission
      */
     fun `buildDocument`(): kotlin.ByteArray
@@ -2470,6 +2487,27 @@ open class HiveMesh: Disposable, AutoCloseable, HiveMeshInterface
             UniffiLib.uniffi_hive_btle_fn_clone_hivemesh(handle, status)
         }
     }
+
+    
+    /**
+     * Broadcast arbitrary bytes over the mesh.
+     *
+     * Takes raw payload bytes, encrypts them (if encryption is enabled),
+     * and returns bytes ready to send to all connected peers.
+     *
+     * This is useful for sending extension data like CannedMessages from hive-lite.
+     */override fun `broadcastBytes`(`payload`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_broadcast_bytes(
+        it,
+        FfiConverterByteArray.lower(`payload`),_status)
+}
+    }
+    )
+    }
+    
 
     
     /**

@@ -1649,6 +1649,16 @@ impl HiveMesh {
         self.encrypt_document(&data)
     }
 
+    /// Broadcast arbitrary bytes over the mesh.
+    ///
+    /// Takes raw payload bytes, encrypts them (if encryption is enabled),
+    /// and returns bytes ready to send to all connected peers.
+    ///
+    /// This is useful for sending extension data like CannedMessages from hive-lite.
+    pub fn broadcast_bytes(&self, payload: &[u8]) -> Vec<u8> {
+        self.encrypt_document(payload)
+    }
+
     /// Clear the current event (emergency or ack)
     pub fn clear_event(&self) {
         self.document_sync.clear_event();
