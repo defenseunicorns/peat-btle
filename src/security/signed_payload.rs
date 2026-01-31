@@ -192,7 +192,10 @@ impl SignedPayload {
     ///
     /// # Returns
     /// `Some(DecodedPayload)` if valid, `None` if malformed or signature invalid
-    pub fn decode_verified<'a>(wire: &'a [u8], public_key: &[u8; 32]) -> Option<DecodedPayload<'a>> {
+    pub fn decode_verified<'a>(
+        wire: &'a [u8],
+        public_key: &[u8; 32],
+    ) -> Option<DecodedPayload<'a>> {
         if !Self::verify(wire, public_key) {
             return None;
         }

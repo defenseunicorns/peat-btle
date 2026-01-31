@@ -484,6 +484,7 @@ class HiveBtle(
     // Mesh management
     private val peers = ConcurrentHashMap<Long, HivePeer>() // nodeId -> peer
     private val addressToNodeId = ConcurrentHashMap<String, Long>() // address -> nodeId
+    private val nameToNodeId = ConcurrentHashMap<String, Long>() // device name -> nodeId (for address rotation dedup)
     private val peerSyncState = ConcurrentHashMap<Long, PeerSyncState>() // nodeId -> sync state for delta tracking
     // Track processed chat messages to avoid duplicate notifications (key = "originNode:timestamp")
     private val processedChatMessages = Collections.synchronizedSet(mutableSetOf<String>())
@@ -1544,6 +1545,7 @@ class HiveBtle(
 
         peers.clear()
         addressToNodeId.clear()
+        nameToNodeId.clear()
         meshListener = null
 
         Log.i(TAG, "Mesh stopped")
@@ -1649,13 +1651,13 @@ class HiveBtle(
                 // Update native peripheral state BEFORE building document
                 // This ensures location, callsign, and other state is included in encrypted docs
                 val nativeEventType: EventType? = when (eventType) {
+                    HiveEventType.NONE -> EventType.NONE
                     HiveEventType.PING -> EventType.PING
                     HiveEventType.NEED_ASSIST -> EventType.NEED_ASSIST
                     HiveEventType.EMERGENCY -> EventType.EMERGENCY
                     HiveEventType.MOVING -> EventType.MOVING
                     HiveEventType.IN_POSITION -> EventType.IN_POSITION
                     HiveEventType.ACK -> EventType.ACK
-                    else -> null
                 }
                 mesh.updatePeripheralState(
                     callsign = callsign.take(12),
@@ -1972,26 +1974,34 @@ class HiveBtle(
             return
         }
 
-        // For WearTAK devices, check if we already have a peer with the same name
-        // This handles BLE address rotation - the name (WT-WEAROS-XXXX) stays constant
-        val isWearTakDevice = device.name.startsWith("WT-WEAROS-") || device.name.startsWith("WEAROS-")
-        if (isWearTakDevice && device.name.isNotEmpty()) {
-            val existingPeerByName = peers.values.find { it.name == device.name }
-            if (existingPeerByName != null) {
-                // Update existing peer and map new address to its nodeId
-                existingPeerByName.rssi = device.rssi
-                existingPeerByName.lastSeen = System.currentTimeMillis()
-                addressToNodeId[device.address] = existingPeerByName.nodeId
-                Log.d(TAG, "WearTAK device ${device.name} seen from new address ${device.address}, mapped to existing nodeId ${String.format("%08X", existingPeerByName.nodeId)}")
+        // Handle BLE address rotation for ALL devices with stable names
+        // This prevents duplicate peers when the same device advertises from a new MAC address
+        // Works for: WearTAK (WEAROS-*), HIVE devices (HIVE_*), and any device with consistent naming
+        if (device.name.isNotEmpty()) {
+            // O(1) lookup using nameToNodeId map
+            val existingNodeId = nameToNodeId[device.name]
+            if (existingNodeId != null) {
+                val existingPeer = peers[existingNodeId]
+                if (existingPeer != null) {
+                    // Same device seen from new address - update mappings
+                    val oldAddress = existingPeer.address
 
-                // If service data now available, update peer's meshId if not set
-                if (device.meshId != null && existingPeerByName.meshId == null) {
-                    // Note: HivePeer.meshId is val, can't update directly
-                    // The meshId will be correct for connection purposes
-                    Log.i(TAG, "WearTAK device ${device.name} mesh confirmed: ${device.meshId}")
+                    // Clean up old address mapping to prevent memory leak
+                    if (oldAddress.isNotEmpty() && oldAddress != device.address) {
+                        addressToNodeId.remove(oldAddress)
+                        Log.d(TAG, "Address rotation: ${device.name} moved from $oldAddress to ${device.address}")
+                    }
+
+                    // Update peer with new address and RSSI
+                    existingPeer.address = device.address
+                    existingPeer.rssi = device.rssi
+                    existingPeer.lastSeen = System.currentTimeMillis()
+                    addressToNodeId[device.address] = existingNodeId
+
+                    Log.d(TAG, "Device ${device.name} seen from new address ${device.address}, mapped to existing nodeId ${String.format("%08X", existingNodeId)}")
+                    notifyMeshUpdated()
+                    return
                 }
-                notifyMeshUpdated()
-                return
             }
         }
 
@@ -2008,32 +2018,55 @@ class HiveBtle(
             return
         }
 
-        val now = System.currentTimeMillis()
-        addressToNodeId[device.address] = peerNodeId
-
+        // Final deduplication check: see if we already have this nodeId
+        // This catches cases where nodeId was derived differently but is actually the same device
         val existingPeer = peers[peerNodeId]
         if (existingPeer != null) {
-            // Update existing peer
+            // Update existing peer - also update address if it changed
+            val oldAddress = existingPeer.address
+            if (oldAddress != device.address) {
+                if (oldAddress.isNotEmpty()) {
+                    addressToNodeId.remove(oldAddress)
+                }
+                existingPeer.address = device.address
+                addressToNodeId[device.address] = peerNodeId
+            }
             existingPeer.rssi = device.rssi
-            existingPeer.lastSeen = now
-        } else {
-            // New peer discovered
-            val peer = HivePeer(
-                nodeId = peerNodeId,
-                address = device.address,
-                name = device.name.ifEmpty { generateDeviceName(device.meshId ?: meshId, peerNodeId) },
-                meshId = device.meshId,
-                rssi = device.rssi,
-                isConnected = false,
-                lastDocument = null,
-                lastSeen = now
-            )
-            peers[peerNodeId] = peer
-            Log.i(TAG, "New peer discovered: ${peer.displayName()} (mesh: ${device.meshId ?: "legacy"})")
+            existingPeer.lastSeen = System.currentTimeMillis()
 
-            // Auto-connect to new peer
-            connectToPeer(peer)
+            // Update name mapping if we have a name
+            if (device.name.isNotEmpty()) {
+                nameToNodeId[device.name] = peerNodeId
+            }
+            notifyMeshUpdated()
+            return
         }
+
+        // New peer discovered
+        val now = System.currentTimeMillis()
+        val peerName = device.name.ifEmpty { generateDeviceName(device.meshId ?: meshId, peerNodeId) }
+        val peer = HivePeer(
+            nodeId = peerNodeId,
+            address = device.address,
+            name = peerName,
+            meshId = device.meshId,
+            rssi = device.rssi,
+            isConnected = false,
+            lastDocument = null,
+            lastSeen = now
+        )
+
+        // Add to all maps
+        peers[peerNodeId] = peer
+        addressToNodeId[device.address] = peerNodeId
+        if (peerName.isNotEmpty()) {
+            nameToNodeId[peerName] = peerNodeId
+        }
+
+        Log.i(TAG, "New peer discovered: ${peer.displayName()} (mesh: ${device.meshId ?: "legacy"})")
+
+        // Auto-connect to new peer
+        connectToPeer(peer)
 
         // Update HiveMesh ConnectionStateGraph
         _mesh?.onBleDiscovered(
@@ -3042,13 +3075,13 @@ class HiveBtle(
         // Map Kotlin event type to native event type
         val nativeEventType: EventType? = peripheral.lastEvent?.let { event ->
             when (event.eventType) {
+                HiveEventType.NONE -> EventType.NONE
                 HiveEventType.PING -> EventType.PING
                 HiveEventType.NEED_ASSIST -> EventType.NEED_ASSIST
                 HiveEventType.EMERGENCY -> EventType.EMERGENCY
                 HiveEventType.MOVING -> EventType.MOVING
                 HiveEventType.IN_POSITION -> EventType.IN_POSITION
                 HiveEventType.ACK -> EventType.ACK
-                else -> null
             }
         }
 
@@ -3273,7 +3306,9 @@ class HiveBtle(
             for (nodeId in staleNodeIds) {
                 val peer = peers.remove(nodeId)
                 peer?.let {
+                    // Clean up all maps to prevent memory leaks
                     addressToNodeId.remove(it.address)
+                    nameToNodeId.remove(it.name)
                     disconnect(it.address)
                     // Clear reconnection tracking for removed peers
                     reconnectAttempts.remove(it.address)
@@ -3623,7 +3658,7 @@ data class DiscoveredDevice(
  */
 data class HivePeer(
     val nodeId: Long,
-    val address: String,
+    var address: String,  // Mutable to support BLE address rotation
     val name: String,
     val meshId: String?,
     var rssi: Int,

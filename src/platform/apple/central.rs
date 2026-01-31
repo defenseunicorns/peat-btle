@@ -21,8 +21,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use objc2::rc::Retained;
 use objc2::msg_send;
+use objc2::rc::Retained;
 use objc2_core_bluetooth::{CBCentralManager, CBPeripheral, CBUUID};
 use objc2_foundation::{NSArray, NSString};
 use tokio::sync::{mpsc, RwLock};
