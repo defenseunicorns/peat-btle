@@ -19,6 +19,7 @@
 //! and handles emergency/ACK propagation.
 
 use hive_btle::hive_mesh::{HiveMesh, HiveMeshConfig};
+use hive_btle::observer::DisconnectReason;
 use hive_btle::NodeId;
 
 // Valid timestamp for testing (2024-01-15 00:00:00 UTC)
@@ -243,4 +244,250 @@ fn test_multiple_peer_registration() {
     assert_eq!(connected.len(), 2, "A should have 2 connected peers");
 
     println!("PASS: Multiple peers registered correctly");
+}
+
+/// Test that peers are marked disconnected when BLE disconnect occurs
+#[test]
+fn test_peer_marked_disconnected_on_ble_disconnect() {
+    let node_a = NodeId::new(0xAAAAAAAA);
+    let node_b = NodeId::new(0xBBBBBBBB);
+
+    let config_a = HiveMeshConfig::new(node_a, "ALPHA", "TEST");
+    let config_b = HiveMeshConfig::new(node_b, "BRAVO", "TEST");
+
+    let mesh_a = HiveMesh::new(config_a);
+    let mesh_b = HiveMesh::new(config_b);
+
+    // Build and exchange documents
+    let doc_b = mesh_b.build_document();
+    mesh_a.on_ble_data("peer-b", &doc_b, TEST_TIMESTAMP);
+
+    // Verify peer B is connected
+    let peers = mesh_a.get_peers();
+    assert_eq!(peers.len(), 1, "A should have 1 peer");
+    assert!(peers[0].is_connected, "Peer B should be connected initially");
+    println!("Before disconnect: peer is_connected={}", peers[0].is_connected);
+
+    // Simulate BLE disconnect (like turning BLE off)
+    let disconnected_node = mesh_a.on_ble_disconnected("peer-b", DisconnectReason::LinkLoss);
+    assert!(
+        disconnected_node.is_some(),
+        "on_ble_disconnected should return the disconnected node"
+    );
+    assert_eq!(
+        disconnected_node.unwrap(),
+        node_b,
+        "Disconnected node should be B"
+    );
+
+    // Verify peer B is now marked as disconnected
+    let peers_after = mesh_a.get_peers();
+    assert_eq!(peers_after.len(), 1, "Peer should still exist but be disconnected");
+    assert!(
+        !peers_after[0].is_connected,
+        "Peer B should be DISCONNECTED after on_ble_disconnected"
+    );
+
+    println!(
+        "After disconnect: peer is_connected={}",
+        peers_after[0].is_connected
+    );
+    println!("PASS: Peer marked disconnected on BLE disconnect");
+}
+
+/// Test that disconnected peers are removed after timeout via tick()
+#[test]
+fn test_stale_disconnected_peer_cleanup() {
+    let node_a = NodeId::new(0xAAAAAAAA);
+    let node_b = NodeId::new(0xBBBBBBBB);
+
+    // Use short timeout for testing (5 seconds)
+    // Note: cleanup_interval is 10s by default, so we need to use timestamps
+    // that account for both the peer_timeout AND cleanup_interval
+    let config_a = HiveMeshConfig::new(node_a, "ALPHA", "TEST").with_peer_timeout(5000);
+    let config_b = HiveMeshConfig::new(node_b, "BRAVO", "TEST");
+
+    let mesh_a = HiveMesh::new(config_a);
+    let mesh_b = HiveMesh::new(config_b);
+
+    // Build and exchange documents at t=1000 (use small timestamps for tick() internal tracking)
+    let doc_b = mesh_b.build_document();
+    mesh_a.on_ble_data("peer-b", &doc_b, 1000);
+
+    // Verify peer is connected
+    assert_eq!(mesh_a.get_peers().len(), 1, "A should have 1 peer");
+    assert!(mesh_a.get_peers()[0].is_connected, "Peer should be connected");
+
+    // Disconnect the peer
+    mesh_a.on_ble_disconnected("peer-b", DisconnectReason::LinkLoss);
+    assert!(!mesh_a.get_peers()[0].is_connected, "Peer should be disconnected");
+
+    // First tick initializes last_cleanup_ms
+    mesh_a.tick(2000);
+    assert_eq!(
+        mesh_a.get_peers().len(),
+        1,
+        "Peer should still exist (not stale yet)"
+    );
+
+    // Tick at t=20000 - peer is stale (19 seconds since last data at t=1000, 5 second timeout)
+    // and cleanup_interval (10s) has elapsed since last tick at t=2000
+    mesh_a.tick(20000);
+    let peers_after_cleanup = mesh_a.get_peers();
+    assert_eq!(
+        peers_after_cleanup.len(),
+        0,
+        "Stale disconnected peer should be removed after timeout"
+    );
+
+    println!("PASS: Stale disconnected peer cleaned up after timeout");
+}
+
+/// Test that connected peers become stale if no data is received
+/// (simulates BLE off without disconnect event)
+#[test]
+fn test_connected_peer_becomes_stale() {
+    let node_a = NodeId::new(0xAAAAAAAA);
+    let node_b = NodeId::new(0xBBBBBBBB);
+
+    // Use short timeout for testing (5 seconds)
+    // Note: cleanup runs every 10s by default
+    let config_a = HiveMeshConfig::new(node_a, "ALPHA", "TEST").with_peer_timeout(5000);
+    let config_b = HiveMeshConfig::new(node_b, "BRAVO", "TEST");
+
+    let mesh_a = HiveMesh::new(config_a);
+    let mesh_b = HiveMesh::new(config_b);
+
+    // Build and exchange documents at t=1000 (use small timestamps)
+    let doc_b = mesh_b.build_document();
+    mesh_a.on_ble_data("peer-b", &doc_b, 1000);
+
+    // Verify peer is connected
+    let peers = mesh_a.get_peers();
+    assert_eq!(peers.len(), 1, "A should have 1 peer");
+    assert!(peers[0].is_connected, "Peer should be connected initially");
+    println!(
+        "Initial state: peer is_connected={}, last_seen=1000",
+        peers[0].is_connected
+    );
+
+    // First tick at t=3000 - initializes internal tracking, peer still fresh
+    mesh_a.tick(3000);
+    assert_eq!(
+        mesh_a.get_peers().len(),
+        1,
+        "Peer should still exist after 3s"
+    );
+
+    // Tick at t=20000 - peer is now stale (19s since t=1000, > 5s timeout)
+    // and cleanup_interval (10s) has elapsed since tick at t=3000
+    mesh_a.tick(20000);
+    let peers_after = mesh_a.get_peers();
+    assert_eq!(
+        peers_after.len(),
+        0,
+        "Stale 'connected' peer should be removed when no data received for timeout period"
+    );
+
+    println!("PASS: Connected peer becomes stale and is removed");
+}
+
+/// Test multiple disconnect/reconnect cycles
+#[test]
+fn test_reconnect_after_disconnect() {
+    let node_a = NodeId::new(0xAAAAAAAA);
+    let node_b = NodeId::new(0xBBBBBBBB);
+
+    let config_a = HiveMeshConfig::new(node_a, "ALPHA", "TEST");
+    let config_b = HiveMeshConfig::new(node_b, "BRAVO", "TEST");
+
+    let mesh_a = HiveMesh::new(config_a);
+    let mesh_b = HiveMesh::new(config_b);
+
+    // Initial connection
+    let doc_b = mesh_b.build_document();
+    mesh_a.on_ble_data("peer-b", &doc_b, TEST_TIMESTAMP);
+    assert!(
+        mesh_a.get_peers()[0].is_connected,
+        "Peer should be connected after initial data"
+    );
+
+    // Disconnect
+    mesh_a.on_ble_disconnected("peer-b", DisconnectReason::LocalRequest);
+    assert!(
+        !mesh_a.get_peers()[0].is_connected,
+        "Peer should be disconnected"
+    );
+    println!("After disconnect: is_connected=false");
+
+    // Reconnect with new data
+    mesh_a.on_ble_data("peer-b", &doc_b, TEST_TIMESTAMP + 1000);
+    let peers = mesh_a.get_peers();
+    assert_eq!(peers.len(), 1, "Should still have 1 peer (updated, not duplicated)");
+    assert!(
+        peers[0].is_connected,
+        "Peer should be connected again after receiving new data"
+    );
+    println!("After reconnect: is_connected=true");
+
+    // Disconnect again (simulating toggling BLE)
+    mesh_a.on_ble_disconnected("peer-b", DisconnectReason::LinkLoss);
+    assert!(
+        !mesh_a.get_peers()[0].is_connected,
+        "Peer should be disconnected again"
+    );
+
+    println!("PASS: Reconnect after disconnect works correctly");
+}
+
+/// Test that different disconnect reasons are handled properly
+#[test]
+fn test_various_disconnect_reasons() {
+    let node_a = NodeId::new(0xAAAAAAAA);
+    let node_b = NodeId::new(0xBBBBBBBB);
+
+    let config_a = HiveMeshConfig::new(node_a, "ALPHA", "TEST");
+    let config_b = HiveMeshConfig::new(node_b, "BRAVO", "TEST");
+
+    let mesh_a = HiveMesh::new(config_a);
+    let mesh_b = HiveMesh::new(config_b);
+
+    let doc_b = mesh_b.build_document();
+
+    // Test each disconnect reason
+    let reasons = [
+        (DisconnectReason::LocalRequest, "LocalRequest"),
+        (DisconnectReason::RemoteRequest, "RemoteRequest"),
+        (DisconnectReason::Timeout, "Timeout"),
+        (DisconnectReason::LinkLoss, "LinkLoss"),
+        (DisconnectReason::ConnectionFailed, "ConnectionFailed"),
+        (DisconnectReason::Unknown, "Unknown"),
+    ];
+
+    for (reason, reason_name) in reasons {
+        // Connect
+        mesh_a.on_ble_data("peer-b", &doc_b, TEST_TIMESTAMP);
+        assert!(
+            mesh_a.get_peers()[0].is_connected,
+            "Peer should be connected before {} disconnect",
+            reason_name
+        );
+
+        // Disconnect with specific reason
+        let result = mesh_a.on_ble_disconnected("peer-b", reason);
+        assert!(
+            result.is_some(),
+            "{} disconnect should return Some",
+            reason_name
+        );
+        assert!(
+            !mesh_a.get_peers()[0].is_connected,
+            "Peer should be disconnected after {}",
+            reason_name
+        );
+
+        println!("{}: disconnect handled correctly", reason_name);
+    }
+
+    println!("PASS: All disconnect reasons handled correctly");
 }
