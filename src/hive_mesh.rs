@@ -90,6 +90,8 @@ use crate::NodeId;
 #[cfg(feature = "std")]
 use crate::observer::ObserverManager;
 
+use crate::registry::DocumentRegistry;
+
 /// Configuration for HiveMesh
 #[derive(Debug, Clone)]
 pub struct HiveMeshConfig {
@@ -318,6 +320,12 @@ pub struct HiveMesh {
     /// Stores the most recent peripheral data (callsign, location, etc.)
     /// received from each peer via document sync.
     peer_peripherals: std::sync::RwLock<HashMap<NodeId, Peripheral>>,
+
+    /// Document registry for app-layer CRDT types.
+    ///
+    /// Enables external crates to register custom document types that sync
+    /// through the mesh using the extensible registry pattern.
+    document_registry: DocumentRegistry,
 }
 
 #[cfg(feature = "std")]
@@ -352,6 +360,15 @@ impl HiveMesh {
         // Create delta encoder for per-peer sync state tracking
         let delta_encoder = DeltaEncoder::new(config.node_id);
 
+        // Create document registry and auto-register types
+        let document_registry = DocumentRegistry::new();
+        #[cfg(feature = "hive-lite-sync")]
+        {
+            use crate::hive_lite_sync::CannedMessageDocument;
+            document_registry.register::<CannedMessageDocument>();
+            log::info!("Auto-registered CannedMessageDocument (0xC0) for hive-lite sync");
+        }
+
         Self {
             config,
             peer_manager,
@@ -368,6 +385,7 @@ impl HiveMesh {
             identity: None,
             identity_registry: std::sync::Mutex::new(IdentityRegistry::new()),
             peer_peripherals: std::sync::RwLock::new(HashMap::new()),
+            document_registry,
         }
     }
 
@@ -402,6 +420,15 @@ impl HiveMesh {
             Box::new(RandomFanout::new(config.relay_fanout));
         let delta_encoder = DeltaEncoder::new(config.node_id);
 
+        // Create document registry and auto-register types
+        let document_registry = DocumentRegistry::new();
+        #[cfg(feature = "hive-lite-sync")]
+        {
+            use crate::hive_lite_sync::CannedMessageDocument;
+            document_registry.register::<CannedMessageDocument>();
+            log::info!("Auto-registered CannedMessageDocument (0xC0) for hive-lite sync");
+        }
+
         Self {
             config,
             peer_manager,
@@ -418,6 +445,7 @@ impl HiveMesh {
             identity: Some(identity),
             identity_registry: std::sync::Mutex::new(IdentityRegistry::new()),
             peer_peripherals: std::sync::RwLock::new(HashMap::new()),
+            document_registry,
         }
     }
 
@@ -1607,6 +1635,24 @@ impl HiveMesh {
             .read()
             .ok()
             .and_then(|peripherals| peripherals.get(&node_id).cloned())
+    }
+
+    // ==================== Document Registry ====================
+
+    /// Get a reference to the document registry.
+    ///
+    /// Use this to register custom document types for mesh synchronization.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use hive_btle::registry::DocumentType;
+    ///
+    /// // Register a custom document type
+    /// mesh.document_registry().register::<MyCustomDocument>();
+    /// ```
+    pub fn document_registry(&self) -> &DocumentRegistry {
+        &self.document_registry
     }
 
     // ==================== Observer Management ====================
