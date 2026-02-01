@@ -485,6 +485,8 @@ class HiveBtle(
     private val peers = ConcurrentHashMap<Long, HivePeer>() // nodeId -> peer
     private val addressToNodeId = ConcurrentHashMap<String, Long>() // address -> nodeId
     private val nameToNodeId = ConcurrentHashMap<String, Long>() // device name -> nodeId (for address rotation dedup)
+    private val callsignToNodeId = ConcurrentHashMap<String, Long>() // callsign -> nodeId (for identity resolution)
+    private val nodeIdToCallsign = ConcurrentHashMap<Long, String>() // nodeId -> callsign (reverse lookup, persisted)
     private val peerSyncState = ConcurrentHashMap<Long, PeerSyncState>() // nodeId -> sync state for delta tracking
     // Track processed chat messages to avoid duplicate notifications (key = "originNode:timestamp")
     private val processedChatMessages = Collections.synchronizedSet(mutableSetOf<String>())
@@ -594,6 +596,9 @@ class HiveBtle(
                 PeripheralType.SOLDIER_SENSOR
             )
         }
+
+        // Load persisted callsign mappings
+        loadCallsignCache()
 
         isInitialized = true
         Log.i(TAG, "Initialized for node ${String.format("%08X", nodeId)}")
@@ -718,7 +723,7 @@ class HiveBtle(
      * @param txPower TX power level (default: medium)
      */
     fun startAdvertising(
-        mode: Int = AdvertiseSettings.ADVERTISE_MODE_LOW_POWER,
+        mode: Int = AdvertiseSettings.ADVERTISE_MODE_BALANCED,
         txPower: Int = AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
     ) {
         checkInitialized()
@@ -750,14 +755,14 @@ class HiveBtle(
         meshIdBytes.copyInto(serviceDataBytes, 4)
 
         // Build advertise data with 16-bit service UUID alias and service data
-        // Using 16-bit UUID (0xF47A) saves space vs full 128-bit UUID (31-byte BLE limit)
+        // Device name goes in scan response to stay within 31-byte advertising limit
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(false) // Name goes in scan response
+            .setIncludeDeviceName(false)
             .addServiceUuid(ParcelUuid(HIVE_SERVICE_UUID_16))
             .addServiceData(ParcelUuid(HIVE_SERVICE_UUID_16), serviceDataBytes)
             .build()
 
-        // Build scan response with device name (for debugging/visibility)
+        // Scan response with device name
         val scanResponse = AdvertiseData.Builder()
             .setIncludeDeviceName(true)
             .build()
@@ -1222,6 +1227,8 @@ class HiveBtle(
                                     handler.post {
                                         meshListener?.onPeerConnected(peer)
                                     }
+                                    // Notify mesh updated so UI reflects the new peer
+                                    notifyMeshUpdated()
                                 } else {
                                     // Existing peer - update last seen and ensure listener is notified
                                     peer.lastSeen = now
@@ -1294,6 +1301,9 @@ class HiveBtle(
                                         HiveLocation(lat, lon, alt ?: 0f) else null,
                                     timestamp = System.currentTimeMillis()
                                 )
+                                // Update callsign cache if we received a valid callsign
+                                result.callsign?.let { updateCallsignForNode(sourceNodeId, it) }
+
                                 // Include peripheral if ANY data is present (callsign, location, battery, etc.)
                                 val hasPeripheralData = result.callsign != null ||
                                     result.latitude != null ||
@@ -2045,7 +2055,9 @@ class HiveBtle(
 
         // New peer discovered
         val now = System.currentTimeMillis()
-        val peerName = device.name.ifEmpty { generateDeviceName(device.meshId ?: meshId, peerNodeId) }
+        // Use cached callsign if available, otherwise BLE name, otherwise generate
+        val peerName = nodeIdToCallsign[peerNodeId]
+            ?: device.name.ifEmpty { generateDeviceName(device.meshId ?: meshId, peerNodeId) }
         val peer = HivePeer(
             nodeId = peerNodeId,
             address = device.address,
@@ -2281,6 +2293,11 @@ class HiveBtle(
         val previousEventTimestamp = previousEvent?.timestamp ?: 0L
         peer.lastDocument = document
         peer.lastSeen = System.currentTimeMillis()
+
+        // Update callsign cache if document has callsign
+        document.peripheral?.callsign?.takeIf { it.isNotEmpty() }?.let {
+            updateCallsignForNode(document.nodeId, it)
+        }
 
         // Merge counters (CRDT merge)
         mergeCounter(document.counter)
@@ -2612,7 +2629,27 @@ class HiveBtle(
      * Relay data to all connected peers except the source.
      */
     private fun relayToOtherPeers(rawBytes: ByteArray, sourceAddress: String?) {
+        // Deduplication: don't relay the same message we've seen recently
+        // Use content hash for deduplication (same approach as forwardDocumentToOtherPeers)
+        val contentHash = rawBytes.contentHashCode().toLong()
+        val now = System.currentTimeMillis()
+        synchronized(seenMessagesLock) {
+            val lastSeen = seenMessages[contentHash]
+            if (lastSeen != null && (now - lastSeen) < 30_000) {
+                Log.v(TAG, "[RELAY-SKIP] Already relayed app-layer message (hash=${String.format("%08X", contentHash)})")
+                return
+            }
+            seenMessages[contentHash] = now
+        }
+
         var forwardCount = 0
+
+        // Debug: log connection counts
+        val connCount = connections.size
+        val centralCount = connectedCentrals.size
+        if (connCount + centralCount > 4) {
+            Log.w(TAG, "[RELAY-DEBUG] Unexpected peer count: connections=$connCount (${connections.keys}), centrals=$centralCount (${connectedCentrals.keys})")
+        }
 
         // Forward to peripherals (devices we connected to)
         for ((address, gatt) in connections) {
@@ -2629,7 +2666,7 @@ class HiveBtle(
         }
 
         if (forwardCount > 0) {
-            Log.d(TAG, "[RELAY] Forwarded ${rawBytes.size} bytes to $forwardCount peers")
+            Log.d(TAG, "[RELAY] Forwarded ${rawBytes.size} bytes to $forwardCount peers (conn=$connCount, central=$centralCount)")
         }
     }
 
@@ -2731,6 +2768,9 @@ class HiveBtle(
                     }
                 }
 
+                // Update callsign cache if we received a valid callsign
+                result.callsign?.let { updateCallsignForNode(sourceNodeId, it) }
+
                 // Build and notify document synced
                 val eventType = result.eventType?.let { HiveEventType.fromEventType(it) } ?: HiveEventType.NONE
                 val hasPeripheralData = result.callsign != null ||
@@ -2830,6 +2870,11 @@ class HiveBtle(
                 }
 
                 is DeltaOperation.UpdatePeripheral -> {
+                    // Update callsign cache if peripheral has callsign
+                    op.peripheral.callsign.takeIf { it.isNotEmpty() }?.let {
+                        updateCallsignForNode(docNodeId, it)
+                    }
+
                     // Update peer's peripheral state
                     val currentPeer = peers[docNodeId]
                     if (currentPeer != null) {
@@ -2960,6 +3005,9 @@ class HiveBtle(
                 }
 
                 is DeltaOperation.UpdateCallsign -> {
+                    // Update callsign cache
+                    updateCallsignForNode(docNodeId, op.callsign)
+
                     // Field-level callsign update - apply to existing peripheral
                     val currentPeer = peers[docNodeId]
                     if (currentPeer != null) {
@@ -3323,12 +3371,17 @@ class HiveBtle(
                     // Clean up all maps to prevent memory leaks
                     addressToNodeId.remove(it.address)
                     nameToNodeId.remove(it.name)
+                    // Also clean up callsign mappings for stale peers
+                    val cachedCallsign = nodeIdToCallsign.remove(nodeId)
+                    cachedCallsign?.let { cs -> callsignToNodeId.remove(cs) }
                     disconnect(it.address)
                     // Clear reconnection tracking for removed peers
                     reconnectAttempts.remove(it.address)
                     lastReconnectAttempt.remove(it.address)
                 }
             }
+            // Persist the updated callsign cache
+            saveCallsignCache()
             notifyMeshUpdated()
         }
     }
@@ -3484,6 +3537,110 @@ class HiveBtle(
             0L
         }
     }
+
+    // ========================================================================
+    // Callsign Cache - Maps nodeId <-> callsign for identity resolution
+    // ========================================================================
+
+    /**
+     * Load persisted callsign mappings from SharedPreferences.
+     * Called during init() to restore mappings across app restarts.
+     */
+    private fun loadCallsignCache() {
+        try {
+            val prefs = context.getSharedPreferences("hive_btle_callsigns", Context.MODE_PRIVATE)
+            val mappingsJson = prefs.getString("callsign_mappings", null)
+            if (mappingsJson != null) {
+                val mappings = org.json.JSONObject(mappingsJson)
+                for (key in mappings.keys()) {
+                    val nodeId = key.toLongOrNull() ?: continue
+                    val callsign = mappings.getString(key)
+                    if (callsign.isNotBlank() && !callsign.equals("ANDROID", ignoreCase = true)) {
+                        nodeIdToCallsign[nodeId] = callsign
+                        callsignToNodeId[callsign] = nodeId
+                    }
+                }
+                Log.i(TAG, "Loaded ${nodeIdToCallsign.size} callsign mappings from cache")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load callsign cache: ${e.message}")
+        }
+    }
+
+    /**
+     * Save callsign mappings to SharedPreferences.
+     */
+    private fun saveCallsignCache() {
+        try {
+            val mappings = org.json.JSONObject()
+            for ((nodeId, callsign) in nodeIdToCallsign) {
+                mappings.put(nodeId.toString(), callsign)
+            }
+            val prefs = context.getSharedPreferences("hive_btle_callsigns", Context.MODE_PRIVATE)
+            prefs.edit().putString("callsign_mappings", mappings.toString()).apply()
+            Log.d(TAG, "Saved ${nodeIdToCallsign.size} callsign mappings to cache")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to save callsign cache: ${e.message}")
+        }
+    }
+
+    /**
+     * Update the callsign for a nodeId.
+     * Updates both the cache and any existing HivePeer with matching nodeId.
+     *
+     * @param nodeId The node ID
+     * @param callsign The callsign (ignored if blank or "ANDROID")
+     * @return true if the callsign was updated
+     */
+    private fun updateCallsignForNode(nodeId: Long, callsign: String): Boolean {
+        // Filter out empty or default callsigns
+        val trimmedCallsign = callsign.trim()
+        if (trimmedCallsign.isBlank() || trimmedCallsign.equals("ANDROID", ignoreCase = true)) {
+            return false
+        }
+
+        val existingCallsign = nodeIdToCallsign[nodeId]
+        if (existingCallsign == trimmedCallsign) {
+            return false // No change
+        }
+
+        // Update mappings
+        nodeIdToCallsign[nodeId] = trimmedCallsign
+        callsignToNodeId[trimmedCallsign] = nodeId
+
+        // Remove old callsign mapping if it changed
+        if (existingCallsign != null && existingCallsign != trimmedCallsign) {
+            callsignToNodeId.remove(existingCallsign)
+        }
+
+        // Update the peer's name if it exists
+        val peer = peers[nodeId]
+        if (peer != null && peer.name != trimmedCallsign) {
+            val oldName = peer.name
+            peer.name = trimmedCallsign  // Direct update since name is now var
+            // Also update nameToNodeId mapping
+            nameToNodeId.remove(oldName)
+            nameToNodeId[trimmedCallsign] = nodeId
+            Log.i(TAG, "[CALLSIGN] Updated peer ${String.format("%08X", nodeId)}: '$oldName' -> '$trimmedCallsign'")
+            notifyMeshUpdated()  // Notify listeners of the name change
+        } else if (peer == null) {
+            Log.d(TAG, "[CALLSIGN] Cached callsign for ${String.format("%08X", nodeId)}: '$trimmedCallsign' (peer not yet created)")
+        }
+
+        // Persist the mapping
+        saveCallsignCache()
+        return true
+    }
+
+    /**
+     * Get the cached callsign for a nodeId, or null if not known.
+     */
+    fun getCachedCallsign(nodeId: Long): String? = nodeIdToCallsign[nodeId]
+
+    /**
+     * Get the nodeId for a callsign, or null if not known.
+     */
+    fun getNodeIdForCallsign(callsign: String): Long? = callsignToNodeId[callsign]
 
     /**
      * Queue a document write for a GATT connection.
@@ -3673,7 +3830,7 @@ data class DiscoveredDevice(
 data class HivePeer(
     val nodeId: Long,
     var address: String,  // Mutable to support BLE address rotation
-    val name: String,
+    var name: String,     // Mutable to update when callsign is received
     val meshId: String?,
     var rssi: Int,
     var isConnected: Boolean,

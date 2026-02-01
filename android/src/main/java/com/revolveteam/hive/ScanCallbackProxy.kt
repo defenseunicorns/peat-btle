@@ -108,22 +108,17 @@ class ScanCallbackProxy(
                 Log.i(TAG, "HIVE device found via service data: nodeId=${nodeId?.let { String.format("%08X", it) }}, meshId=$meshId")
             }
 
-            // For WearTAK devices, derive a stable nodeId from the name suffix
-            // Format: WT-WEAROS-XXXX or WEAROS-XXXX where XXXX is a 4-digit suffix
-            // IMPORTANT: Use name suffix (not BLE address) for stability across address rotation.
-            // WearOS rotates BLE addresses for privacy, but name suffix stays constant.
-            // The correct mesh ID comes from service data when available.
+            // For devices matching WearTAK name pattern (WEAROS-* or WT-WEAROS-*):
+            // These could be WearOS system advertisements OR our HIVE advertisements.
+            // Only process as HIVE device if we have service data (nodeId from HIVE advertisement).
+            // Don't log "waiting for service data" spam - just silently skip system advertisements.
             if (isWearTakDevice && nodeId == null) {
-                val suffix = name.substringAfterLast("-", "")
-                if (suffix.isNotEmpty() && suffix.all { it.isDigit() }) {
-                    // Use name suffix as base for stable nodeId across address rotations
-                    // Combine suffix with a hash of the full name to reduce collision risk
-                    val nameHash = name.hashCode().toLong() and 0xFFFF0000L
-                    nodeId = nameHash or (suffix.toLongOrNull() ?: 0L)
-                }
-                // Don't default to WEARTAK mesh - let HiveBtle use service data mesh
-                // meshId stays null until we get proper service data
-                Log.i(TAG, "WearTAK device found via name pattern: $name -> nodeId=${nodeId?.let { String.format("%08X", it) }}, meshId=${meshId ?: "unknown (waiting for service data)"}")
+                // No service data = WearOS system advertisement, not our HIVE advertisement
+                // Silently skip - don't spam logs since system advertises frequently
+                return
+            }
+            if (isWearTakDevice && nodeId != null) {
+                Log.i(TAG, "HIVE device (WearTAK): $name -> nodeId=${String.format("%08X", nodeId)}, meshId=$meshId")
             }
 
             // Debug: log service data if present
