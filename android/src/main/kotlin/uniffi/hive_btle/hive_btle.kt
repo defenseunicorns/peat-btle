@@ -662,6 +662,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_chat_count(
     ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_check_canned_message(
+    ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_clear_location(
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_clear_peripheral_event(
@@ -677,6 +679,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_hive_btle_checksum_method_hivemesh_get_all_chat_messages(
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_get_chat_messages_since(
+    ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_get_connected_peer_identifiers(
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_get_connected_peers(
     ): Short
@@ -713,6 +717,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_hive_btle_checksum_method_hivemesh_known_identity_count(
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_lost_peer_count(
+    ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_mark_canned_message_seen(
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_matches_mesh(
     ): Short
@@ -830,6 +836,8 @@ external fun uniffi_hive_btle_fn_method_hivemesh_build_document(`ptr`: Long,unif
 ): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_chat_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+external fun uniffi_hive_btle_fn_method_hivemesh_check_canned_message(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,`ttlMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 external fun uniffi_hive_btle_fn_method_hivemesh_clear_location(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_hive_btle_fn_method_hivemesh_clear_peripheral_event(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -845,6 +853,8 @@ external fun uniffi_hive_btle_fn_method_hivemesh_degraded_peer_count(`ptr`: Long
 external fun uniffi_hive_btle_fn_method_hivemesh_get_all_chat_messages(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_get_chat_messages_since(`ptr`: Long,`sinceTimestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_hive_btle_fn_method_hivemesh_get_connected_peer_identifiers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_get_connected_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -882,6 +892,8 @@ external fun uniffi_hive_btle_fn_method_hivemesh_known_identity_count(`ptr`: Lon
 ): Int
 external fun uniffi_hive_btle_fn_method_hivemesh_lost_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+external fun uniffi_hive_btle_fn_method_hivemesh_mark_canned_message_seen(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_hive_btle_fn_method_hivemesh_matches_mesh(`ptr`: Long,`deviceMeshId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 external fun uniffi_hive_btle_fn_method_hivemesh_on_ble_connected(`ptr`: Long,`identifier`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1116,6 +1128,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_chat_count() != 8886.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_check_canned_message() != 55203.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_clear_location() != 37664.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1138,6 +1153,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_get_chat_messages_since() != 7375.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_get_connected_peer_identifiers() != 46364.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_get_connected_peers() != 33262.toShort()) {
@@ -1192,6 +1210,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_lost_peer_count() != 25444.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_mark_canned_message_seen() != 49445.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_matches_mesh() != 536.toShort()) {
@@ -2135,6 +2156,16 @@ public interface HiveMeshInterface {
     fun `chatCount`(): kotlin.UInt
     
     /**
+     * Check if a CannedMessage has been seen recently.
+     *
+     * Uses document identity (source_node + timestamp) for deduplication.
+     * This prevents broadcast storms when relaying CannedMessages.
+     *
+     * Returns true if the message should be processed, false if it's a duplicate.
+     */
+    fun `checkCannedMessage`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong, `ttlMs`: kotlin.ULong): kotlin.Boolean
+    
+    /**
      * Clear own location
      */
     fun `clearLocation`()
@@ -2174,6 +2205,14 @@ public interface HiveMeshInterface {
      * Get chat messages since timestamp as JSON array string
      */
     fun `getChatMessagesSince`(`sinceTimestamp`: kotlin.ULong): kotlin.String
+    
+    /**
+     * Get the list of connected peer identifiers for relay.
+     *
+     * Used by the Kotlin layer to relay CannedMessages to other peers
+     * after deduplication check.
+     */
+    fun `getConnectedPeerIdentifiers`(): List<kotlin.String>
     
     /**
      * Get list of connected peers
@@ -2264,6 +2303,14 @@ public interface HiveMeshInterface {
      * Get count of lost peers (disconnected and timed out)
      */
     fun `lostPeerCount`(): kotlin.UInt
+    
+    /**
+     * Mark a CannedMessage as seen (for deduplication).
+     *
+     * Call this after receiving and processing a CannedMessage to prevent
+     * reprocessing the same message from other relay paths.
+     */
+    fun `markCannedMessageSeen`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong)
     
     /**
      * Check if mesh matches (for filtering BLE discovery)
@@ -2543,6 +2590,27 @@ open class HiveMesh: Disposable, AutoCloseable, HiveMeshInterface
 
     
     /**
+     * Check if a CannedMessage has been seen recently.
+     *
+     * Uses document identity (source_node + timestamp) for deduplication.
+     * This prevents broadcast storms when relaying CannedMessages.
+     *
+     * Returns true if the message should be processed, false if it's a duplicate.
+     */override fun `checkCannedMessage`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong, `ttlMs`: kotlin.ULong): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_check_canned_message(
+        it,
+        FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),FfiConverterULong.lower(`ttlMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Clear own location
      */override fun `clearLocation`()
         = 
@@ -2662,6 +2730,25 @@ open class HiveMesh: Disposable, AutoCloseable, HiveMeshInterface
     UniffiLib.uniffi_hive_btle_fn_method_hivemesh_get_chat_messages_since(
         it,
         FfiConverterULong.lower(`sinceTimestamp`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get the list of connected peer identifiers for relay.
+     *
+     * Used by the Kotlin layer to relay CannedMessages to other peers
+     * after deduplication check.
+     */override fun `getConnectedPeerIdentifiers`(): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_get_connected_peer_identifiers(
+        it,
+        _status)
 }
     }
     )
@@ -2954,6 +3041,24 @@ open class HiveMesh: Disposable, AutoCloseable, HiveMeshInterface
     }
     )
     }
+    
+
+    
+    /**
+     * Mark a CannedMessage as seen (for deduplication).
+     *
+     * Call this after receiving and processing a CannedMessage to prevent
+     * reprocessing the same message from other relay paths.
+     */override fun `markCannedMessageSeen`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_mark_canned_message_seen(
+        it,
+        FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),_status)
+}
+    }
+    
     
 
     
@@ -5131,6 +5236,34 @@ public object FfiConverterOptionalTypeEventType: FfiConverterRustBuffer<EventTyp
         } else {
             buf.put(1)
             FfiConverterTypeEventType.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
         }
     }
 }

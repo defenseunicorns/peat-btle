@@ -1404,6 +1404,7 @@ dependencies = [
  "esp-idf-hal",
  "esp-idf-svc",
  "hashbrown 0.15.5",
+ "hive-lite",
  "hkdf",
  "log",
  "objc2",
@@ -1420,6 +1421,13 @@ dependencies = [
  "uuid",
  "windows",
  "x25519-dalek",
+]
+
+[[package]]
+name = "hive-lite"
+version = "0.0.4"
+dependencies = [
+ "heapless",
 ]
 
 [[package]]

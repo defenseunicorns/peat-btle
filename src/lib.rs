@@ -165,7 +165,12 @@ pub mod persistence;
 pub mod phy;
 pub mod platform;
 pub mod power;
+pub mod registry;
 pub mod relay;
+
+// hive-lite integration (optional)
+#[cfg(feature = "hive-lite-sync")]
+pub mod hive_lite_sync;
 pub mod security;
 pub mod sync;
 pub mod transport;
@@ -269,6 +274,16 @@ pub use relay::{
     MessageId, RelayEnvelope, RelayFlags, SeenMessageCache, DEFAULT_MAX_HOPS, DEFAULT_SEEN_TTL_MS,
     RELAY_ENVELOPE_MARKER,
 };
+
+// Extensible document registry for app-layer types
+pub use registry::{
+    decode_header, decode_typed, encode_with_header, AppOperation, DocumentRegistry, DocumentType,
+    APP_OP_BASE, APP_TYPE_MAX, APP_TYPE_MIN,
+};
+
+// hive-lite integration (optional)
+#[cfg(feature = "hive-lite-sync")]
+pub use hive_lite_sync::CannedMessageDocument;
 
 /// HIVE BLE Service UUID (128-bit)
 ///

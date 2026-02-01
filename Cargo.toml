@@ -43,6 +43,9 @@ esp32 = ["embedded", "std", "dep:esp-idf-svc", "dep:esp-idf-hal"]
 coded-phy = []
 extended-adv = []
 
+# hive-lite integration for CannedMessage sync
+hive-lite-sync = ["dep:hive-lite", "std"]
+
 [dependencies]
 # Core dependencies (always included)
 async-trait = "0.1"
@@ -69,6 +72,10 @@ blake3 = "1.5"
 
 # no_std HashMap for IdentityRegistry
 hashbrown = "0.15"
+
+# hive-lite integration (optional)
+# Provides DocumentType impl for CannedMessageAckEvent
+hive-lite = { version = "0.0.4", optional = true, path = "../hive-lite" }
 
 # UniFFI for cross-language bindings (optional)
 uniffi = { version = "0.31", optional = true }

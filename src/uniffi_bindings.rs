@@ -832,6 +832,36 @@ impl HiveMesh {
     pub fn is_relay_enabled(&self) -> bool {
         self.inner.is_relay_enabled()
     }
+
+    // ==================== CannedMessage Integration ====================
+    // These methods enable proper CRDT sync for hive-lite CannedMessages,
+    // using document identity for deduplication instead of raw relay.
+
+    /// Check if a CannedMessage has been seen recently.
+    ///
+    /// Uses document identity (source_node + timestamp) for deduplication.
+    /// This prevents broadcast storms when relaying CannedMessages.
+    ///
+    /// Returns true if the message should be processed, false if it's a duplicate.
+    pub fn check_canned_message(&self, source_node: u32, timestamp: u64, ttl_ms: u64) -> bool {
+        self.inner.check_canned_message(source_node, timestamp, ttl_ms)
+    }
+
+    /// Mark a CannedMessage as seen (for deduplication).
+    ///
+    /// Call this after receiving and processing a CannedMessage to prevent
+    /// reprocessing the same message from other relay paths.
+    pub fn mark_canned_message_seen(&self, source_node: u32, timestamp: u64) {
+        self.inner.mark_canned_message_seen(source_node, timestamp);
+    }
+
+    /// Get the list of connected peer identifiers for relay.
+    ///
+    /// Used by the Kotlin layer to relay CannedMessages to other peers
+    /// after deduplication check.
+    pub fn get_connected_peer_identifiers(&self) -> Vec<String> {
+        self.inner.get_connected_peer_identifiers()
+    }
 }
 
 // ============================================================================

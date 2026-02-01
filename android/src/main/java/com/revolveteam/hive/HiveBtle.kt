@@ -2629,17 +2629,49 @@ class HiveBtle(
      * Relay data to all connected peers except the source.
      */
     private fun relayToOtherPeers(rawBytes: ByteArray, sourceAddress: String?) {
-        // Deduplication: don't relay the same message we've seen recently
-        // Use content hash for deduplication (same approach as forwardDocumentToOtherPeers)
-        val contentHash = rawBytes.contentHashCode().toLong()
-        val now = System.currentTimeMillis()
-        synchronized(seenMessagesLock) {
-            val lastSeen = seenMessages[contentHash]
-            if (lastSeen != null && (now - lastSeen) < 30_000) {
-                Log.v(TAG, "[RELAY-SKIP] Already relayed app-layer message (hash=${String.format("%08X", contentHash)})")
-                return
+        // Deduplication: Use Rust-side deduplication via HiveMesh.
+        // This prevents broadcast storms when relaying CannedMessages.
+        //
+        // CannedMessage wire format: 0xAF marker, msg_code, source_node (4B LE), target (4B), timestamp (8B LE)
+        // Document identity is at bytes 2-5 (source_node) and 10-17 (timestamp)
+        if (rawBytes.size >= 18 && rawBytes[0] == APP_LAYER_MARKER) {
+            // Extract document identity: source_node (bytes 2-5) + timestamp (bytes 10-17)
+            val sourceNode = ((rawBytes[2].toInt() and 0xFF)) or
+                ((rawBytes[3].toInt() and 0xFF) shl 8) or
+                ((rawBytes[4].toInt() and 0xFF) shl 16) or
+                ((rawBytes[5].toInt() and 0xFF) shl 24)
+            val timestamp = ((rawBytes[10].toLong() and 0xFF)) or
+                ((rawBytes[11].toLong() and 0xFF) shl 8) or
+                ((rawBytes[12].toLong() and 0xFF) shl 16) or
+                ((rawBytes[13].toLong() and 0xFF) shl 24) or
+                ((rawBytes[14].toLong() and 0xFF) shl 32) or
+                ((rawBytes[15].toLong() and 0xFF) shl 40) or
+                ((rawBytes[16].toLong() and 0xFF) shl 48) or
+                ((rawBytes[17].toLong() and 0xFF) shl 56)
+
+            // Use Rust-side deduplication (centralizes logic in HiveMesh)
+            val mesh = _mesh
+            if (mesh != null) {
+                val isNew = mesh.checkCannedMessage(sourceNode.toUInt(), timestamp.toULong(), 30_000UL)
+                if (!isNew) {
+                    Log.v(TAG, "[RELAY-SKIP] Already relayed CannedMessage from ${String.format("%08X", sourceNode)} ts=$timestamp")
+                    return
+                }
+                // Mark as seen to prevent future relays
+                mesh.markCannedMessageSeen(sourceNode.toUInt(), timestamp.toULong())
+            } else {
+                // Fallback to local deduplication if mesh not available
+                val now = System.currentTimeMillis()
+                val docId = (sourceNode.toLong() shl 32) or (timestamp and 0xFFFFFFFFL)
+                synchronized(seenMessagesLock) {
+                    val lastSeen = seenMessages[docId]
+                    if (lastSeen != null && (now - lastSeen) < 30_000) {
+                        Log.v(TAG, "[RELAY-SKIP] Already relayed CannedMessage from ${String.format("%08X", sourceNode)} ts=$timestamp (fallback)")
+                        return
+                    }
+                    seenMessages[docId] = now
+                }
             }
-            seenMessages[contentHash] = now
         }
 
         var forwardCount = 0

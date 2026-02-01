@@ -1904,6 +1904,10 @@ impl HiveMesh {
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0);
             graph.on_disconnected(node_id, platform_reason, now_ms);
+
+            // Remove indirect peer paths that went through this peer
+            // These paths may no longer be valid since the direct connection is lost
+            graph.remove_via_peer(node_id);
         }
 
         // Unregister peer from delta sync tracking
@@ -1947,6 +1951,9 @@ impl HiveMesh {
                     .map(|d| d.as_millis() as u64)
                     .unwrap_or(0);
                 graph.on_disconnected(node_id, platform_reason, now_ms);
+
+                // Remove indirect peer paths that went through this peer
+                graph.remove_via_peer(node_id);
             }
 
             // Unregister peer from delta sync tracking
@@ -2572,9 +2579,32 @@ impl HiveMesh {
         // Record sync using the source_node from the merged document
         self.peer_manager.record_sync(result.source_node, now_ms);
 
-        // Add the peer if not already known (creates peer entry from document data)
-        self.peer_manager
-            .on_incoming_connection(identifier, result.source_node, now_ms);
+        // Only register the identifier mapping for direct messages (not relayed)
+        // For relayed messages, the identifier belongs to the relay source (who forwarded it),
+        // not the origin node (who created the document). The relay source is already registered
+        // via handle_relay_envelope_with_incoming when the relay envelope is first processed.
+        if origin_node.is_none() {
+            // Direct message - register the peer with this identifier
+            let is_new = self
+                .peer_manager
+                .on_incoming_connection(identifier, result.source_node, now_ms);
+
+            // Update connection graph to track connection state
+            {
+                let mut graph = self.connection_graph.lock().unwrap();
+                if is_new {
+                    graph.on_discovered(
+                        result.source_node,
+                        identifier.to_string(),
+                        None,
+                        Some(self.config.mesh_id.clone()),
+                        -50, // Default RSSI for data-based discovery
+                        now_ms,
+                    );
+                }
+                graph.on_connected(result.source_node, now_ms);
+            }
+        }
 
         // Generate events based on what was received
         if result.is_emergency() {
@@ -2637,6 +2667,28 @@ impl HiveMesh {
     ) -> Option<DataReceivedResult> {
         // Parse envelope to get origin
         let envelope = RelayEnvelope::decode(data)?;
+
+        // Try to look up the source peer from identifier to register indirect path
+        // If we know who sent this relay, we can track indirect peers via them
+        if let Some(source_peer) = self.peer_manager.get_node_id(identifier) {
+            if envelope.origin_node != source_peer && envelope.origin_node != self.node_id() {
+                let is_new = self.connection_graph.lock().unwrap().on_relay_received(
+                    source_peer,
+                    envelope.origin_node,
+                    envelope.hop_count,
+                    now_ms,
+                );
+
+                if is_new {
+                    log::debug!(
+                        "Discovered indirect peer {:08X} via {:08X} ({} hops)",
+                        envelope.origin_node.as_u32(),
+                        source_peer.as_u32(),
+                        envelope.hop_count
+                    );
+                }
+            }
+        }
 
         // Check deduplication
         if !self.mark_message_seen(envelope.message_id, envelope.origin_node, now_ms) {
@@ -3100,6 +3152,67 @@ impl HiveMesh {
             peer_count: self.peer_manager.peer_count(),
             connected_count: self.peer_manager.connected_count(),
         });
+    }
+
+    // ==================== CannedMessage Integration ====================
+    //
+    // These methods provide deduplication support for hive-lite CannedMessages.
+    // They use document identity (source_node + timestamp) instead of content hash,
+    // because CRDT merge can change byte ordering.
+
+    /// Check if a CannedMessage should be processed.
+    ///
+    /// Uses document identity (source_node + timestamp) for deduplication.
+    /// This prevents broadcast storms when relaying CannedMessages across the mesh.
+    ///
+    /// # Arguments
+    /// * `source_node` - The source node ID from the CannedMessage
+    /// * `timestamp` - The timestamp from the CannedMessage
+    /// * `_ttl_ms` - TTL parameter (currently unused, uses cache's default TTL)
+    ///
+    /// # Returns
+    /// `true` if this message is new and should be processed,
+    /// `false` if it was seen recently and should be skipped.
+    pub fn check_canned_message(&self, source_node: u32, timestamp: u64, _ttl_ms: u64) -> bool {
+        // Create a unique key from source_node and timestamp
+        // MessageId is 16 bytes: [source_node: 4B][timestamp: 8B][padding: 4B]
+        let mut id_bytes = [0u8; 16];
+        id_bytes[0..4].copy_from_slice(&source_node.to_le_bytes());
+        id_bytes[4..12].copy_from_slice(&timestamp.to_le_bytes());
+        let message_id = crate::relay::MessageId::from_bytes(id_bytes);
+
+        // Check the seen cache
+        let seen = self.seen_cache.lock().unwrap();
+        !seen.has_seen(&message_id)
+    }
+
+    /// Mark a CannedMessage as seen (for deduplication).
+    ///
+    /// Call this after processing a CannedMessage to prevent reprocessing
+    /// the same message from other relay paths.
+    pub fn mark_canned_message_seen(&self, source_node: u32, timestamp: u64) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        // MessageId is 16 bytes: [source_node: 4B][timestamp: 8B][padding: 4B]
+        let mut id_bytes = [0u8; 16];
+        id_bytes[0..4].copy_from_slice(&source_node.to_le_bytes());
+        id_bytes[4..12].copy_from_slice(&timestamp.to_le_bytes());
+        let message_id = crate::relay::MessageId::from_bytes(id_bytes);
+        let origin = NodeId::new(source_node);
+
+        let mut seen = self.seen_cache.lock().unwrap();
+        seen.mark_seen(message_id, origin, now);
+    }
+
+    /// Get list of connected peer identifiers for relay.
+    ///
+    /// Used by the platform layer (Kotlin/Swift) to relay CannedMessages
+    /// to other peers after deduplication check.
+    pub fn get_connected_peer_identifiers(&self) -> Vec<String> {
+        self.peer_manager.get_connected_identifiers()
     }
 }
 

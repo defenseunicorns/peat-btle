@@ -388,6 +388,19 @@ impl PeerManager {
             .count()
     }
 
+    /// Get identifiers of all connected peers.
+    ///
+    /// Useful for relaying messages to all peers (e.g., CannedMessages).
+    pub fn get_connected_identifiers(&self) -> Vec<String> {
+        self.peers
+            .read()
+            .unwrap()
+            .values()
+            .filter(|p| p.is_connected)
+            .map(|p| p.identifier.clone())
+            .collect()
+    }
+
     /// Get peers that need sync (connected and past cooldown)
     pub fn peers_needing_sync(&self, now_ms: u64) -> Vec<HivePeer> {
         let peers = self.peers.read().unwrap();
