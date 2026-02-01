@@ -495,7 +495,8 @@ class HiveBtle(
     private var localCounter = mutableListOf<GCounterEntry>()
 
     // Mesh configuration
-    private val PEER_TIMEOUT_MS = 30000L // Remove peers after 30s without advertisement
+    private val PEER_TIMEOUT_MS = 30000L // Remove disconnected peers after 30s without advertisement
+    private val CONNECTED_PEER_TIMEOUT_MS = 60000L // Remove "connected" peers after 60s without any activity (handles stale connections)
     private val CLEANUP_INTERVAL_MS = 10000L // Cleanup check interval
     private val SYNC_INTERVAL_MS = 3000L // Sync documents every 3s
     private val RECONNECT_INTERVAL_MS = 5000L // Check for lost peers every 5s
@@ -3297,8 +3298,20 @@ class HiveBtle(
 
     private fun cleanupStalePeers() {
         val now = System.currentTimeMillis()
+
+        // Find stale peers:
+        // 1. Disconnected peers not seen in PEER_TIMEOUT_MS
+        // 2. "Connected" peers not seen in CONNECTED_PEER_TIMEOUT_MS (handles stale/ghost connections)
         val staleNodeIds = peers.filter { (_, peer) ->
-            now - peer.lastSeen > PEER_TIMEOUT_MS && !peer.isConnected
+            val timeSinceLastSeen = now - peer.lastSeen
+            if (peer.isConnected) {
+                // Connected peers get longer timeout, but still cleaned up if truly stale
+                // This handles cases where BLE disconnect event was missed
+                timeSinceLastSeen > CONNECTED_PEER_TIMEOUT_MS
+            } else {
+                // Disconnected peers cleaned up faster
+                timeSinceLastSeen > PEER_TIMEOUT_MS
+            }
         }.keys
 
         if (staleNodeIds.isNotEmpty()) {
@@ -3306,6 +3319,7 @@ class HiveBtle(
             for (nodeId in staleNodeIds) {
                 val peer = peers.remove(nodeId)
                 peer?.let {
+                    Log.i(TAG, "Removed stale peer: ${it.displayName()} (connected=${it.isConnected}, lastSeen=${now - it.lastSeen}ms ago)")
                     // Clean up all maps to prevent memory leaks
                     addressToNodeId.remove(it.address)
                     nameToNodeId.remove(it.name)
@@ -3668,10 +3682,21 @@ data class HivePeer(
 ) {
     /**
      * Get the display name for this peer.
-     * Uses new format (HIVE_MESHID-NODEID) if mesh ID is available,
-     * otherwise falls back to legacy format (HIVE-NODEID).
+     * Priority: 1) callsign from document, 2) BLE device name, 3) HIVE format with nodeId
      */
     fun displayName(): String {
+        // First: try callsign from received document (most user-friendly)
+        val docCallsign = lastDocument?.peripheral?.callsign?.takeIf { it.isNotEmpty() }
+        if (docCallsign != null) {
+            return docCallsign
+        }
+
+        // Second: use BLE device name if it looks like a WearTAK name
+        if (name.isNotEmpty() && (name.startsWith("WEAROS-") || name.startsWith("WT-WEAROS-"))) {
+            return name.removePrefix("WT-")  // Normalize to "WEAROS-XXXX"
+        }
+
+        // Third: fall back to HIVE format
         return if (meshId != null) {
             "HIVE_${meshId}-${String.format("%08X", nodeId)}"
         } else {
