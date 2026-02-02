@@ -293,17 +293,18 @@ declare_class!(
 
             // Check if this is a HIVE node by:
             // 1. Presence of HIVE service UUID (preferred, reliable)
-            // 2. Name starting with "HIVE-" (fallback for legacy/compatibility)
-            let name_indicates_hive = name.as_ref().map(|n| n.starts_with("HIVE-")).unwrap_or(false);
+            // 2. Name starting with "HIVE_" or "HIVE-" (fallback for compatibility)
+            //    - New format: HIVE_<MESH>-<NODE_ID> (e.g., "HIVE_WEARTAK-8DD4")
+            //    - Legacy format: HIVE-<NODE_ID> (e.g., "HIVE-12345678")
+            let name_indicates_hive = name.as_ref().map(|n| {
+                n.starts_with("HIVE_") || n.starts_with("HIVE-")
+            }).unwrap_or(false);
             let is_hive_node = has_hive_service || name_indicates_hive;
 
-            // Parse node ID from name if present
+            // Parse node ID from name (supports both formats)
             let node_id = name.as_ref().and_then(|n| {
-                if n.starts_with("HIVE-") {
-                    NodeId::parse(&n[5..])
-                } else {
-                    None
-                }
+                crate::config::MeshConfig::parse_device_name(n)
+                    .map(|(_, node_id)| node_id)
             });
 
             log::debug!(

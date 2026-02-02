@@ -33,7 +33,10 @@ import android.bluetooth.le.BluetoothLeAdvertiser
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanSettings
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.ParcelUuid
@@ -454,6 +457,50 @@ class HiveBtle(
 
     // State
     private var isInitialized = false
+
+    // Pairing request cancellation receiver
+    // Cancels unwanted pairing requests that some Android devices (e.g., Samsung) trigger
+    // when connecting to BLE GATT servers. HIVE uses application-layer encryption,
+    // not BLE pairing, so these prompts are unnecessary and disruptive.
+    private val pairingRequestReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == BluetoothDevice.ACTION_PAIRING_REQUEST) {
+                val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                }
+                val deviceName = device?.name ?: "unknown"
+                val deviceAddress = device?.address ?: "unknown"
+
+                // Check if this is a HIVE device (by name pattern)
+                val isHiveDevice = deviceName.startsWith("HIVE_") || deviceName.startsWith("HIVE-")
+
+                if (isHiveDevice) {
+                    Log.i(TAG, "Cancelling pairing request for HIVE device: $deviceName ($deviceAddress)")
+                    // Cancel the pairing by aborting the broadcast
+                    abortBroadcast()
+                    // Also try to cancel via the device API
+                    try {
+                        val cancelMethod = device?.javaClass?.getMethod("cancelPairingUserInput")
+                        cancelMethod?.invoke(device)
+                    } catch (e: Exception) {
+                        Log.d(TAG, "cancelPairingUserInput not available: ${e.message}")
+                    }
+                    try {
+                        val cancelBondMethod = device?.javaClass?.getMethod("cancelBondProcess")
+                        cancelBondMethod?.invoke(device)
+                    } catch (e: Exception) {
+                        Log.d(TAG, "cancelBondProcess not available: ${e.message}")
+                    }
+                } else {
+                    Log.d(TAG, "Allowing pairing request for non-HIVE device: $deviceName")
+                }
+            }
+        }
+    }
+    private var pairingReceiverRegistered = false
     private var isScanning = false
     private var isAdvertising = false
     private var isMeshRunning = false
@@ -600,6 +647,25 @@ class HiveBtle(
 
         // Load persisted callsign mappings
         loadCallsignCache()
+
+        // Register pairing request receiver to cancel unwanted pairing dialogs
+        // Samsung and some other Android devices prompt for pairing on BLE connections
+        // HIVE doesn't need BLE pairing (uses app-layer encryption), so we cancel these
+        if (!pairingReceiverRegistered) {
+            try {
+                val filter = IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST)
+                filter.priority = IntentFilter.SYSTEM_HIGH_PRIORITY
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    context.registerReceiver(pairingRequestReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    context.registerReceiver(pairingRequestReceiver, filter)
+                }
+                pairingReceiverRegistered = true
+                Log.i(TAG, "Registered pairing request cancellation receiver")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to register pairing receiver: ${e.message}")
+            }
+        }
 
         isInitialized = true
         Log.i(TAG, "Initialized for node ${String.format("%08X", nodeId)}")
@@ -3796,6 +3862,17 @@ class HiveBtle(
         // Disconnect all
         for (address in connections.keys.toList()) {
             disconnect(address)
+        }
+
+        // Unregister pairing request receiver
+        if (pairingReceiverRegistered) {
+            try {
+                context.unregisterReceiver(pairingRequestReceiver)
+                pairingReceiverRegistered = false
+                Log.i(TAG, "Unregistered pairing request receiver")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to unregister pairing receiver: ${e.message}")
+            }
         }
 
         // Destroy HiveMesh (UniFFI handles resource cleanup)

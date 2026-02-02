@@ -405,30 +405,41 @@ impl BleAdapter for BluerAdapter {
                         match event {
                             Some(bluer::AdapterEvent::DeviceAdded(addr)) => {
                                 if let Ok(device) = adapter.device(addr) {
-                                    // Get device properties
+                                    // Get device properties from advertisement data only
+                                    // IMPORTANT: Do NOT call device.uuids() as it may trigger
+                                    // service discovery which causes unwanted pairing requests
                                     let name = device.name().await.ok().flatten();
                                     let rssi = device.rssi().await.ok().flatten().unwrap_or(0);
 
-                                    // Get service UUIDs from the device
-                                    let service_uuids = device.uuids().await.ok().flatten().unwrap_or_default();
+                                    // Get service data from advertisement (no connection needed)
+                                    let service_data = device.service_data().await.ok().flatten().unwrap_or_default();
 
-                                    // Check if HIVE service UUID is present
-                                    let has_hive_service = service_uuids.contains(&HIVE_SERVICE_UUID);
+                                    // Check if HIVE service UUID is present in advertisement
+                                    let has_hive_service = service_data.contains_key(&HIVE_SERVICE_UUID);
 
                                     // Check if name indicates HIVE node (fallback)
-                                    let name_indicates_hive = name.as_ref().map(|n| n.starts_with("HIVE-")).unwrap_or(false);
+                                    // Supports both formats:
+                                    // - New: HIVE_<MESH>-<NODE_ID> (e.g., "HIVE_WEARTAK-8DD4")
+                                    // - Legacy: HIVE-<NODE_ID> (e.g., "HIVE-12345678")
+                                    let name_indicates_hive = name.as_ref().map(|n| {
+                                        n.starts_with("HIVE_") || n.starts_with("HIVE-")
+                                    }).unwrap_or(false);
 
                                     // HIVE node detection: prefer service UUID, fallback to name
                                     let is_hive_node = has_hive_service || name_indicates_hive;
+
+                                    // Parse node ID from name (supports both formats)
+                                    let node_id = name.as_ref().and_then(|n| {
+                                        crate::config::MeshConfig::parse_device_name(n)
+                                            .map(|(_, node_id)| node_id)
+                                    });
 
                                     let discovered = DiscoveredDevice {
                                         address: addr.to_string(),
                                         name: name.clone(),
                                         rssi: rssi as i8,
                                         is_hive_node,
-                                        node_id: name.and_then(|n| {
-                                            n.strip_prefix("HIVE-").and_then(NodeId::parse)
-                                        }),
+                                        node_id,
                                         adv_data: Vec::new(),
                                     };
 
