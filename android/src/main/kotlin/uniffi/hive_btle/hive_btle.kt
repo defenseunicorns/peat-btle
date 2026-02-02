@@ -656,9 +656,17 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_hive_btle_checksum_method_deviceidentity_sign(
     ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_ack_canned_message(
+    ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_app_document_count(
+    ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_broadcast_bytes(
     ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_build_delta_document_for_peer(
+    ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_build_document(
+    ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_build_full_delta_document(
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_chat_count(
     ): Short
@@ -676,7 +684,11 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_degraded_peer_count(
     ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_get_all_canned_messages(
+    ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_get_all_chat_messages(
+    ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_get_canned_message_document(
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_get_chat_messages_since(
     ): Short
@@ -747,6 +759,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_hive_btle_checksum_method_hivemesh_set_peripheral_event(
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_sign(
+    ): Short
+    external fun uniffi_hive_btle_checksum_method_hivemesh_store_canned_message_document(
     ): Short
     external fun uniffi_hive_btle_checksum_method_hivemesh_tick(
     ): Short
@@ -830,9 +844,17 @@ external fun uniffi_hive_btle_fn_constructor_hivemesh_new_from_genesis(`callsign
 ): Long
 external fun uniffi_hive_btle_fn_constructor_hivemesh_new_with_peripheral(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,`peripheralType`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+external fun uniffi_hive_btle_fn_method_hivemesh_ack_canned_message(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,`ackerNode`: Int,`ackTimestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_hive_btle_fn_method_hivemesh_app_document_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
 external fun uniffi_hive_btle_fn_method_hivemesh_broadcast_bytes(`ptr`: Long,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+external fun uniffi_hive_btle_fn_method_hivemesh_build_delta_document_for_peer(`ptr`: Long,`peerId`: Int,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_build_document(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_hive_btle_fn_method_hivemesh_build_full_delta_document(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_chat_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
@@ -850,7 +872,11 @@ external fun uniffi_hive_btle_fn_method_hivemesh_decrypt_only(`ptr`: Long,`data`
 ): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_degraded_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+external fun uniffi_hive_btle_fn_method_hivemesh_get_all_canned_messages(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_get_all_chat_messages(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_hive_btle_fn_method_hivemesh_get_canned_message_document(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_get_chat_messages_since(`ptr`: Long,`sinceTimestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -922,6 +948,8 @@ external fun uniffi_hive_btle_fn_method_hivemesh_set_peripheral_event(`ptr`: Lon
 ): Unit
 external fun uniffi_hive_btle_fn_method_hivemesh_sign(`ptr`: Long,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+external fun uniffi_hive_btle_fn_method_hivemesh_store_canned_message_document(`ptr`: Long,`encodedBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 external fun uniffi_hive_btle_fn_method_hivemesh_tick(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_hive_btle_fn_method_hivemesh_total_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1119,10 +1147,22 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_hive_btle_checksum_method_deviceidentity_sign() != 62994.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_ack_canned_message() != 50187.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_app_document_count() != 38602.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_broadcast_bytes() != 18696.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_build_delta_document_for_peer() != 10816.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_build_document() != 34635.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_build_full_delta_document() != 54430.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_chat_count() != 8886.toShort()) {
@@ -1149,7 +1189,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_degraded_peer_count() != 49461.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_get_all_canned_messages() != 61806.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_get_all_chat_messages() != 6470.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_get_canned_message_document() != 4363.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_get_chat_messages_since() != 7375.toShort()) {
@@ -1255,6 +1301,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_sign() != 18310.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_hive_btle_checksum_method_hivemesh_store_canned_message_document() != 9562.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_hive_btle_checksum_method_hivemesh_tick() != 62780.toShort()) {
@@ -2136,6 +2185,21 @@ public object FfiConverterTypeDeviceIdentity: FfiConverter<DeviceIdentity, Long>
 public interface HiveMeshInterface {
     
     /**
+     * Record an ACK on a stored CannedMessage document.
+     *
+     * This is the efficient path for adding ACKs - the full document
+     * doesn't need to be re-sent, just the ACK delta.
+     *
+     * Returns true if the ACK was new (document changed).
+     */
+    fun `ackCannedMessage`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong, `ackerNode`: kotlin.UInt, `ackTimestamp`: kotlin.ULong): kotlin.Boolean
+    
+    /**
+     * Get the number of stored app documents.
+     */
+    fun `appDocumentCount`(): kotlin.UInt
+    
+    /**
      * Broadcast arbitrary bytes over the mesh.
      *
      * Takes raw payload bytes, encrypts them (if encryption is enabled),
@@ -2146,9 +2210,27 @@ public interface HiveMeshInterface {
     fun `broadcastBytes`(`payload`: kotlin.ByteArray): kotlin.ByteArray
     
     /**
+     * Build a delta document for a specific peer.
+     *
+     * This includes only operations that have changed since the last sync
+     * with this peer, including app-layer documents (CannedMessages, etc.).
+     * Returns None if there's nothing new to send.
+     */
+    fun `buildDeltaDocumentForPeer`(`peerId`: kotlin.UInt, `nowMs`: kotlin.ULong): kotlin.ByteArray?
+    
+    /**
      * Build the current document for transmission
      */
     fun `buildDocument`(): kotlin.ByteArray
+    
+    /**
+     * Build a full delta document containing all current state.
+     *
+     * Unlike `build_delta_document_for_peer`, this includes all state
+     * regardless of what has been sent before. Use for broadcasts or
+     * new peer connections. Includes app-layer documents.
+     */
+    fun `buildFullDeltaDocument`(`nowMs`: kotlin.ULong): kotlin.ByteArray
     
     /**
      * Get count of chat messages
@@ -2196,10 +2278,26 @@ public interface HiveMeshInterface {
     fun `degradedPeerCount`(): kotlin.UInt
     
     /**
+     * Get all stored CannedMessage documents as encoded bytes.
+     *
+     * Returns a list of (source_node, timestamp, encoded_bytes) tuples.
+     * The encoded_bytes include the 0xAF marker for hive-lite compatibility.
+     */
+    fun `getAllCannedMessages`(): List<CannedMessageInfo>
+    
+    /**
      * Get all chat messages as JSON array string
      * Format: [{"origin_node":123,"timestamp":456,"sender":"name","text":"msg","reply_to_node":0,"reply_to_timestamp":0},...]
      */
     fun `getAllChatMessages`(): kotlin.String
+    
+    /**
+     * Get a stored CannedMessage document as raw hive-lite bytes.
+     *
+     * Returns the document encoded in hive-lite format (with 0xAF marker),
+     * or None if not found.
+     */
+    fun `getCannedMessageDocument`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong): kotlin.ByteArray?
     
     /**
      * Get chat messages since timestamp as JSON array string
@@ -2385,6 +2483,16 @@ public interface HiveMeshInterface {
     fun `sign`(`message`: kotlin.ByteArray): kotlin.ByteArray?
     
     /**
+     * Store a CannedMessage document for CRDT sync.
+     *
+     * Takes raw hive-lite encoded bytes (including 0xAF marker).
+     * The document will be stored and synced to peers via delta sync.
+     *
+     * Returns true if the document was newly added or changed via merge.
+     */
+    fun `storeCannedMessageDocument`(`encodedBytes`: kotlin.ByteArray): kotlin.Boolean
+    
+    /**
      * Periodic tick - call every sync interval
      */
     fun `tick`(`nowMs`: kotlin.ULong): kotlin.ByteArray?
@@ -2537,6 +2645,43 @@ open class HiveMesh: Disposable, AutoCloseable, HiveMeshInterface
 
     
     /**
+     * Record an ACK on a stored CannedMessage document.
+     *
+     * This is the efficient path for adding ACKs - the full document
+     * doesn't need to be re-sent, just the ACK delta.
+     *
+     * Returns true if the ACK was new (document changed).
+     */override fun `ackCannedMessage`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong, `ackerNode`: kotlin.UInt, `ackTimestamp`: kotlin.ULong): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_ack_canned_message(
+        it,
+        FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),FfiConverterUInt.lower(`ackerNode`),FfiConverterULong.lower(`ackTimestamp`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get the number of stored app documents.
+     */override fun `appDocumentCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_app_document_count(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Broadcast arbitrary bytes over the mesh.
      *
      * Takes raw payload bytes, encrypts them (if encryption is enabled),
@@ -2558,6 +2703,26 @@ open class HiveMesh: Disposable, AutoCloseable, HiveMeshInterface
 
     
     /**
+     * Build a delta document for a specific peer.
+     *
+     * This includes only operations that have changed since the last sync
+     * with this peer, including app-layer documents (CannedMessages, etc.).
+     * Returns None if there's nothing new to send.
+     */override fun `buildDeltaDocumentForPeer`(`peerId`: kotlin.UInt, `nowMs`: kotlin.ULong): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_build_delta_document_for_peer(
+        it,
+        FfiConverterUInt.lower(`peerId`),FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Build the current document for transmission
      */override fun `buildDocument`(): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
@@ -2566,6 +2731,26 @@ open class HiveMesh: Disposable, AutoCloseable, HiveMeshInterface
     UniffiLib.uniffi_hive_btle_fn_method_hivemesh_build_document(
         it,
         _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Build a full delta document containing all current state.
+     *
+     * Unlike `build_delta_document_for_peer`, this includes all state
+     * regardless of what has been sent before. Use for broadcasts or
+     * new peer connections. Includes app-layer documents.
+     */override fun `buildFullDeltaDocument`(`nowMs`: kotlin.ULong): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_build_full_delta_document(
+        it,
+        FfiConverterULong.lower(`nowMs`),_status)
 }
     }
     )
@@ -2705,6 +2890,25 @@ open class HiveMesh: Disposable, AutoCloseable, HiveMeshInterface
 
     
     /**
+     * Get all stored CannedMessage documents as encoded bytes.
+     *
+     * Returns a list of (source_node, timestamp, encoded_bytes) tuples.
+     * The encoded_bytes include the 0xAF marker for hive-lite compatibility.
+     */override fun `getAllCannedMessages`(): List<CannedMessageInfo> {
+            return FfiConverterSequenceTypeCannedMessageInfo.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_get_all_canned_messages(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Get all chat messages as JSON array string
      * Format: [{"origin_node":123,"timestamp":456,"sender":"name","text":"msg","reply_to_node":0,"reply_to_timestamp":0},...]
      */override fun `getAllChatMessages`(): kotlin.String {
@@ -2714,6 +2918,25 @@ open class HiveMesh: Disposable, AutoCloseable, HiveMeshInterface
     UniffiLib.uniffi_hive_btle_fn_method_hivemesh_get_all_chat_messages(
         it,
         _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get a stored CannedMessage document as raw hive-lite bytes.
+     *
+     * Returns the document encoded in hive-lite format (with 0xAF marker),
+     * or None if not found.
+     */override fun `getCannedMessageDocument`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_get_canned_message_document(
+        it,
+        FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),_status)
 }
     }
     )
@@ -3279,6 +3502,27 @@ open class HiveMesh: Disposable, AutoCloseable, HiveMeshInterface
     UniffiLib.uniffi_hive_btle_fn_method_hivemesh_sign(
         it,
         FfiConverterByteArray.lower(`message`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Store a CannedMessage document for CRDT sync.
+     *
+     * Takes raw hive-lite encoded bytes (including 0xAF marker).
+     * The document will be stored and synced to peers via delta sync.
+     *
+     * Returns true if the document was newly added or changed via merge.
+     */override fun `storeCannedMessageDocument`(`encodedBytes`: kotlin.ByteArray): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_hive_btle_fn_method_hivemesh_store_canned_message_document(
+        it,
+        FfiConverterByteArray.lower(`encodedBytes`),_status)
 }
     }
     )
@@ -4079,6 +4323,61 @@ public object FfiConverterTypeMeshGenesis: FfiConverter<MeshGenesis, Long> {
 
     override fun write(value: MeshGenesis, buf: ByteBuffer) {
         buf.putLong(lower(value))
+    }
+}
+
+
+
+/**
+ * Information about a stored CannedMessage document.
+ */
+data class CannedMessageInfo (
+    /**
+     * Source node that created the message
+     */
+    var `sourceNode`: kotlin.UInt
+    , 
+    /**
+     * Timestamp when the message was created
+     */
+    var `timestamp`: kotlin.ULong
+    , 
+    /**
+     * Encoded message bytes (includes 0xAF marker)
+     */
+    var `encodedBytes`: kotlin.ByteArray
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCannedMessageInfo: FfiConverterRustBuffer<CannedMessageInfo> {
+    override fun read(buf: ByteBuffer): CannedMessageInfo {
+        return CannedMessageInfo(
+            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CannedMessageInfo) = (
+            FfiConverterUInt.allocationSize(value.`sourceNode`) +
+            FfiConverterULong.allocationSize(value.`timestamp`) +
+            FfiConverterByteArray.allocationSize(value.`encodedBytes`)
+    )
+
+    override fun write(value: CannedMessageInfo, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`sourceNode`, buf)
+            FfiConverterULong.write(value.`timestamp`, buf)
+            FfiConverterByteArray.write(value.`encodedBytes`, buf)
     }
 }
 
@@ -5264,6 +5563,34 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeCannedMessageInfo: FfiConverterRustBuffer<List<CannedMessageInfo>> {
+    override fun read(buf: ByteBuffer): List<CannedMessageInfo> {
+        val len = buf.getInt()
+        return List<CannedMessageInfo>(len) {
+            FfiConverterTypeCannedMessageInfo.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<CannedMessageInfo>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeCannedMessageInfo.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<CannedMessageInfo>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeCannedMessageInfo.write(it, buf)
         }
     }
 }

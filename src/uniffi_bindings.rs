@@ -9,6 +9,21 @@
 
 use std::sync::Arc;
 
+// Initialize Android logger on first use
+#[cfg(target_os = "android")]
+static ANDROID_LOGGER_INIT: std::sync::Once = std::sync::Once::new();
+
+#[cfg(target_os = "android")]
+fn ensure_android_logger() {
+    ANDROID_LOGGER_INIT.call_once(|| {
+        android_logger::init_once(
+            android_logger::Config::default()
+                .with_max_level(log::LevelFilter::Info)
+                .with_tag("HiveFFI"),
+        );
+    });
+}
+
 use crate::hive_mesh::{self, DataReceivedResult as InternalDataReceivedResult};
 use crate::observer::DisconnectReason as ObserverDisconnectReason;
 use crate::peer::{
@@ -398,6 +413,18 @@ impl From<InternalFullStateCountSummary> for FullStateCountSummary {
     }
 }
 
+/// Information about a stored CannedMessage document.
+#[cfg(feature = "hive-lite-sync")]
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct CannedMessageInfo {
+    /// Source node that created the message
+    pub source_node: u32,
+    /// Timestamp when the message was created
+    pub timestamp: u64,
+    /// Encoded message bytes (includes 0xAF marker)
+    pub encoded_bytes: Vec<u8>,
+}
+
 // ============================================================================
 // HiveMesh Object
 // ============================================================================
@@ -412,6 +439,9 @@ impl HiveMesh {
     /// Create a basic HiveMesh
     #[uniffi::constructor]
     pub fn new(node_id: u32, callsign: &str, mesh_id: &str) -> Arc<Self> {
+        #[cfg(target_os = "android")]
+        ensure_android_logger();
+
         let config = crate::HiveMeshConfig::new(NodeId::new(node_id), callsign, mesh_id);
         Arc::new(Self {
             inner: hive_mesh::HiveMesh::new(config),
@@ -426,6 +456,9 @@ impl HiveMesh {
         mesh_id: &str,
         peripheral_type: PeripheralType,
     ) -> Arc<Self> {
+        #[cfg(target_os = "android")]
+        ensure_android_logger();
+
         let config = crate::HiveMeshConfig::new(NodeId::new(node_id), callsign, mesh_id)
             .with_peripheral_type(peripheral_type.into());
         Arc::new(Self {
@@ -440,6 +473,9 @@ impl HiveMesh {
         identity: &DeviceIdentity,
         genesis: &MeshGenesis,
     ) -> Arc<Self> {
+        #[cfg(target_os = "android")]
+        ensure_android_logger();
+
         Arc::new(Self {
             inner: hive_mesh::HiveMesh::from_genesis(
                 &genesis.inner,
@@ -464,6 +500,25 @@ impl HiveMesh {
     /// Periodic tick - call every sync interval
     pub fn tick(&self, now_ms: u64) -> Option<Vec<u8>> {
         self.inner.tick(now_ms)
+    }
+
+    /// Build a delta document for a specific peer.
+    ///
+    /// This includes only operations that have changed since the last sync
+    /// with this peer, including app-layer documents (CannedMessages, etc.).
+    /// Returns None if there's nothing new to send.
+    pub fn build_delta_document_for_peer(&self, peer_id: u32, now_ms: u64) -> Option<Vec<u8>> {
+        self.inner
+            .build_delta_document_for_peer(&crate::NodeId::new(peer_id), now_ms)
+    }
+
+    /// Build a full delta document containing all current state.
+    ///
+    /// Unlike `build_delta_document_for_peer`, this includes all state
+    /// regardless of what has been sent before. Use for broadcasts or
+    /// new peer connections. Includes app-layer documents.
+    pub fn build_full_delta_document(&self, now_ms: u64) -> Vec<u8> {
+        self.inner.build_full_delta_document(now_ms)
     }
 
     // ==================== Emergency/Ack ====================
@@ -844,7 +899,8 @@ impl HiveMesh {
     ///
     /// Returns true if the message should be processed, false if it's a duplicate.
     pub fn check_canned_message(&self, source_node: u32, timestamp: u64, ttl_ms: u64) -> bool {
-        self.inner.check_canned_message(source_node, timestamp, ttl_ms)
+        self.inner
+            .check_canned_message(source_node, timestamp, ttl_ms)
     }
 
     /// Mark a CannedMessage as seen (for deduplication).
@@ -861,6 +917,118 @@ impl HiveMesh {
     /// after deduplication check.
     pub fn get_connected_peer_identifiers(&self) -> Vec<String> {
         self.inner.get_connected_peer_identifiers()
+    }
+
+    // ==================== App Document Storage ====================
+    // These methods enable proper CRDT sync for app-layer documents
+    // through the document registry (0xC0-0xCF type range).
+
+    /// Store a CannedMessage document for CRDT sync.
+    ///
+    /// Takes raw hive-lite encoded bytes (including 0xAF marker).
+    /// The document will be stored and synced to peers via delta sync.
+    ///
+    /// Returns true if the document was newly added or changed via merge.
+    #[cfg(feature = "hive-lite-sync")]
+    pub fn store_canned_message_document(&self, encoded_bytes: &[u8]) -> bool {
+        use crate::hive_lite_sync::CannedMessageDocument;
+        use crate::registry::DocumentType;
+
+        // The encoded bytes include 0xAF marker from hive-lite.
+        // CannedMessageDocument::decode expects payload WITHOUT 0xAF
+        // (since it prepends it), but the incoming bytes already have it.
+        // So we need to strip it first.
+        if encoded_bytes.is_empty() {
+            return false;
+        }
+
+        // Decode using CannedMessageDocument (which handles the 0xAF internally)
+        // The encode() strips 0xAF, decode() prepends 0xAF.
+        // But here we have raw hive-lite bytes WITH 0xAF.
+        // So we skip the first byte to get the payload that encode() would produce.
+        let payload = &encoded_bytes[1..];
+        if let Some(doc) = CannedMessageDocument::decode(payload) {
+            self.inner.store_app_document(doc)
+        } else {
+            false
+        }
+    }
+
+    /// Record an ACK on a stored CannedMessage document.
+    ///
+    /// This is the efficient path for adding ACKs - the full document
+    /// doesn't need to be re-sent, just the ACK delta.
+    ///
+    /// Returns true if the ACK was new (document changed).
+    #[cfg(feature = "hive-lite-sync")]
+    pub fn ack_canned_message(
+        &self,
+        source_node: u32,
+        timestamp: u64,
+        acker_node: u32,
+        ack_timestamp: u64,
+    ) -> bool {
+        use crate::hive_lite_sync::CannedMessageDocument;
+
+        // Get the document, add ACK, store back
+        if let Some(mut doc) = self
+            .inner
+            .get_app_document::<CannedMessageDocument>(source_node, timestamp)
+        {
+            if doc.ack(acker_node, ack_timestamp) {
+                self.inner.store_app_document(doc)
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Get a stored CannedMessage document as raw hive-lite bytes.
+    ///
+    /// Returns the document encoded in hive-lite format (with 0xAF marker),
+    /// or None if not found.
+    #[cfg(feature = "hive-lite-sync")]
+    pub fn get_canned_message_document(&self, source_node: u32, timestamp: u64) -> Option<Vec<u8>> {
+        use crate::hive_lite_sync::CannedMessageDocument;
+
+        self.inner
+            .get_app_document::<CannedMessageDocument>(source_node, timestamp)
+            .map(|doc| {
+                // Return with 0xAF marker for hive-lite compatibility
+                let inner = doc.into_inner();
+                inner.encode().to_vec()
+            })
+    }
+
+    /// Get the number of stored app documents.
+    pub fn app_document_count(&self) -> u32 {
+        self.inner.app_document_count() as u32
+    }
+
+    /// Get all stored CannedMessage documents as encoded bytes.
+    ///
+    /// Returns a list of (source_node, timestamp, encoded_bytes) tuples.
+    /// The encoded_bytes include the 0xAF marker for hive-lite compatibility.
+    #[cfg(feature = "hive-lite-sync")]
+    pub fn get_all_canned_messages(&self) -> Vec<CannedMessageInfo> {
+        use crate::hive_lite_sync::CannedMessageDocument;
+        use crate::registry::DocumentType;
+
+        self.inner
+            .get_all_app_documents_of_type::<CannedMessageDocument>()
+            .into_iter()
+            .map(|doc| {
+                let (source_node, timestamp) = doc.identity();
+                let inner = doc.into_inner();
+                CannedMessageInfo {
+                    source_node,
+                    timestamp,
+                    encoded_bytes: inner.encode().to_vec(),
+                }
+            })
+            .collect()
     }
 }
 

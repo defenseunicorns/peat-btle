@@ -125,19 +125,19 @@ tasks.register<Exec>("buildNativeLibs") {
 
         # Build for arm64-v8a (modern Android devices)
         echo "Building for aarch64-linux-android (arm64-v8a)..."
-        cargo build --release --target aarch64-linux-android --features android
+        cargo build --release --target aarch64-linux-android --features android,hive-lite-sync
         mkdir -p android/src/main/jniLibs/arm64-v8a
         cp target/aarch64-linux-android/release/libhive_btle.so android/src/main/jniLibs/arm64-v8a/
 
         # Build for armeabi-v7a (older devices)
         echo "Building for armv7-linux-androideabi (armeabi-v7a)..."
-        cargo build --release --target armv7-linux-androideabi --features android
+        cargo build --release --target armv7-linux-androideabi --features android,hive-lite-sync
         mkdir -p android/src/main/jniLibs/armeabi-v7a
         cp target/armv7-linux-androideabi/release/libhive_btle.so android/src/main/jniLibs/armeabi-v7a/
 
         # Build for x86_64 (emulators)
         echo "Building for x86_64-linux-android (x86_64)..."
-        cargo build --release --target x86_64-linux-android --features android
+        cargo build --release --target x86_64-linux-android --features android,hive-lite-sync
         mkdir -p android/src/main/jniLibs/x86_64
         cp target/x86_64-linux-android/release/libhive_btle.so android/src/main/jniLibs/x86_64/
 

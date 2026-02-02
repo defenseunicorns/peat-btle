@@ -265,8 +265,14 @@ fn test_peer_marked_disconnected_on_ble_disconnect() {
     // Verify peer B is connected
     let peers = mesh_a.get_peers();
     assert_eq!(peers.len(), 1, "A should have 1 peer");
-    assert!(peers[0].is_connected, "Peer B should be connected initially");
-    println!("Before disconnect: peer is_connected={}", peers[0].is_connected);
+    assert!(
+        peers[0].is_connected,
+        "Peer B should be connected initially"
+    );
+    println!(
+        "Before disconnect: peer is_connected={}",
+        peers[0].is_connected
+    );
 
     // Simulate BLE disconnect (like turning BLE off)
     let disconnected_node = mesh_a.on_ble_disconnected("peer-b", DisconnectReason::LinkLoss);
@@ -282,7 +288,11 @@ fn test_peer_marked_disconnected_on_ble_disconnect() {
 
     // Verify peer B is now marked as disconnected
     let peers_after = mesh_a.get_peers();
-    assert_eq!(peers_after.len(), 1, "Peer should still exist but be disconnected");
+    assert_eq!(
+        peers_after.len(),
+        1,
+        "Peer should still exist but be disconnected"
+    );
     assert!(
         !peers_after[0].is_connected,
         "Peer B should be DISCONNECTED after on_ble_disconnected"
@@ -316,11 +326,17 @@ fn test_stale_disconnected_peer_cleanup() {
 
     // Verify peer is connected
     assert_eq!(mesh_a.get_peers().len(), 1, "A should have 1 peer");
-    assert!(mesh_a.get_peers()[0].is_connected, "Peer should be connected");
+    assert!(
+        mesh_a.get_peers()[0].is_connected,
+        "Peer should be connected"
+    );
 
     // Disconnect the peer
     mesh_a.on_ble_disconnected("peer-b", DisconnectReason::LinkLoss);
-    assert!(!mesh_a.get_peers()[0].is_connected, "Peer should be disconnected");
+    assert!(
+        !mesh_a.get_peers()[0].is_connected,
+        "Peer should be disconnected"
+    );
 
     // First tick initializes last_cleanup_ms
     mesh_a.tick(2000);
@@ -423,7 +439,11 @@ fn test_reconnect_after_disconnect() {
     // Reconnect with new data
     mesh_a.on_ble_data("peer-b", &doc_b, TEST_TIMESTAMP + 1000);
     let peers = mesh_a.get_peers();
-    assert_eq!(peers.len(), 1, "Should still have 1 peer (updated, not duplicated)");
+    assert_eq!(
+        peers.len(),
+        1,
+        "Should still have 1 peer (updated, not duplicated)"
+    );
     assert!(
         peers[0].is_connected,
         "Peer should be connected again after receiving new data"
@@ -521,15 +541,25 @@ fn test_connection_graph_updated_on_disconnect() {
         .iter()
         .filter(|p| p.state.is_connected())
         .collect();
-    assert_eq!(connected_before.len(), 1, "Graph should show 1 connected peer before disconnect");
-    println!("Before disconnect: {} connected in graph", connected_before.len());
+    assert_eq!(
+        connected_before.len(),
+        1,
+        "Graph should show 1 connected peer before disconnect"
+    );
+    println!(
+        "Before disconnect: {} connected in graph",
+        connected_before.len()
+    );
 
     // Disconnect
     mesh_a.on_ble_disconnected("peer-b", DisconnectReason::LinkLoss);
 
     // Verify peer B is disconnected in PeerManager
     let peers_after = mesh_a.get_peers();
-    assert!(!peers_after[0].is_connected, "Peer B should be disconnected");
+    assert!(
+        !peers_after[0].is_connected,
+        "Peer B should be disconnected"
+    );
 
     // Verify connection graph is updated
     let graph_after = mesh_a.get_connection_graph();
@@ -537,19 +567,29 @@ fn test_connection_graph_updated_on_disconnect() {
         .iter()
         .filter(|p| p.state.is_connected())
         .collect();
-    assert_eq!(connected_after.len(), 0, "Graph should show 0 connected peers after disconnect");
+    assert_eq!(
+        connected_after.len(),
+        0,
+        "Graph should show 0 connected peers after disconnect"
+    );
 
     // The peer should be in Disconnected state in the graph
     let peer_state = mesh_a.get_peer_connection_state(node_b);
-    assert!(peer_state.is_some(), "Peer should still exist in graph (in disconnected state)");
+    assert!(
+        peer_state.is_some(),
+        "Peer should still exist in graph (in disconnected state)"
+    );
     assert_eq!(
         peer_state.as_ref().unwrap().state,
         ConnectionState::Disconnected,
         "Peer should be in Disconnected state"
     );
 
-    println!("After disconnect: {} connected in graph, peer state={:?}",
-             connected_after.len(), peer_state.unwrap().state);
+    println!(
+        "After disconnect: {} connected in graph, peer state={:?}",
+        connected_after.len(),
+        peer_state.unwrap().state
+    );
     println!("PASS: Connection graph updated on disconnect");
 }
 
@@ -583,9 +623,8 @@ fn test_indirect_peers_cleaned_on_via_peer_disconnect() {
     let c_doc = mesh_c.build_document();
 
     // Create envelope as if C sent it, then B relayed it (increment hop)
-    let envelope = RelayEnvelope::broadcast(node_c, c_doc)
-        .with_max_hops(7);
-    let relayed = envelope.relay().expect("Should be able to relay");  // This increments hop_count to 1
+    let envelope = RelayEnvelope::broadcast(node_c, c_doc).with_max_hops(7);
+    let relayed = envelope.relay().expect("Should be able to relay"); // This increments hop_count to 1
     let relay_data = relayed.encode();
 
     // Process the relay document as if it came from B (but originated from C)
@@ -595,22 +634,47 @@ fn test_indirect_peers_cleaned_on_via_peer_disconnect() {
     let indirect_before = mesh_a.get_indirect_peers();
     let c_indirect = indirect_before.iter().find(|p| p.node_id == node_c);
     assert!(c_indirect.is_some(), "C should be tracked as indirect peer");
-    assert_eq!(c_indirect.unwrap().min_hops, 1, "C should be 1 hop away via B");
-    println!("Before disconnect: C is indirect peer via B ({} hops), total indirect: {}",
-             c_indirect.unwrap().min_hops, indirect_before.len());
+    assert_eq!(
+        c_indirect.unwrap().min_hops,
+        1,
+        "C should be 1 hop away via B"
+    );
+    println!(
+        "Before disconnect: C is indirect peer via B ({} hops), total indirect: {}",
+        c_indirect.unwrap().min_hops,
+        indirect_before.len()
+    );
 
     // Disconnect B
     let disconnected = mesh_a.on_ble_disconnected("peer-b", DisconnectReason::LinkLoss);
-    println!("Disconnected node: {:?}", disconnected.map(|n| format!("{:08X}", n.as_u32())));
-    assert_eq!(disconnected, Some(node_b), "Should have disconnected node B");
+    println!(
+        "Disconnected node: {:?}",
+        disconnected.map(|n| format!("{:08X}", n.as_u32()))
+    );
+    assert_eq!(
+        disconnected,
+        Some(node_b),
+        "Should have disconnected node B"
+    );
 
     // Verify C is no longer tracked (path through B is gone)
     let indirect_after = mesh_a.get_indirect_peers();
-    println!("Indirect peers after disconnect: {:?}",
-             indirect_after.iter().map(|p| format!("{:08X} (via {:?})", p.node_id.as_u32(), p.via_peers)).collect::<Vec<_>>());
+    println!(
+        "Indirect peers after disconnect: {:?}",
+        indirect_after
+            .iter()
+            .map(|p| format!("{:08X} (via {:?})", p.node_id.as_u32(), p.via_peers))
+            .collect::<Vec<_>>()
+    );
     let c_after = indirect_after.iter().find(|p| p.node_id == node_c);
-    assert!(c_after.is_none(), "C should be removed when via_peer B disconnects");
-    println!("After disconnect: indirect peers remaining: {}", indirect_after.len());
+    assert!(
+        c_after.is_none(),
+        "C should be removed when via_peer B disconnects"
+    );
+    println!(
+        "After disconnect: indirect peers remaining: {}",
+        indirect_after.len()
+    );
 
     println!("PASS: Indirect peers cleaned up when via_peer disconnects");
 }

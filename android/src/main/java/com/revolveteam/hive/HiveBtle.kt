@@ -60,6 +60,7 @@ import uniffi.hive_btle.StateCountSummary
 import uniffi.hive_btle.FullStateCountSummary
 import uniffi.hive_btle.IndirectPeer
 import uniffi.hive_btle.ViaPeerRoute
+import uniffi.hive_btle.CannedMessageInfo
 import uniffi.hive_btle.deriveNodeIdFromMac
 
 /**
@@ -1892,6 +1893,78 @@ class HiveBtle(
     }
 
     /**
+     * Store a CannedMessage document for CRDT sync.
+     *
+     * Takes raw hive-lite encoded bytes (including 0xAF marker).
+     * The document will be stored and synced to peers via delta sync.
+     *
+     * @param encodedBytes The hive-lite encoded CannedMessageAckEvent bytes
+     * @return true if the document was newly added or changed via merge
+     */
+    fun storeCannedMessageDocument(encodedBytes: ByteArray): Boolean {
+        val mesh = _mesh
+        if (mesh == null) {
+            Log.w(TAG, "Mesh not initialized, cannot store canned message")
+            return false
+        }
+        val result = mesh.storeCannedMessageDocument(encodedBytes)
+        Log.d(TAG, "[CANNED-MSG] Stored document: ${encodedBytes.size} bytes, changed=$result")
+        return result
+    }
+
+    /**
+     * Record an ACK on a stored CannedMessage document.
+     *
+     * @param sourceNode The source node that created the document
+     * @param timestamp The document timestamp
+     * @param ackerNode The node recording the ACK
+     * @param ackTimestamp The ACK timestamp
+     * @return true if the ACK was new (document changed)
+     */
+    fun ackCannedMessage(sourceNode: UInt, timestamp: ULong, ackerNode: UInt, ackTimestamp: ULong): Boolean {
+        val mesh = _mesh
+        if (mesh == null) {
+            Log.w(TAG, "Mesh not initialized, cannot ACK canned message")
+            return false
+        }
+        val result = mesh.ackCannedMessage(sourceNode, timestamp, ackerNode, ackTimestamp)
+        Log.d(TAG, "[CANNED-MSG] ACK recorded: source=$sourceNode ts=$timestamp acker=$ackerNode, changed=$result")
+        return result
+    }
+
+    /**
+     * Get the number of stored app documents.
+     */
+    fun appDocumentCount(): Int {
+        return (_mesh?.appDocumentCount() ?: 0u).toInt()
+    }
+
+    /**
+     * Get all stored CannedMessage documents.
+     *
+     * Returns a list of CannedMessageInfo objects containing:
+     * - sourceNode: The node that created the message
+     * - timestamp: When the message was created
+     * - encodedBytes: The hive-lite encoded bytes (with 0xAF marker)
+     *
+     * @return List of CannedMessageInfo, or empty list if mesh not initialized
+     */
+    fun getAllCannedMessages(): List<CannedMessageInfo> {
+        return _mesh?.getAllCannedMessages() ?: emptyList()
+    }
+
+    /**
+     * Get a specific CannedMessage document as encoded bytes.
+     *
+     * @param sourceNode The source node of the message
+     * @param timestamp The timestamp of the message
+     * @return The encoded bytes (with 0xAF marker), or null if not found
+     */
+    fun getCannedMessageDocument(sourceNode: UInt, timestamp: ULong): ByteArray? {
+        return _mesh?.getCannedMessageDocument(sourceNode, timestamp)
+    }
+
+    /**
      * Get the number of chat messages stored in the local CRDT.
      *
      * @return Number of messages, or 0 if mesh not initialized
@@ -2723,14 +2796,9 @@ class HiveBtle(
                 meshListener?.onDecryptedData(peer, decryptedBytes)
             }
 
-            // app-layer message (0xAF) - also call legacy handler for backward compatibility
-            // Apps that implement onDecryptedData get raw bytes, but apps using onPeerEvent
-            // (like ATAK plugin) still need the event callback.
-            if (marker == APP_LAYER_MARKER) {
-                Log.d(TAG, "[TRANSPORT] app-layer message detected, processing via handleAppLayerMessage")
-                handleAppLayerMessage(peer, decryptedBytes)
-                return
-            }
+            // NOTE: App-layer messages (0xAF) now flow through delta sync for proper CRDT handling.
+            // They are stored in the document registry and synced via Operation::App.
+            // The onDecryptedData callback above provides raw bytes for legacy apps.
         }
 
         // LEGACY: Continue with existing parsing for backward compatibility
@@ -3214,19 +3282,20 @@ class HiveBtle(
      * Returns delta document otherwise.
      */
     private fun buildSyncDocumentForPeer(peerId: Long, now: Long, currentCounterValue: Long): ByteArray? {
+        val mesh = _mesh ?: return null
         val state = peerSyncState.getOrPut(peerId) { PeerSyncState() }
 
-        // Determine if we need a full sync
+        // Sync local peripheral state to native before building document
+        // This ensures location and other state is included in encrypted docs
+        syncLocalPeripheralToNative(now)
+
+        // Determine if we need a full sync (first sync or every FULL_SYNC_INTERVAL)
         val needsFullSync = state.syncCount == 0 ||
                             state.syncCount % FULL_SYNC_INTERVAL == 0
 
         if (needsFullSync) {
-            // Sync local peripheral state to native before building document
-            // This ensures location and other state is included in encrypted docs
-            syncLocalPeripheralToNative(now)
-
-            // Full document sync - use native builder which includes chat CRDT
-            val documentBytes = _mesh?.buildDocument() ?: return null
+            // Full delta document - includes all state including app documents
+            val documentBytes = mesh.buildFullDeltaDocument(now.toULong())
             state.lastSentTimestamp = now
             state.lastSentPeripheral = localPeripheral?.copy()
             state.lastSentCounterValue = currentCounterValue
@@ -3235,90 +3304,22 @@ class HiveBtle(
             return documentBytes
         }
 
-        // Check what changed since last sync to this peer
-        val operations = mutableListOf<DeltaOperation>()
-
-        // Check counter changes
-        if (currentCounterValue != state.lastSentCounterValue) {
-            val increment = currentCounterValue - state.lastSentCounterValue
-            if (increment > 0) {
-                operations.add(DeltaOperation.IncrementCounter(
-                    counterId = 0,
-                    nodeId = nodeId,
-                    amount = increment,
-                    timestamp = now
-                ))
-            }
-        }
-
-        // Check peripheral changes - emit field-level deltas for bandwidth efficiency
-        val currentPeripheral = localPeripheral
-        val lastPeripheral = state.lastSentPeripheral
-        if (currentPeripheral != null) {
-            // Check location change
-            if (currentPeripheral.location != lastPeripheral?.location) {
-                currentPeripheral.location?.let { loc ->
-                    operations.add(DeltaOperation.UpdateLocation(
-                        latitude = loc.latitude.toFloat(),
-                        longitude = loc.longitude.toFloat(),
-                        altitude = loc.altitude.toFloat()
-                    ))
-                }
-            }
-
-            // Check health changes
-            val lastHealth = lastPeripheral?.health
-            if (currentPeripheral.health.batteryPercent != lastHealth?.batteryPercent ||
-                currentPeripheral.health.heartRate != lastHealth?.heartRate ||
-                currentPeripheral.health.activityLevel != lastHealth?.activityLevel ||
-                currentPeripheral.health.alerts != lastHealth?.alerts) {
-                operations.add(DeltaOperation.UpdateHealth(
-                    batteryPercent = currentPeripheral.health.batteryPercent,
-                    heartRate = currentPeripheral.health.heartRate,
-                    activityLevel = currentPeripheral.health.activityLevel,
-                    alerts = currentPeripheral.health.alerts
-                ))
-            }
-
-            // Check callsign change
-            if (currentPeripheral.callsign != lastPeripheral?.callsign) {
-                operations.add(DeltaOperation.UpdateCallsign(currentPeripheral.callsign))
-            }
-
-            // Check event change
-            val lastEvent = lastPeripheral?.lastEvent
-            if (currentPeripheral.lastEvent != lastEvent) {
-                currentPeripheral.lastEvent?.let { event ->
-                    operations.add(DeltaOperation.UpdateEvent(
-                        eventType = event.eventType,
-                        timestamp = event.timestamp
-                    ))
-                }
-            }
-        }
-
-        // If nothing changed, skip this sync entirely
-        if (operations.isEmpty()) {
+        // Per-peer delta - only sends what's new for this peer, including app documents
+        // The Rust side tracks per-peer state and filters operations
+        val deltaBytes = mesh.buildDeltaDocumentForPeer(peerId.toUInt(), now.toULong())
+        if (deltaBytes == null) {
             Log.v(TAG, "[SKIP] Peer ${String.format("%08X", peerId)}: no changes")
             state.syncCount++
             return null
         }
 
-        // Build and encode delta document
-        val deltaDoc = HiveDeltaDocument(
-            originNode = nodeId,
-            timestampMs = now,
-            operations = operations
-        )
-        val deltaBytes = HiveDeltaDocument.encode(deltaDoc)
-
-        // Update sync state
+        // Update local state tracking
         state.lastSentTimestamp = now
-        state.lastSentPeripheral = currentPeripheral?.copy()
+        state.lastSentPeripheral = localPeripheral?.copy()
         state.lastSentCounterValue = currentCounterValue
         state.syncCount++
 
-        Log.d(TAG, "[DELTA] Peer ${String.format("%08X", peerId)}: ${deltaBytes.size} bytes, ${operations.size} ops (sync #${state.syncCount})")
+        Log.d(TAG, "[DELTA] Peer ${String.format("%08X", peerId)}: ${deltaBytes.size} bytes (sync #${state.syncCount})")
         return deltaBytes
     }
 

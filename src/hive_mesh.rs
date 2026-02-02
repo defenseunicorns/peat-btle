@@ -61,11 +61,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::document::{ENCRYPTED_MARKER, KEY_EXCHANGE_MARKER, PEER_E2EE_MARKER};
-
-/// App-layer message marker byte (0xAF).
-/// Messages with this marker are passed through to apps via relay_data.
-/// hive-btle is transport-only; apps use hive-lite to decode these.
-const APP_LAYER_MARKER: u8 = 0xAF;
 use crate::document_sync::DocumentSync;
 use crate::gossip::{GossipStrategy, RandomFanout};
 use crate::observer::{DisconnectReason, HiveEvent, HiveObserver, SecurityViolationKind};
@@ -259,6 +254,11 @@ impl HiveMeshConfig {
     }
 }
 
+/// Type alias for app document storage to reduce type complexity
+#[cfg(feature = "std")]
+type AppDocumentStore =
+    std::sync::RwLock<HashMap<(u8, u32, u64), Box<dyn core::any::Any + Send + Sync>>>;
+
 /// Main facade for HIVE BLE mesh operations
 ///
 /// Composes peer management, document sync, and observer notifications.
@@ -326,6 +326,13 @@ pub struct HiveMesh {
     /// Enables external crates to register custom document types that sync
     /// through the mesh using the extensible registry pattern.
     document_registry: DocumentRegistry,
+
+    /// Storage for app-layer documents.
+    ///
+    /// Keyed by (type_id, source_node, timestamp) to uniquely identify each
+    /// document instance. Values are type-erased boxes that can be downcast
+    /// using the document registry handlers.
+    app_documents: AppDocumentStore,
 }
 
 #[cfg(feature = "std")]
@@ -386,6 +393,7 @@ impl HiveMesh {
             identity_registry: std::sync::Mutex::new(IdentityRegistry::new()),
             peer_peripherals: std::sync::RwLock::new(HashMap::new()),
             document_registry,
+            app_documents: std::sync::RwLock::new(HashMap::new()),
         }
     }
 
@@ -446,6 +454,7 @@ impl HiveMesh {
             identity_registry: std::sync::Mutex::new(IdentityRegistry::new()),
             peer_peripherals: std::sync::RwLock::new(HashMap::new()),
             document_registry,
+            app_documents: std::sync::RwLock::new(HashMap::new()),
         }
     }
 
@@ -1114,6 +1123,11 @@ impl HiveMesh {
             }
         }
 
+        // Add app document operations
+        for app_op in self.app_document_delta_ops() {
+            all_operations.push(Operation::App(app_op));
+        }
+
         // Filter operations for this peer (only send what's new)
         let filtered_operations: Vec<Operation> = {
             let encoder = self.delta_encoder.lock().unwrap();
@@ -1210,6 +1224,11 @@ impl HiveMesh {
             }
         }
 
+        // Add app document operations
+        for app_op in self.app_document_delta_ops() {
+            delta.add_operation(Operation::App(app_op));
+        }
+
         let encoded = delta.encode();
         self.encrypt_document(&encoded)
     }
@@ -1242,13 +1261,14 @@ impl HiveMesh {
         let mut event_timestamp = 0u64;
         let mut peer_peripheral: Option<crate::sync::crdt::Peripheral> = None;
 
-        log::debug!(
-            "Delta document from {:08X}: {} operations",
+        log::info!(
+            "Delta document from {:08X}: {} operations, data_len={}",
             delta.origin_node.as_u32(),
-            delta.operations.len()
+            delta.operations.len(),
+            data.len()
         );
         for op in &delta.operations {
-            log::debug!("  Operation: {}", op.key());
+            log::info!("  Operation: {}", op.key());
             match op {
                 Operation::IncrementCounter {
                     node_id, amount, ..
@@ -1304,6 +1324,63 @@ impl HiveMesh {
                     if *emergency_timestamp > event_timestamp {
                         event_timestamp = *emergency_timestamp;
                     }
+                }
+                Operation::App(app_op) => {
+                    // Handle app-layer document operation
+                    //
+                    // The timestamp field may contain version info in the upper bits
+                    // (used by delta encoder for change detection). Extract the
+                    // original document timestamp from the lower 48 bits.
+                    let doc_timestamp = app_op.timestamp & 0x0000_FFFF_FFFF_FFFF;
+
+                    log::info!(
+                        "App operation received: type={:02X} op_code={:02X} from {:08X} ts={} payload_len={}",
+                        app_op.type_id,
+                        app_op.op_code,
+                        app_op.source_node,
+                        doc_timestamp,
+                        app_op.payload.len()
+                    );
+
+                    // Try to find/create document and apply the delta operation
+                    let doc_key = (app_op.type_id, app_op.source_node, doc_timestamp);
+                    let changed = {
+                        let mut docs = self.app_documents.write().unwrap();
+
+                        if let Some(existing) = docs.get_mut(&doc_key) {
+                            // Apply delta to existing document (merge via CRDT)
+                            self.document_registry.apply_delta_op(
+                                app_op.type_id,
+                                existing.as_mut(),
+                                app_op,
+                            )
+                        } else {
+                            // Try to decode from payload (for FULL_STATE operations)
+                            if let Some(decoded) = self
+                                .document_registry
+                                .decode(app_op.type_id, &app_op.payload)
+                            {
+                                docs.insert(doc_key, decoded);
+                                true
+                            } else {
+                                // For delta ops on unknown documents, we can't apply
+                                // The full state will be sent later
+                                log::debug!(
+                                    "Received delta for unknown doc {:?}, waiting for full state",
+                                    doc_key
+                                );
+                                false
+                            }
+                        }
+                    };
+
+                    // Emit observer event with the real document timestamp
+                    self.observers.notify(HiveEvent::app_document_received(
+                        app_op.type_id,
+                        NodeId::new(app_op.source_node),
+                        doc_timestamp,
+                        changed,
+                    ));
                 }
             }
         }
@@ -1653,6 +1730,115 @@ impl HiveMesh {
     /// ```
     pub fn document_registry(&self) -> &DocumentRegistry {
         &self.document_registry
+    }
+
+    /// Store an app-layer document.
+    ///
+    /// If a document with the same identity (type_id, source_node, timestamp)
+    /// already exists, it will be merged using CRDT semantics.
+    ///
+    /// Returns true if the document was newly added or changed via merge.
+    pub fn store_app_document<T: crate::registry::DocumentType>(&self, doc: T) -> bool {
+        let type_id = T::TYPE_ID;
+        let (source_node, timestamp) = doc.identity();
+        let key = (type_id, source_node, timestamp);
+
+        let mut docs = self.app_documents.write().unwrap();
+
+        if let Some(existing) = docs.get_mut(&key) {
+            // Merge with existing document
+            self.document_registry
+                .merge(type_id, existing.as_mut(), &doc)
+        } else {
+            // Insert new document
+            docs.insert(key, Box::new(doc));
+            true
+        }
+    }
+
+    /// Store a type-erased app-layer document.
+    ///
+    /// Used when receiving documents from the network where the type is
+    /// determined at runtime.
+    ///
+    /// Returns true if the document was newly added or changed via merge.
+    pub fn store_app_document_boxed(
+        &self,
+        type_id: u8,
+        source_node: u32,
+        timestamp: u64,
+        doc: Box<dyn core::any::Any + Send + Sync>,
+    ) -> bool {
+        let key = (type_id, source_node, timestamp);
+
+        let mut docs = self.app_documents.write().unwrap();
+
+        if let Some(existing) = docs.get_mut(&key) {
+            // Merge with existing document
+            self.document_registry
+                .merge(type_id, existing.as_mut(), doc.as_ref())
+        } else {
+            // Insert new document
+            docs.insert(key, doc);
+            true
+        }
+    }
+
+    /// Get a stored app-layer document by identity.
+    ///
+    /// Returns None if not found or if downcast to T fails.
+    pub fn get_app_document<T: crate::registry::DocumentType>(
+        &self,
+        source_node: u32,
+        timestamp: u64,
+    ) -> Option<T> {
+        let key = (T::TYPE_ID, source_node, timestamp);
+
+        let docs = self.app_documents.read().unwrap();
+        docs.get(&key).and_then(|d| d.downcast_ref::<T>()).cloned()
+    }
+
+    /// Get all stored app-layer documents of a specific type.
+    ///
+    /// Returns a vector of all documents of type T currently stored.
+    pub fn get_all_app_documents_of_type<T: crate::registry::DocumentType>(&self) -> Vec<T> {
+        let docs = self.app_documents.read().unwrap();
+        docs.iter()
+            .filter(|((type_id, _, _), _)| *type_id == T::TYPE_ID)
+            .filter_map(|(_, doc)| doc.downcast_ref::<T>().cloned())
+            .collect()
+    }
+
+    /// Get delta operations for all stored app documents.
+    ///
+    /// Used during sync to include app documents in the delta stream.
+    pub fn app_document_delta_ops(&self) -> Vec<crate::registry::AppOperation> {
+        let docs = self.app_documents.read().unwrap();
+        let mut ops = Vec::new();
+
+        for ((type_id, _source, _ts), doc) in docs.iter() {
+            if let Some(op) = self.document_registry.to_delta_op(*type_id, doc.as_ref()) {
+                ops.push(op);
+            }
+        }
+
+        ops
+    }
+
+    /// Get all document keys for a given type.
+    ///
+    /// Returns (source_node, timestamp) pairs for all documents of the specified type.
+    pub fn app_document_keys(&self, type_id: u8) -> Vec<(u32, u64)> {
+        let docs = self.app_documents.read().unwrap();
+        docs.keys()
+            .filter(|(tid, _, _)| *tid == type_id)
+            .map(|(_, source, ts)| (*source, *ts))
+            .collect()
+    }
+
+    /// Get the number of stored app documents.
+    pub fn app_document_count(&self) -> usize {
+        self.app_documents.read().unwrap().len()
     }
 
     // ==================== Observer Management ====================
@@ -2359,33 +2545,73 @@ impl HiveMesh {
             );
         }
 
-        // Check for app-layer message (0xAF marker) - return raw bytes for app to handle
-        // hive-btle is transport-only; apps use hive-lite to decode these messages
+        // Handle app-layer message (0xAF marker from hive-lite CannedMessages)
+        // Store in document registry for CRDT sync instead of bypassing to relay_data.
+        const APP_LAYER_MARKER: u8 = 0xAF;
         if decrypted.first().copied() == Some(APP_LAYER_MARKER) {
-            log::info!(
-                "App-layer message detected (0xAF), returning {} bytes for app",
-                decrypted.len()
-            );
-            // Return decrypted bytes via relay_data for app layer to process
-            return Some(DataReceivedResult {
-                source_node,
-                is_emergency: false,
-                is_ack: false,
-                counter_changed: false,
-                emergency_changed: false,
-                total_count: 0,
-                event_timestamp: 0,
-                relay_data: Some(decrypted.into_owned()), // Raw bytes for app to decode
-                origin_node: None,
-                hop_count: 0,
-                callsign: None,
-                battery_percent: None,
-                heart_rate: None,
-                event_type: None,
-                latitude: None,
-                longitude: None,
-                altitude: None,
-            });
+            #[cfg(feature = "hive-lite-sync")]
+            {
+                use crate::hive_lite_sync::CannedMessageDocument;
+                use crate::registry::DocumentType;
+
+                log::info!(
+                    "App-layer message (0xAF) from {:08X}, {} bytes - storing in registry",
+                    source_node.as_u32(),
+                    decrypted.len()
+                );
+
+                // Decode and store the document
+                // CannedMessageDocument::decode expects payload without 0xAF (it prepends it)
+                let payload = &decrypted[1..];
+                if let Some(doc) = CannedMessageDocument::decode(payload) {
+                    let (doc_source, doc_ts) = doc.identity();
+                    let changed = self.store_app_document(doc);
+                    log::info!(
+                        "Stored CannedMessage: source={:08X} ts={} changed={}",
+                        doc_source,
+                        doc_ts,
+                        changed
+                    );
+
+                    // Emit observer event
+                    self.observers.notify(HiveEvent::app_document_received(
+                        CannedMessageDocument::TYPE_ID,
+                        NodeId::new(doc_source),
+                        doc_ts,
+                        changed,
+                    ));
+
+                    // Return minimal result - document is now in registry
+                    return Some(DataReceivedResult {
+                        source_node,
+                        is_emergency: false,
+                        is_ack: false,
+                        counter_changed: false,
+                        emergency_changed: false,
+                        total_count: 0,
+                        event_timestamp: doc_ts,
+                        relay_data: None, // No longer needed - flows via delta sync
+                        origin_node: None,
+                        hop_count: 0,
+                        callsign: None,
+                        battery_percent: None,
+                        heart_rate: None,
+                        event_type: None,
+                        latitude: None,
+                        longitude: None,
+                        altitude: None,
+                    });
+                } else {
+                    log::warn!("Failed to decode 0xAF message as CannedMessageDocument");
+                }
+            }
+
+            #[cfg(not(feature = "hive-lite-sync"))]
+            {
+                log::debug!("Ignoring 0xAF message (hive-lite-sync feature not enabled)");
+            }
+
+            return None;
         }
 
         // Merge the document (legacy wire format v1)
@@ -2631,9 +2857,9 @@ impl HiveMesh {
         // via handle_relay_envelope_with_incoming when the relay envelope is first processed.
         if origin_node.is_none() {
             // Direct message - register the peer with this identifier
-            let is_new = self
-                .peer_manager
-                .on_incoming_connection(identifier, result.source_node, now_ms);
+            let is_new =
+                self.peer_manager
+                    .on_incoming_connection(identifier, result.source_node, now_ms);
 
             // Update connection graph to track connection state
             {

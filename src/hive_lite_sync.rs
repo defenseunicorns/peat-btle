@@ -147,12 +147,23 @@ impl DocumentType for CannedMessageDocument {
     }
 
     fn encode(&self) -> Vec<u8> {
-        // Convert from heapless::Vec to std::Vec
-        self.inner.encode().to_vec()
+        // Convert from heapless::Vec to std::Vec, skipping the 0xAF marker
+        // since the document registry adds its own type header (0xC0)
+        let full = self.inner.encode();
+        if full.len() > 1 {
+            full[1..].to_vec()
+        } else {
+            Vec::new()
+        }
     }
 
     fn decode(data: &[u8]) -> Option<Self> {
-        CannedMessageAckEvent::decode(data).map(Self::new)
+        // Prepend the 0xAF marker that hive-lite expects
+        // (it was stripped when we encoded for the registry)
+        let mut with_marker = Vec::with_capacity(1 + data.len());
+        with_marker.push(0xAF);
+        with_marker.extend_from_slice(data);
+        CannedMessageAckEvent::decode(&with_marker).map(Self::new)
     }
 
     fn merge(&mut self, other: &Self) -> bool {
@@ -160,25 +171,21 @@ impl DocumentType for CannedMessageDocument {
     }
 
     fn to_delta_op(&self) -> Option<AppOperation> {
-        // Encode only the ACK entries for efficient delta sync
-        let (source, timestamp) = self.identity();
+        // Send full document state for reliable sync.
+        // The delta encoder filters by (key, timestamp) - we encode ack_count
+        // in the upper bits so changes trigger re-sync.
+        let (source, doc_timestamp) = self.identity();
 
-        // Build minimal ACK-only payload:
-        // [num_acks: 2B] [ack entries: 12B each]
-        let mut payload = Vec::new();
-
-        // We need to extract just the ACK portion
-        // The full encode is: 24 base + (num_acks * 12) ACK entries
-        // For delta, we send just the ACKs
-        let full = self.inner.encode();
-        if full.len() >= 24 {
-            // Copy from num_acks onwards (bytes 22-23 and beyond)
-            payload.extend_from_slice(&full[22..]);
-        }
+        // Combine document timestamp with ack_count for versioning:
+        // - Lower 48 bits: original document timestamp
+        // - Upper 16 bits: ack_count (version indicator)
+        // This ensures the delta encoder re-sends when ACKs change.
+        let sync_timestamp =
+            (doc_timestamp & 0x0000_FFFF_FFFF_FFFF) | ((self.inner.ack_count() as u64) << 48);
 
         Some(
-            AppOperation::new(Self::TYPE_ID, op_code::ACK_UPDATE, source, timestamp)
-                .with_payload(payload),
+            AppOperation::new(Self::TYPE_ID, op_code::FULL_STATE, source, sync_timestamp)
+                .with_payload(self.encode()),
         )
     }
 
@@ -195,8 +202,7 @@ impl DocumentType for CannedMessageDocument {
                     return false;
                 }
 
-                let num_acks =
-                    u16::from_le_bytes([op.payload[0], op.payload[1]]) as usize;
+                let num_acks = u16::from_le_bytes([op.payload[0], op.payload[1]]) as usize;
                 let expected_len = 2 + num_acks * 12;
                 if op.payload.len() < expected_len {
                     return false;
@@ -317,19 +323,27 @@ mod tests {
         let op = doc.to_delta_op().unwrap();
 
         assert_eq!(op.type_id, CANNED_MESSAGE_TYPE_ID);
-        assert_eq!(op.op_code, op_code::ACK_UPDATE);
+        assert_eq!(op.op_code, op_code::FULL_STATE);
         assert_eq!(op.source_node, 0x12345678);
-        assert_eq!(op.timestamp, 2000);
+
+        // Timestamp encodes version (ack_count=3) in upper bits, doc timestamp in lower
+        // ack_count = 3 (source auto-acks + acker1 + acker2)
+        let expected_timestamp = 2000u64 | (3u64 << 48);
+        assert_eq!(op.timestamp, expected_timestamp);
+
+        // Extract original doc timestamp for document identity
+        let doc_timestamp = op.timestamp & 0x0000_FFFF_FFFF_FFFF;
+        assert_eq!(doc_timestamp, 2000);
 
         // Verify we can apply the delta to a fresh event
-        let mut fresh =
-            CannedMessageDocument::new(CannedMessageAckEvent::new(
-                CannedMessage::NeedSupport,
-                source,
-                None,
-                2000,
-            ));
+        let mut fresh = CannedMessageDocument::new(CannedMessageAckEvent::new(
+            CannedMessage::NeedSupport,
+            source,
+            None,
+            2000,
+        ));
 
+        // FULL_STATE merges the complete document state
         assert!(fresh.apply_delta_op(&op));
         assert!(fresh.has_acked(acker1.as_u32()));
         assert!(fresh.has_acked(acker2.as_u32()));

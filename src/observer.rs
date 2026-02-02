@@ -119,6 +119,21 @@ pub enum HiveEvent {
         total_count: u64,
     },
 
+    /// An app-layer document was received and stored/merged
+    ///
+    /// Emitted when a registered app document type (0xC0-0xCF) is received
+    /// and successfully processed through the document registry.
+    AppDocumentReceived {
+        /// Document type ID (0xC0-0xCF)
+        type_id: u8,
+        /// Source node that created the document
+        source_node: NodeId,
+        /// Document creation timestamp
+        timestamp: u64,
+        /// True if the document was new or changed after merge
+        changed: bool,
+    },
+
     // ==================== Mesh State Events ====================
     /// Mesh state changed (peer count, connected count)
     MeshStateChanged {
@@ -244,6 +259,21 @@ impl HiveEvent {
         Self::DocumentSynced {
             from_node,
             total_count,
+        }
+    }
+
+    /// Create an app document received event
+    pub fn app_document_received(
+        type_id: u8,
+        source_node: NodeId,
+        timestamp: u64,
+        changed: bool,
+    ) -> Self {
+        Self::AppDocumentReceived {
+            type_id,
+            source_node,
+            timestamp,
+            changed,
         }
     }
 
