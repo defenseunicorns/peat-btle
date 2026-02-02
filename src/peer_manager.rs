@@ -358,6 +358,21 @@ impl PeerManager {
         id_map.get(identifier).copied()
     }
 
+    /// Register an identifier to NodeId mapping
+    ///
+    /// Used to handle BLE address rotation where the same peer may connect
+    /// from different addresses. This registers the mapping so future lookups
+    /// using `get_node_id()` will succeed.
+    pub fn register_identifier(&self, identifier: &str, node_id: NodeId) {
+        let mut id_map = self.identifier_map.write().unwrap();
+        id_map.insert(identifier.to_string(), node_id);
+        log::debug!(
+            "Registered identifier {} -> {:08X}",
+            identifier,
+            node_id.as_u32()
+        );
+    }
+
     /// Get peer count
     pub fn peer_count(&self) -> usize {
         self.peers.read().unwrap().len()
@@ -371,6 +386,19 @@ impl PeerManager {
             .values()
             .filter(|p| p.is_connected)
             .count()
+    }
+
+    /// Get identifiers of all connected peers.
+    ///
+    /// Useful for relaying messages to all peers (e.g., CannedMessages).
+    pub fn get_connected_identifiers(&self) -> Vec<String> {
+        self.peers
+            .read()
+            .unwrap()
+            .values()
+            .filter(|p| p.is_connected)
+            .map(|p| p.identifier.clone())
+            .collect()
     }
 
     /// Get peers that need sync (connected and past cooldown)
@@ -647,5 +675,81 @@ mod tests {
         // Same peer reconnects - not new
         let is_new = manager.on_incoming_connection("central-uuid", NodeId::new(0x22222222), 2000);
         assert!(!is_new);
+    }
+
+    #[test]
+    fn test_address_rotation() {
+        // Test that same device with different BLE addresses is tracked as one peer
+        let config = PeerManagerConfig::with_mesh_id("DEMO");
+        let manager = PeerManager::new(NodeId::new(0x11111111), config);
+
+        // Device first seen from address A
+        let result = manager.on_discovered(
+            "AA:BB:CC:DD:EE:01",
+            Some("HIVE_DEMO-22222222"),
+            -70,
+            Some("DEMO"),
+            1000,
+        );
+        assert!(result.is_some());
+        let (node_id, is_new) = result.unwrap();
+        assert_eq!(node_id, NodeId::new(0x22222222));
+        assert!(is_new);
+        assert_eq!(manager.peer_count(), 1);
+
+        // Same device seen from rotated address B (same node ID in name)
+        let result = manager.on_discovered(
+            "AA:BB:CC:DD:EE:02",        // Different address
+            Some("HIVE_DEMO-22222222"), // Same node ID
+            -65,
+            Some("DEMO"),
+            2000,
+        );
+        assert!(result.is_some());
+        let (node_id, is_new) = result.unwrap();
+        assert_eq!(node_id, NodeId::new(0x22222222));
+        assert!(!is_new); // Not a new peer - address rotation
+        assert_eq!(manager.peer_count(), 1); // Still only 1 peer
+
+        // Both addresses should resolve to same node ID
+        assert_eq!(
+            manager.get_node_id("AA:BB:CC:DD:EE:01"),
+            Some(NodeId::new(0x22222222))
+        );
+        assert_eq!(
+            manager.get_node_id("AA:BB:CC:DD:EE:02"),
+            Some(NodeId::new(0x22222222))
+        );
+    }
+
+    #[test]
+    fn test_address_rotation_with_different_names() {
+        // Test WearTAK-style devices where name stays constant but address rotates
+        let config = PeerManagerConfig::with_mesh_id("DEMO");
+        let manager = PeerManager::new(NodeId::new(0x11111111), config);
+
+        // First discovery with name-derived node ID
+        let result = manager.on_discovered(
+            "AA:BB:CC:DD:EE:01",
+            Some("HIVE_DEMO-AABBCCDD"),
+            -70,
+            Some("DEMO"),
+            1000,
+        );
+        assert!(result.is_some());
+        assert!(result.unwrap().1); // is_new = true
+        assert_eq!(manager.peer_count(), 1);
+
+        // Address rotation - same name, different address
+        let result = manager.on_discovered(
+            "11:22:33:44:55:66",        // Completely different address
+            Some("HIVE_DEMO-AABBCCDD"), // Same name = same node ID
+            -75,
+            Some("DEMO"),
+            2000,
+        );
+        assert!(result.is_some());
+        assert!(!result.unwrap().1); // is_new = false (recognized as existing peer)
+        assert_eq!(manager.peer_count(), 1); // Still only 1 peer
     }
 }

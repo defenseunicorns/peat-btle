@@ -74,11 +74,13 @@
 
 mod genesis;
 mod identity;
+mod membership_token;
 mod mesh_key;
 mod peer_key;
 mod peer_session;
 mod persistence;
 mod registry;
+mod signed_payload;
 
 // Device identity and attestation
 pub use identity::{
@@ -90,6 +92,9 @@ pub use registry::{IdentityRecord, IdentityRegistry, RegistryResult};
 
 // Mesh genesis and credentials
 pub use genesis::{MembershipPolicy, MeshCredentials, MeshGenesis};
+
+// Membership tokens (tactical trust)
+pub use membership_token::{MembershipToken, MAX_CALLSIGN_LEN, MESH_ID_SIZE, TOKEN_WIRE_SIZE};
 
 // Phase 1: Mesh-wide encryption
 pub use mesh_key::{EncryptedDocument, EncryptionError, MeshEncryptionKey};
@@ -107,3 +112,6 @@ pub use peer_session::{
 pub use persistence::{
     MemoryStorage, PersistedState, PersistenceError, SecureStorage, PERSISTED_STATE_VERSION,
 };
+
+// Signed payload utilities
+pub use signed_payload::{DecodedPayload, SignedPayload, MIN_WIRE_SIZE, SIGNATURE_SIZE};

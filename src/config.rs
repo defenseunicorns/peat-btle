@@ -489,7 +489,7 @@ impl Default for BleConfig {
 /// For dynamic secret management, use `MeshGenesis` or runtime configuration.
 pub fn embedded_encryption_secret() -> Option<[u8; 32]> {
     // Read at compile time - returns None if not set
-    option_env!("HIVE_ENCRYPTION_SECRET").and_then(|s| parse_hex_secret(s))
+    option_env!("HIVE_ENCRYPTION_SECRET").and_then(parse_hex_secret)
 }
 
 /// Get the compile-time embedded mesh ID, if set.
@@ -672,10 +672,16 @@ mod tests {
         assert!(parse_hex_secret("0102030405").is_none());
 
         // Too long
-        assert!(parse_hex_secret("01020304050607080910111213141516171819202122232425262728293031323334").is_none());
+        assert!(parse_hex_secret(
+            "01020304050607080910111213141516171819202122232425262728293031323334"
+        )
+        .is_none());
 
         // Invalid characters
-        assert!(parse_hex_secret("GGHHIIJJ0102030405060708091011121314151617181920212223242526").is_none());
+        assert!(
+            parse_hex_secret("GGHHIIJJ0102030405060708091011121314151617181920212223242526")
+                .is_none()
+        );
 
         // Empty
         assert!(parse_hex_secret("").is_none());

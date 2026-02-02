@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc.30] - 2026-01-29
+
+### Added
+- `MembershipToken`: Lightweight authority-signed tokens (128 bytes) for constrained devices
+  - Binds public_key to callsign with mesh_id and expiration
+  - Wire format: `[pubkey:32][mesh_id:4][callsign:12][issued:8][expires:8][sig:64]`
+- `SignedPayload`: Transport-agnostic signing utilities for BLE and WiFi/IP
+  - Wire format: `[marker:1][payload:N][signature:64]`
+- `IdentityRegistry` extended with callsign support:
+  - `register_member()` validates and stores membership tokens
+  - `get_callsign()` / `find_by_callsign()` for lookups
+  - Persistence format v2 with backwards compatibility
+
+## [0.1.0-rc.29] - 2026-01-27
+
+### Added
+- Functional BLE loopback test automation (kitlab ↔ Pi)
+- `ble_responder` and `ble_test_client` example binaries
+- Delta sync auto-registration on peer connect/disconnect
+- `decrypt_only()` API for transport-only decryption
+
+### Fixed
+- UInt formatting in Android logs (`.toLong()` for `String.format`)
+- Added `updatePeripheralState()` convenience method (ATAK team contribution)
+
+### Changed
+- CI now runs functional BLE test via SSH to Raspberry Pi
+
+## [0.1.0-rc.28] - 2026-01-26
+
+### Changed
+- **BREAKING**: Migrated Android bindings from manual JNI to UniFFI
+  - All Rust types now accessed via `uniffi.hive_btle` package
+  - HiveMesh construction uses `newFromGenesis()` or `newWithPeripheral()` factory methods
+  - Method parameters now use Kotlin unsigned types (UInt, ULong, UByte)
+  - BLE callback timestamps require `.toULong()` conversion
+
+### Added
+- UniFFI bindings module (`src/uniffi_bindings.rs`) with full HiveMesh API
+- Generated Kotlin bindings (`android/src/main/kotlin/uniffi/hive_btle/hive_btle.kt`)
+- Chat methods exposed via UniFFI: `sendChat`, `sendChatReply`, `chatCount`, `getAllChatMessages`, `getChatMessagesSince`
+- `updatePeripheralState` method for efficient encrypted state updates
+- `deriveNodeIdFromMac` standalone function
+- Peer state types via UniFFI: `ConnectionState`, `PeerConnectionState`, `StateCountSummary`, `FullStateCountSummary`, `IndirectPeer`, `ViaPeerRoute`
+- Peer state methods: `getPeerConnectionState`, `getDegradedPeers`, `getLostPeers`, `getConnectionStateCounts`, `getIndirectPeers`, `getFullStateCounts`
+
+### Fixed
+- Removed JNI native method calls from callback proxies (`ScanCallbackProxy`, `GattCallbackProxy`, `AdvertiseCallbackProxy`) that caused `UnsatisfiedLinkError` at runtime
+
+### Removed
+- Manual JNI bridge (`src/platform/android/jni_bridge.rs`)
+- JNI-based Kotlin files: `HiveMesh.kt`, `DeviceIdentity.kt`, `MeshGenesis.kt`, `IdentityAttestation.kt`
+- JNI native method declarations from callback proxy classes
+- `System.loadLibrary("hive_btle")` calls (UniFFI/JNA handles library loading automatically)
+- `jni` and `ndk` crate dependencies
+
+### Migration Guide
+See `docs/UNIFFI_MIGRATION.md` for Android integration updates.
+
 ## [0.0.12] - 2026-01-19
 
 ### Added

@@ -56,6 +56,8 @@
 #[cfg(not(feature = "std"))]
 use alloc::{string::String, sync::Arc, vec::Vec};
 #[cfg(feature = "std")]
+use std::collections::HashMap;
+#[cfg(feature = "std")]
 use std::sync::Arc;
 
 use crate::document::{ENCRYPTED_MARKER, KEY_EXCHANGE_MARKER, PEER_E2EE_MARKER};
@@ -75,13 +77,15 @@ use crate::security::{
     DeviceIdentity, IdentityAttestation, IdentityRegistry, KeyExchangeMessage, MeshEncryptionKey,
     PeerEncryptedMessage, PeerSessionManager, RegistryResult, SessionState,
 };
-use crate::sync::crdt::{EventType, PeripheralType};
+use crate::sync::crdt::{EventType, Peripheral, PeripheralType};
 use crate::sync::delta::{DeltaEncoder, DeltaStats};
 use crate::sync::delta_document::{DeltaDocument, Operation};
 use crate::NodeId;
 
 #[cfg(feature = "std")]
 use crate::observer::ObserverManager;
+
+use crate::registry::DocumentRegistry;
 
 /// Configuration for HiveMesh
 #[derive(Debug, Clone)]
@@ -250,6 +254,11 @@ impl HiveMeshConfig {
     }
 }
 
+/// Type alias for app document storage to reduce type complexity
+#[cfg(feature = "std")]
+type AppDocumentStore =
+    std::sync::RwLock<HashMap<(u8, u32, u64), Box<dyn core::any::Any + Send + Sync>>>;
+
 /// Main facade for HIVE BLE mesh operations
 ///
 /// Composes peer management, document sync, and observer notifications.
@@ -305,6 +314,25 @@ pub struct HiveMesh {
     ///
     /// Maps node_id to public key on first contact, rejects mismatches.
     identity_registry: std::sync::Mutex<IdentityRegistry>,
+
+    /// Peripheral state received from peers
+    ///
+    /// Stores the most recent peripheral data (callsign, location, etc.)
+    /// received from each peer via document sync.
+    peer_peripherals: std::sync::RwLock<HashMap<NodeId, Peripheral>>,
+
+    /// Document registry for app-layer CRDT types.
+    ///
+    /// Enables external crates to register custom document types that sync
+    /// through the mesh using the extensible registry pattern.
+    document_registry: DocumentRegistry,
+
+    /// Storage for app-layer documents.
+    ///
+    /// Keyed by (type_id, source_node, timestamp) to uniquely identify each
+    /// document instance. Values are type-erased boxes that can be downcast
+    /// using the document registry handlers.
+    app_documents: AppDocumentStore,
 }
 
 #[cfg(feature = "std")]
@@ -339,6 +367,15 @@ impl HiveMesh {
         // Create delta encoder for per-peer sync state tracking
         let delta_encoder = DeltaEncoder::new(config.node_id);
 
+        // Create document registry and auto-register types
+        let document_registry = DocumentRegistry::new();
+        #[cfg(feature = "hive-lite-sync")]
+        {
+            use crate::hive_lite_sync::CannedMessageDocument;
+            document_registry.register::<CannedMessageDocument>();
+            log::info!("Auto-registered CannedMessageDocument (0xC0) for hive-lite sync");
+        }
+
         Self {
             config,
             peer_manager,
@@ -354,6 +391,9 @@ impl HiveMesh {
             delta_encoder: std::sync::Mutex::new(delta_encoder),
             identity: None,
             identity_registry: std::sync::Mutex::new(IdentityRegistry::new()),
+            peer_peripherals: std::sync::RwLock::new(HashMap::new()),
+            document_registry,
+            app_documents: std::sync::RwLock::new(HashMap::new()),
         }
     }
 
@@ -388,6 +428,15 @@ impl HiveMesh {
             Box::new(RandomFanout::new(config.relay_fanout));
         let delta_encoder = DeltaEncoder::new(config.node_id);
 
+        // Create document registry and auto-register types
+        let document_registry = DocumentRegistry::new();
+        #[cfg(feature = "hive-lite-sync")]
+        {
+            use crate::hive_lite_sync::CannedMessageDocument;
+            document_registry.register::<CannedMessageDocument>();
+            log::info!("Auto-registered CannedMessageDocument (0xC0) for hive-lite sync");
+        }
+
         Self {
             config,
             peer_manager,
@@ -403,6 +452,9 @@ impl HiveMesh {
             delta_encoder: std::sync::Mutex::new(delta_encoder),
             identity: Some(identity),
             identity_registry: std::sync::Mutex::new(IdentityRegistry::new()),
+            peer_peripherals: std::sync::RwLock::new(HashMap::new()),
+            document_registry,
+            app_documents: std::sync::RwLock::new(HashMap::new()),
         }
     }
 
@@ -577,17 +629,40 @@ impl HiveMesh {
         data: &'a [u8],
         source_hint: Option<&str>,
     ) -> Option<std::borrow::Cow<'a, [u8]>> {
+        log::debug!(
+            "decrypt_document: len={}, first_byte=0x{:02X}, source={:?}",
+            data.len(),
+            data.first().copied().unwrap_or(0),
+            source_hint
+        );
+
         // Check for encrypted marker
         if data.len() >= 2 && data[0] == ENCRYPTED_MARKER {
             // Encrypted document
             let _reserved = data[1];
             let encrypted_payload = &data[2..];
 
+            log::debug!(
+                "decrypt_document: encrypted payload len={}, nonce+ciphertext",
+                encrypted_payload.len()
+            );
+
             match &self.encryption_key {
                 Some(key) => match key.decrypt_from_bytes(encrypted_payload) {
-                    Ok(plaintext) => Some(std::borrow::Cow::Owned(plaintext)),
+                    Ok(plaintext) => {
+                        log::debug!(
+                            "decrypt_document: SUCCESS, plaintext len={}",
+                            plaintext.len()
+                        );
+                        Some(std::borrow::Cow::Owned(plaintext))
+                    }
                     Err(e) => {
-                        log::warn!("Decryption failed (wrong key or corrupted): {}", e);
+                        log::warn!(
+                            "decrypt_document: FAILED (wrong key or corrupted): {} [payload_len={}, source={:?}]",
+                            e,
+                            encrypted_payload.len(),
+                            source_hint
+                        );
                         self.notify(HiveEvent::SecurityViolation {
                             kind: SecurityViolationKind::DecryptionFailed,
                             source: source_hint.map(String::from),
@@ -596,7 +671,9 @@ impl HiveMesh {
                     }
                 },
                 None => {
-                    log::warn!("Received encrypted document but encryption not enabled");
+                    log::warn!(
+                        "decrypt_document: encryption not enabled but received encrypted doc"
+                    );
                     None
                 }
             }
@@ -618,6 +695,24 @@ impl HiveMesh {
                 Some(std::borrow::Cow::Borrowed(data))
             }
         }
+    }
+
+    // ==================== Transport Layer API ====================
+
+    /// Decrypt data without parsing (transport-only operation)
+    ///
+    /// This method provides raw decrypted bytes for apps that want to handle
+    /// message parsing themselves (using hive-lite or other libraries).
+    ///
+    /// # Arguments
+    /// * `data` - Potentially encrypted data (0xAE marker indicates encryption)
+    ///
+    /// # Returns
+    /// * `Some(plaintext)` - Decrypted bytes if successful, or original bytes if unencrypted
+    /// * `None` - If decryption failed (wrong key, corrupted, or strict mode violation)
+    pub fn decrypt_only(&self, data: &[u8]) -> Option<Vec<u8>> {
+        self.decrypt_document(data, None)
+            .map(|cow| cow.into_owned())
     }
 
     // ==================== Identity ====================
@@ -1028,6 +1123,11 @@ impl HiveMesh {
             }
         }
 
+        // Add app document operations
+        for app_op in self.app_document_delta_ops() {
+            all_operations.push(Operation::App(app_op));
+        }
+
         // Filter operations for this peer (only send what's new)
         let filtered_operations: Vec<Operation> = {
             let encoder = self.delta_encoder.lock().unwrap();
@@ -1124,6 +1224,11 @@ impl HiveMesh {
             }
         }
 
+        // Add app document operations
+        for app_op in self.app_document_delta_ops() {
+            delta.add_operation(Operation::App(app_op));
+        }
+
         let encoded = delta.encode();
         self.encrypt_document(&encoded)
     }
@@ -1154,8 +1259,16 @@ impl HiveMesh {
         let mut is_emergency = false;
         let mut is_ack = false;
         let mut event_timestamp = 0u64;
+        let mut peer_peripheral: Option<crate::sync::crdt::Peripheral> = None;
 
+        log::info!(
+            "Delta document from {:08X}: {} operations, data_len={}",
+            delta.origin_node.as_u32(),
+            delta.operations.len(),
+            data.len()
+        );
         for op in &delta.operations {
+            log::info!("  Operation: {}", op.key());
             match op {
                 Operation::IncrementCounter {
                     node_id, amount, ..
@@ -1174,7 +1287,16 @@ impl HiveMesh {
                         counter_changed = true;
                     }
                 }
-                Operation::UpdatePeripheral { timestamp, .. } => {
+                Operation::UpdatePeripheral {
+                    peripheral,
+                    timestamp,
+                } => {
+                    // Store peer peripheral for callsign lookup
+                    if let Ok(mut peripherals) = self.peer_peripherals.write() {
+                        peripherals.insert(delta.origin_node, peripheral.clone());
+                    }
+                    // Track the peripheral for the result
+                    peer_peripheral = Some(peripheral.clone());
                     // Track the timestamp for the result
                     if *timestamp > event_timestamp {
                         event_timestamp = *timestamp;
@@ -1202,6 +1324,63 @@ impl HiveMesh {
                     if *emergency_timestamp > event_timestamp {
                         event_timestamp = *emergency_timestamp;
                     }
+                }
+                Operation::App(app_op) => {
+                    // Handle app-layer document operation
+                    //
+                    // The timestamp field may contain version info in the upper bits
+                    // (used by delta encoder for change detection). Extract the
+                    // original document timestamp from the lower 48 bits.
+                    let doc_timestamp = app_op.timestamp & 0x0000_FFFF_FFFF_FFFF;
+
+                    log::info!(
+                        "App operation received: type={:02X} op_code={:02X} from {:08X} ts={} payload_len={}",
+                        app_op.type_id,
+                        app_op.op_code,
+                        app_op.source_node,
+                        doc_timestamp,
+                        app_op.payload.len()
+                    );
+
+                    // Try to find/create document and apply the delta operation
+                    let doc_key = (app_op.type_id, app_op.source_node, doc_timestamp);
+                    let changed = {
+                        let mut docs = self.app_documents.write().unwrap();
+
+                        if let Some(existing) = docs.get_mut(&doc_key) {
+                            // Apply delta to existing document (merge via CRDT)
+                            self.document_registry.apply_delta_op(
+                                app_op.type_id,
+                                existing.as_mut(),
+                                app_op,
+                            )
+                        } else {
+                            // Try to decode from payload (for FULL_STATE operations)
+                            if let Some(decoded) = self
+                                .document_registry
+                                .decode(app_op.type_id, &app_op.payload)
+                            {
+                                docs.insert(doc_key, decoded);
+                                true
+                            } else {
+                                // For delta ops on unknown documents, we can't apply
+                                // The full state will be sent later
+                                log::debug!(
+                                    "Received delta for unknown doc {:?}, waiting for full state",
+                                    doc_key
+                                );
+                                false
+                            }
+                        }
+                    };
+
+                    // Emit observer event with the real document timestamp
+                    self.observers.notify(HiveEvent::app_document_received(
+                        app_op.type_id,
+                        NodeId::new(app_op.source_node),
+                        doc_timestamp,
+                        changed,
+                    ));
                 }
             }
         }
@@ -1244,6 +1423,9 @@ impl HiveMesh {
             });
         }
 
+        let (callsign, battery_percent, heart_rate, event_type, latitude, longitude, altitude) =
+            DataReceivedResult::peripheral_fields(&peer_peripheral);
+
         Some(DataReceivedResult {
             source_node: delta.origin_node,
             is_emergency,
@@ -1255,6 +1437,13 @@ impl HiveMesh {
             relay_data,
             origin_node,
             hop_count,
+            callsign,
+            battery_percent,
+            heart_rate,
+            event_type,
+            latitude,
+            longitude,
+            altitude,
         })
     }
 
@@ -1502,6 +1691,156 @@ impl HiveMesh {
         )
     }
 
+    /// Get a peer's callsign by node ID
+    ///
+    /// Returns the callsign from the peer's most recently received peripheral data,
+    /// or None if no peripheral data has been received from this peer.
+    pub fn get_peer_callsign(&self, node_id: NodeId) -> Option<String> {
+        self.peer_peripherals.read().ok().and_then(|peripherals| {
+            peripherals
+                .get(&node_id)
+                .map(|p| p.callsign_str().to_string())
+        })
+    }
+
+    /// Get a peer's full peripheral data by node ID
+    ///
+    /// Returns a clone of the peripheral data from the peer's most recently received
+    /// document, or None if no peripheral data has been received from this peer.
+    pub fn get_peer_peripheral(&self, node_id: NodeId) -> Option<Peripheral> {
+        self.peer_peripherals
+            .read()
+            .ok()
+            .and_then(|peripherals| peripherals.get(&node_id).cloned())
+    }
+
+    // ==================== Document Registry ====================
+
+    /// Get a reference to the document registry.
+    ///
+    /// Use this to register custom document types for mesh synchronization.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use hive_btle::registry::DocumentType;
+    ///
+    /// // Register a custom document type
+    /// mesh.document_registry().register::<MyCustomDocument>();
+    /// ```
+    pub fn document_registry(&self) -> &DocumentRegistry {
+        &self.document_registry
+    }
+
+    /// Store an app-layer document.
+    ///
+    /// If a document with the same identity (type_id, source_node, timestamp)
+    /// already exists, it will be merged using CRDT semantics.
+    ///
+    /// Returns true if the document was newly added or changed via merge.
+    pub fn store_app_document<T: crate::registry::DocumentType>(&self, doc: T) -> bool {
+        let type_id = T::TYPE_ID;
+        let (source_node, timestamp) = doc.identity();
+        let key = (type_id, source_node, timestamp);
+
+        let mut docs = self.app_documents.write().unwrap();
+
+        if let Some(existing) = docs.get_mut(&key) {
+            // Merge with existing document
+            self.document_registry
+                .merge(type_id, existing.as_mut(), &doc)
+        } else {
+            // Insert new document
+            docs.insert(key, Box::new(doc));
+            true
+        }
+    }
+
+    /// Store a type-erased app-layer document.
+    ///
+    /// Used when receiving documents from the network where the type is
+    /// determined at runtime.
+    ///
+    /// Returns true if the document was newly added or changed via merge.
+    pub fn store_app_document_boxed(
+        &self,
+        type_id: u8,
+        source_node: u32,
+        timestamp: u64,
+        doc: Box<dyn core::any::Any + Send + Sync>,
+    ) -> bool {
+        let key = (type_id, source_node, timestamp);
+
+        let mut docs = self.app_documents.write().unwrap();
+
+        if let Some(existing) = docs.get_mut(&key) {
+            // Merge with existing document
+            self.document_registry
+                .merge(type_id, existing.as_mut(), doc.as_ref())
+        } else {
+            // Insert new document
+            docs.insert(key, doc);
+            true
+        }
+    }
+
+    /// Get a stored app-layer document by identity.
+    ///
+    /// Returns None if not found or if downcast to T fails.
+    pub fn get_app_document<T: crate::registry::DocumentType>(
+        &self,
+        source_node: u32,
+        timestamp: u64,
+    ) -> Option<T> {
+        let key = (T::TYPE_ID, source_node, timestamp);
+
+        let docs = self.app_documents.read().unwrap();
+        docs.get(&key).and_then(|d| d.downcast_ref::<T>()).cloned()
+    }
+
+    /// Get all stored app-layer documents of a specific type.
+    ///
+    /// Returns a vector of all documents of type T currently stored.
+    pub fn get_all_app_documents_of_type<T: crate::registry::DocumentType>(&self) -> Vec<T> {
+        let docs = self.app_documents.read().unwrap();
+        docs.iter()
+            .filter(|((type_id, _, _), _)| *type_id == T::TYPE_ID)
+            .filter_map(|(_, doc)| doc.downcast_ref::<T>().cloned())
+            .collect()
+    }
+
+    /// Get delta operations for all stored app documents.
+    ///
+    /// Used during sync to include app documents in the delta stream.
+    pub fn app_document_delta_ops(&self) -> Vec<crate::registry::AppOperation> {
+        let docs = self.app_documents.read().unwrap();
+        let mut ops = Vec::new();
+
+        for ((type_id, _source, _ts), doc) in docs.iter() {
+            if let Some(op) = self.document_registry.to_delta_op(*type_id, doc.as_ref()) {
+                ops.push(op);
+            }
+        }
+
+        ops
+    }
+
+    /// Get all document keys for a given type.
+    ///
+    /// Returns (source_node, timestamp) pairs for all documents of the specified type.
+    pub fn app_document_keys(&self, type_id: u8) -> Vec<(u32, u64)> {
+        let docs = self.app_documents.read().unwrap();
+        docs.keys()
+            .filter(|(tid, _, _)| *tid == type_id)
+            .map(|(_, source, ts)| (*source, *ts))
+            .collect()
+    }
+
+    /// Get the number of stored app documents.
+    pub fn app_document_count(&self) -> usize {
+        self.app_documents.read().unwrap().len()
+    }
+
     // ==================== Observer Management ====================
 
     /// Add an observer for mesh events
@@ -1540,6 +1879,16 @@ impl HiveMesh {
             connected_count: self.peer_manager.connected_count(),
         });
         self.encrypt_document(&data)
+    }
+
+    /// Broadcast arbitrary bytes over the mesh.
+    ///
+    /// Takes raw payload bytes, encrypts them (if encryption is enabled),
+    /// and returns bytes ready to send to all connected peers.
+    ///
+    /// This is useful for sending extension data like CannedMessages from hive-lite.
+    pub fn broadcast_bytes(&self, payload: &[u8]) -> Vec<u8> {
+        self.encrypt_document(payload)
     }
 
     /// Clear the current event (emergency or ack)
@@ -1753,6 +2102,9 @@ impl HiveMesh {
             graph.on_connected(node_id, now_ms);
         }
 
+        // Register peer for delta sync tracking
+        self.register_peer_for_delta(&node_id);
+
         self.notify(HiveEvent::PeerConnected { node_id });
         self.notify_mesh_state_changed();
         Some(node_id)
@@ -1784,7 +2136,14 @@ impl HiveMesh {
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0);
             graph.on_disconnected(node_id, platform_reason, now_ms);
+
+            // Remove indirect peer paths that went through this peer
+            // These paths may no longer be valid since the direct connection is lost
+            graph.remove_via_peer(node_id);
         }
+
+        // Unregister peer from delta sync tracking
+        self.unregister_peer_for_delta(&node_id);
 
         self.notify(HiveEvent::PeerDisconnected {
             node_id,
@@ -1824,7 +2183,13 @@ impl HiveMesh {
                     .map(|d| d.as_millis() as u64)
                     .unwrap_or(0);
                 graph.on_disconnected(node_id, platform_reason, now_ms);
+
+                // Remove indirect peer paths that went through this peer
+                graph.remove_via_peer(node_id);
             }
+
+            // Unregister peer from delta sync tracking
+            self.unregister_peer_for_delta(&node_id);
 
             self.notify(HiveEvent::PeerDisconnected { node_id, reason });
             self.notify_mesh_state_changed();
@@ -1854,6 +2219,9 @@ impl HiveMesh {
             }
             graph.on_connected(node_id, now_ms);
         }
+
+        // Register peer for delta sync tracking
+        self.register_peer_for_delta(&node_id);
 
         if is_new {
             if let Some(peer) = self.peer_manager.get_peer(node_id) {
@@ -1940,6 +2308,13 @@ impl HiveMesh {
         // Merge the document (legacy wire format v1)
         let result = self.document_sync.merge_document(&decrypted)?;
 
+        // Store peer peripheral if present (for callsign lookup)
+        if let Some(ref peripheral) = result.peer_peripheral {
+            if let Ok(mut peripherals) = self.peer_peripherals.write() {
+                peripherals.insert(result.source_node, peripheral.clone());
+            }
+        }
+
         // Record sync
         self.peer_manager.record_sync(source_node, now_ms);
 
@@ -1971,6 +2346,9 @@ impl HiveMesh {
             });
         }
 
+        let (callsign, battery_percent, heart_rate, event_type, latitude, longitude, altitude) =
+            DataReceivedResult::peripheral_fields(&result.peer_peripheral);
+
         Some(DataReceivedResult {
             source_node: result.source_node,
             is_emergency: result.is_emergency(),
@@ -1982,6 +2360,13 @@ impl HiveMesh {
             relay_data,
             origin_node,
             hop_count,
+            callsign,
+            battery_percent,
+            heart_rate,
+            event_type,
+            latitude,
+            longitude,
+            altitude,
         })
     }
 
@@ -2072,6 +2457,225 @@ impl HiveMesh {
         self.process_document_data(node_id, data, now_ms, None, None, 0)
     }
 
+    /// Called when encrypted data is received from an unknown peer
+    ///
+    /// This handles the case where we receive an encrypted document from a BLE address
+    /// that isn't registered in our peer manager (e.g., due to BLE address rotation).
+    /// The function decrypts first using the mesh key, then extracts the source_node
+    /// from the decrypted document header and registers the peer.
+    ///
+    /// Returns `Some(DataReceivedResult)` if decryption and processing succeed.
+    /// Returns `None` if decryption fails or the document is invalid.
+    pub fn on_ble_data_received_anonymous(
+        &self,
+        identifier: &str,
+        data: &[u8],
+        now_ms: u64,
+    ) -> Option<DataReceivedResult> {
+        log::debug!(
+            "on_ble_data_received_anonymous: identifier={}, len={}, marker=0x{:02X}",
+            identifier,
+            data.len(),
+            data.first().copied().unwrap_or(0)
+        );
+
+        // Only handle encrypted documents with this path
+        if data.len() < 10 || data[0] != ENCRYPTED_MARKER {
+            log::debug!(
+                "on_ble_data_received_anonymous: not encrypted (len={}, marker=0x{:02X})",
+                data.len(),
+                data.first().copied().unwrap_or(0)
+            );
+            return None;
+        }
+
+        // Try to decrypt using mesh key
+        log::debug!("on_ble_data_received_anonymous: attempting decryption...");
+        let decrypted = match self.decrypt_document(data, Some(identifier)) {
+            Some(d) => d,
+            None => {
+                log::warn!(
+                    "on_ble_data_received_anonymous: decryption FAILED for {} byte doc from {}",
+                    data.len(),
+                    identifier
+                );
+                return None;
+            }
+        };
+
+        // Extract source_node from decrypted document header
+        // Header format: [version: 4 bytes (LE)][node_id: 4 bytes (LE)]
+        if decrypted.len() < 8 {
+            log::warn!("Decrypted document too short to extract source_node");
+            return None;
+        }
+
+        let source_node_u32 =
+            u32::from_le_bytes([decrypted[4], decrypted[5], decrypted[6], decrypted[7]]);
+        let source_node = NodeId::new(source_node_u32);
+
+        log::info!(
+            "Anonymous document from {}: decrypted, source_node={:08X}",
+            identifier,
+            source_node_u32
+        );
+
+        // Register the peer with this identifier so future lookups work
+        // This handles BLE address rotation
+        self.peer_manager
+            .register_identifier(identifier, source_node);
+
+        // Check if this is a delta document
+        let is_delta = DeltaDocument::is_delta_document(&decrypted);
+        log::info!(
+            "Document format: delta={}, first_byte=0x{:02X}, len={}",
+            is_delta,
+            decrypted.first().copied().unwrap_or(0),
+            decrypted.len()
+        );
+
+        if is_delta {
+            return self.process_delta_document_internal(
+                source_node,
+                &decrypted,
+                now_ms,
+                None,
+                None,
+                0,
+            );
+        }
+
+        // Handle app-layer message (0xAF marker from hive-lite CannedMessages)
+        // Store in document registry for CRDT sync instead of bypassing to relay_data.
+        const APP_LAYER_MARKER: u8 = 0xAF;
+        if decrypted.first().copied() == Some(APP_LAYER_MARKER) {
+            #[cfg(feature = "hive-lite-sync")]
+            {
+                use crate::hive_lite_sync::CannedMessageDocument;
+                use crate::registry::DocumentType;
+
+                log::info!(
+                    "App-layer message (0xAF) from {:08X}, {} bytes - storing in registry",
+                    source_node.as_u32(),
+                    decrypted.len()
+                );
+
+                // Decode and store the document
+                // CannedMessageDocument::decode expects payload without 0xAF (it prepends it)
+                let payload = &decrypted[1..];
+                if let Some(doc) = CannedMessageDocument::decode(payload) {
+                    let (doc_source, doc_ts) = doc.identity();
+                    let changed = self.store_app_document(doc);
+                    log::info!(
+                        "Stored CannedMessage: source={:08X} ts={} changed={}",
+                        doc_source,
+                        doc_ts,
+                        changed
+                    );
+
+                    // Emit observer event
+                    self.observers.notify(HiveEvent::app_document_received(
+                        CannedMessageDocument::TYPE_ID,
+                        NodeId::new(doc_source),
+                        doc_ts,
+                        changed,
+                    ));
+
+                    // Return minimal result - document is now in registry
+                    return Some(DataReceivedResult {
+                        source_node,
+                        is_emergency: false,
+                        is_ack: false,
+                        counter_changed: false,
+                        emergency_changed: false,
+                        total_count: 0,
+                        event_timestamp: doc_ts,
+                        relay_data: None, // No longer needed - flows via delta sync
+                        origin_node: None,
+                        hop_count: 0,
+                        callsign: None,
+                        battery_percent: None,
+                        heart_rate: None,
+                        event_type: None,
+                        latitude: None,
+                        longitude: None,
+                        altitude: None,
+                    });
+                } else {
+                    log::warn!("Failed to decode 0xAF message as CannedMessageDocument");
+                }
+            }
+
+            #[cfg(not(feature = "hive-lite-sync"))]
+            {
+                log::debug!("Ignoring 0xAF message (hive-lite-sync feature not enabled)");
+            }
+
+            return None;
+        }
+
+        // Merge the document (legacy wire format v1)
+        log::info!(
+            "Processing legacy document from {:08X}",
+            source_node.as_u32()
+        );
+        let result = self.document_sync.merge_document(&decrypted)?;
+
+        // Log what we got from the merge
+        log::info!(
+            "Merge result: peer_peripheral={}, counter_changed={}",
+            result.peer_peripheral.is_some(),
+            result.counter_changed
+        );
+        if let Some(ref p) = result.peer_peripheral {
+            log::info!("Peripheral callsign: '{}'", p.callsign_str());
+        }
+
+        // Record sync
+        self.peer_manager.record_sync(source_node, now_ms);
+
+        // Generate events
+        if result.is_emergency() {
+            self.notify(HiveEvent::EmergencyReceived {
+                from_node: result.source_node,
+            });
+        } else if result.is_ack() {
+            self.notify(HiveEvent::AckReceived {
+                from_node: result.source_node,
+            });
+        }
+
+        if result.counter_changed {
+            self.notify(HiveEvent::DocumentSynced {
+                from_node: result.source_node,
+                total_count: result.total_count,
+            });
+        }
+
+        let (callsign, battery_percent, heart_rate, event_type, latitude, longitude, altitude) =
+            DataReceivedResult::peripheral_fields(&result.peer_peripheral);
+
+        Some(DataReceivedResult {
+            source_node: result.source_node,
+            is_emergency: result.is_emergency(),
+            is_ack: result.is_ack(),
+            counter_changed: result.counter_changed,
+            emergency_changed: result.emergency_changed,
+            total_count: result.total_count,
+            event_timestamp: result.event.as_ref().map(|e| e.timestamp).unwrap_or(0),
+            relay_data: None,
+            origin_node: None,
+            hop_count: 0,
+            callsign,
+            battery_percent,
+            heart_rate,
+            event_type,
+            latitude,
+            longitude,
+            altitude,
+        })
+    }
+
     /// Internal: Process document data (shared by direct and relay paths)
     fn process_document_data(
         &self,
@@ -2100,6 +2704,13 @@ impl HiveMesh {
 
         // Merge the document (legacy wire format v1)
         let result = self.document_sync.merge_document(&decrypted)?;
+
+        // Store peer peripheral if present (for callsign lookup)
+        if let Some(ref peripheral) = result.peer_peripheral {
+            if let Ok(mut peripherals) = self.peer_peripherals.write() {
+                peripherals.insert(result.source_node, peripheral.clone());
+            }
+        }
 
         // Record sync
         self.peer_manager.record_sync(source_node, now_ms);
@@ -2132,6 +2743,9 @@ impl HiveMesh {
             });
         }
 
+        let (callsign, battery_percent, heart_rate, event_type, latitude, longitude, altitude) =
+            DataReceivedResult::peripheral_fields(&result.peer_peripheral);
+
         Some(DataReceivedResult {
             source_node: result.source_node,
             is_emergency: result.is_emergency(),
@@ -2143,6 +2757,13 @@ impl HiveMesh {
             relay_data,
             origin_node,
             hop_count,
+            callsign,
+            battery_percent,
+            heart_rate,
+            event_type,
+            latitude,
+            longitude,
+            altitude,
         })
     }
 
@@ -2230,9 +2851,32 @@ impl HiveMesh {
         // Record sync using the source_node from the merged document
         self.peer_manager.record_sync(result.source_node, now_ms);
 
-        // Add the peer if not already known (creates peer entry from document data)
-        self.peer_manager
-            .on_incoming_connection(identifier, result.source_node, now_ms);
+        // Only register the identifier mapping for direct messages (not relayed)
+        // For relayed messages, the identifier belongs to the relay source (who forwarded it),
+        // not the origin node (who created the document). The relay source is already registered
+        // via handle_relay_envelope_with_incoming when the relay envelope is first processed.
+        if origin_node.is_none() {
+            // Direct message - register the peer with this identifier
+            let is_new =
+                self.peer_manager
+                    .on_incoming_connection(identifier, result.source_node, now_ms);
+
+            // Update connection graph to track connection state
+            {
+                let mut graph = self.connection_graph.lock().unwrap();
+                if is_new {
+                    graph.on_discovered(
+                        result.source_node,
+                        identifier.to_string(),
+                        None,
+                        Some(self.config.mesh_id.clone()),
+                        -50, // Default RSSI for data-based discovery
+                        now_ms,
+                    );
+                }
+                graph.on_connected(result.source_node, now_ms);
+            }
+        }
 
         // Generate events based on what was received
         if result.is_emergency() {
@@ -2262,6 +2906,9 @@ impl HiveMesh {
             });
         }
 
+        let (callsign, battery_percent, heart_rate, event_type, latitude, longitude, altitude) =
+            DataReceivedResult::peripheral_fields(&result.peer_peripheral);
+
         Some(DataReceivedResult {
             source_node: result.source_node,
             is_emergency: result.is_emergency(),
@@ -2273,6 +2920,13 @@ impl HiveMesh {
             relay_data,
             origin_node,
             hop_count,
+            callsign,
+            battery_percent,
+            heart_rate,
+            event_type,
+            latitude,
+            longitude,
+            altitude,
         })
     }
 
@@ -2285,6 +2939,28 @@ impl HiveMesh {
     ) -> Option<DataReceivedResult> {
         // Parse envelope to get origin
         let envelope = RelayEnvelope::decode(data)?;
+
+        // Try to look up the source peer from identifier to register indirect path
+        // If we know who sent this relay, we can track indirect peers via them
+        if let Some(source_peer) = self.peer_manager.get_node_id(identifier) {
+            if envelope.origin_node != source_peer && envelope.origin_node != self.node_id() {
+                let is_new = self.connection_graph.lock().unwrap().on_relay_received(
+                    source_peer,
+                    envelope.origin_node,
+                    envelope.hop_count,
+                    now_ms,
+                );
+
+                if is_new {
+                    log::debug!(
+                        "Discovered indirect peer {:08X} via {:08X} ({} hops)",
+                        envelope.origin_node.as_u32(),
+                        source_peer.as_u32(),
+                        envelope.hop_count
+                    );
+                }
+            }
+        }
 
         // Check deduplication
         if !self.mark_message_seen(envelope.message_id, envelope.origin_node, now_ms) {
@@ -2388,6 +3064,65 @@ impl HiveMesh {
         }
 
         None
+    }
+
+    /// Periodic tick returning per-peer delta documents
+    ///
+    /// Unlike `tick()` which broadcasts a single document to all peers,
+    /// this returns targeted deltas that only include changes each peer
+    /// hasn't seen. Use this for platforms that support per-peer transmission.
+    ///
+    /// Returns a list of (NodeId, encrypted_delta) tuples, one per connected peer.
+    /// Empty vector if no sync is needed (interval not elapsed or no connected peers).
+    pub fn tick_with_peer_deltas(&self, now_ms: u64) -> Vec<(NodeId, Vec<u8>)> {
+        use std::sync::atomic::Ordering;
+        let now_ms_32 = now_ms as u32;
+
+        // Cleanup stale peers (same as tick())
+        let last_cleanup = self.last_cleanup_ms.load(Ordering::Relaxed);
+        let cleanup_elapsed = now_ms_32.wrapping_sub(last_cleanup);
+        if cleanup_elapsed >= self.config.peer_config.cleanup_interval_ms as u32 {
+            self.last_cleanup_ms.store(now_ms_32, Ordering::Relaxed);
+            let removed = self.peer_manager.cleanup_stale(now_ms);
+            for node_id in &removed {
+                self.notify(HiveEvent::PeerLost { node_id: *node_id });
+            }
+            if !removed.is_empty() {
+                self.notify_mesh_state_changed();
+            }
+
+            // Run connection graph maintenance
+            {
+                let mut graph = self.connection_graph.lock().unwrap();
+                let newly_lost = graph.tick(now_ms);
+                graph.cleanup_lost(self.config.peer_config.peer_timeout_ms, now_ms);
+                drop(graph);
+
+                for node_id in newly_lost {
+                    if !removed.contains(&node_id) {
+                        self.notify(HiveEvent::PeerLost { node_id });
+                    }
+                }
+            }
+        }
+
+        // Check if sync is needed
+        let last_sync = self.last_sync_ms.load(Ordering::Relaxed);
+        let sync_elapsed = now_ms_32.wrapping_sub(last_sync);
+        if sync_elapsed >= self.config.sync_interval_ms as u32 {
+            self.last_sync_ms.store(now_ms_32, Ordering::Relaxed);
+
+            // Build document for each connected peer
+            let doc = self.document_sync.build_document();
+            let encrypted = self.encrypt_document(&doc);
+            let mut results = Vec::new();
+            for peer in self.get_connected_peers() {
+                results.push((peer.node_id, encrypted.clone()));
+            }
+            return results;
+        }
+
+        Vec::new()
     }
 
     // ==================== State Queries ====================
@@ -2605,6 +3340,66 @@ impl HiveMesh {
             .update_health_full(battery_percent, activity);
     }
 
+    /// Update heart rate
+    pub fn update_heart_rate(&self, heart_rate: u8) {
+        self.document_sync.update_heart_rate(heart_rate);
+    }
+
+    /// Update location
+    pub fn update_location(&self, latitude: f32, longitude: f32, altitude: Option<f32>) {
+        self.document_sync
+            .update_location(latitude, longitude, altitude);
+    }
+
+    /// Clear location
+    pub fn clear_location(&self) {
+        self.document_sync.clear_location();
+    }
+
+    /// Update callsign
+    pub fn update_callsign(&self, callsign: &str) {
+        self.document_sync.update_callsign(callsign);
+    }
+
+    /// Set peripheral event type
+    pub fn set_peripheral_event(&self, event_type: EventType, timestamp: u64) {
+        self.document_sync
+            .set_peripheral_event(event_type, timestamp);
+    }
+
+    /// Clear peripheral event
+    pub fn clear_peripheral_event(&self) {
+        self.document_sync.clear_peripheral_event();
+    }
+
+    /// Update full peripheral state in one call
+    ///
+    /// This is the most efficient way to update all peripheral data before
+    /// calling `build_document()` for encrypted transmission.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_peripheral_state(
+        &self,
+        callsign: &str,
+        battery_percent: u8,
+        heart_rate: Option<u8>,
+        latitude: Option<f32>,
+        longitude: Option<f32>,
+        altitude: Option<f32>,
+        event_type: Option<EventType>,
+        timestamp: u64,
+    ) {
+        self.document_sync.update_peripheral_state(
+            callsign,
+            battery_percent,
+            heart_rate,
+            latitude,
+            longitude,
+            altitude,
+            event_type,
+            timestamp,
+        );
+    }
+
     /// Build current document for transmission
     ///
     /// If encryption is enabled, the document is encrypted.
@@ -2629,6 +3424,67 @@ impl HiveMesh {
             peer_count: self.peer_manager.peer_count(),
             connected_count: self.peer_manager.connected_count(),
         });
+    }
+
+    // ==================== CannedMessage Integration ====================
+    //
+    // These methods provide deduplication support for hive-lite CannedMessages.
+    // They use document identity (source_node + timestamp) instead of content hash,
+    // because CRDT merge can change byte ordering.
+
+    /// Check if a CannedMessage should be processed.
+    ///
+    /// Uses document identity (source_node + timestamp) for deduplication.
+    /// This prevents broadcast storms when relaying CannedMessages across the mesh.
+    ///
+    /// # Arguments
+    /// * `source_node` - The source node ID from the CannedMessage
+    /// * `timestamp` - The timestamp from the CannedMessage
+    /// * `_ttl_ms` - TTL parameter (currently unused, uses cache's default TTL)
+    ///
+    /// # Returns
+    /// `true` if this message is new and should be processed,
+    /// `false` if it was seen recently and should be skipped.
+    pub fn check_canned_message(&self, source_node: u32, timestamp: u64, _ttl_ms: u64) -> bool {
+        // Create a unique key from source_node and timestamp
+        // MessageId is 16 bytes: [source_node: 4B][timestamp: 8B][padding: 4B]
+        let mut id_bytes = [0u8; 16];
+        id_bytes[0..4].copy_from_slice(&source_node.to_le_bytes());
+        id_bytes[4..12].copy_from_slice(&timestamp.to_le_bytes());
+        let message_id = crate::relay::MessageId::from_bytes(id_bytes);
+
+        // Check the seen cache
+        let seen = self.seen_cache.lock().unwrap();
+        !seen.has_seen(&message_id)
+    }
+
+    /// Mark a CannedMessage as seen (for deduplication).
+    ///
+    /// Call this after processing a CannedMessage to prevent reprocessing
+    /// the same message from other relay paths.
+    pub fn mark_canned_message_seen(&self, source_node: u32, timestamp: u64) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        // MessageId is 16 bytes: [source_node: 4B][timestamp: 8B][padding: 4B]
+        let mut id_bytes = [0u8; 16];
+        id_bytes[0..4].copy_from_slice(&source_node.to_le_bytes());
+        id_bytes[4..12].copy_from_slice(&timestamp.to_le_bytes());
+        let message_id = crate::relay::MessageId::from_bytes(id_bytes);
+        let origin = NodeId::new(source_node);
+
+        let mut seen = self.seen_cache.lock().unwrap();
+        seen.mark_seen(message_id, origin, now);
+    }
+
+    /// Get list of connected peer identifiers for relay.
+    ///
+    /// Used by the platform layer (Kotlin/Swift) to relay CannedMessages
+    /// to other peers after deduplication check.
+    pub fn get_connected_peer_identifiers(&self) -> Vec<String> {
+        self.peer_manager.get_connected_identifiers()
     }
 }
 
@@ -2667,6 +3523,70 @@ pub struct DataReceivedResult {
 
     /// Current hop count (for relayed messages)
     pub hop_count: u8,
+
+    // ========== Peripheral data from sender ==========
+    /// Sender's callsign (up to 12 chars)
+    pub callsign: Option<String>,
+
+    /// Sender's battery percentage (0-100)
+    pub battery_percent: Option<u8>,
+
+    /// Sender's heart rate (BPM)
+    pub heart_rate: Option<u8>,
+
+    /// Sender's event type (from PeripheralEvent)
+    pub event_type: Option<u8>,
+
+    /// Sender's latitude
+    pub latitude: Option<f32>,
+
+    /// Sender's longitude
+    pub longitude: Option<f32>,
+
+    /// Sender's altitude (meters)
+    pub altitude: Option<f32>,
+}
+
+impl DataReceivedResult {
+    /// Extract peripheral fields from an Option<Peripheral>
+    #[allow(clippy::type_complexity)]
+    fn peripheral_fields(
+        peripheral: &Option<crate::sync::crdt::Peripheral>,
+    ) -> (
+        Option<String>,
+        Option<u8>,
+        Option<u8>,
+        Option<u8>,
+        Option<f32>,
+        Option<f32>,
+        Option<f32>,
+    ) {
+        match peripheral {
+            Some(p) => {
+                let callsign = {
+                    let s = p.callsign_str();
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s.to_string())
+                    }
+                };
+                let battery = if p.health.battery_percent > 0 {
+                    Some(p.health.battery_percent)
+                } else {
+                    None
+                };
+                let heart_rate = p.health.heart_rate;
+                let event_type = p.last_event.as_ref().map(|e| e.event_type as u8);
+                let (lat, lon, alt) = match &p.location {
+                    Some(loc) => (Some(loc.latitude), Some(loc.longitude), loc.altitude),
+                    None => (None, None, None),
+                };
+                (callsign, battery, heart_rate, event_type, lat, lon, alt)
+            }
+            None => (None, None, None, None, None, None, None),
+        }
+    }
 }
 
 /// Decision from processing a relay envelope

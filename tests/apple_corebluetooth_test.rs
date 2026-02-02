@@ -47,7 +47,10 @@ fn test_adapter_creation() {
         }
         Err(e) => {
             // It's OK if Bluetooth is unavailable, but it shouldn't crash
-            println!("CoreBluetoothAdapter creation failed (expected on CI): {}", e);
+            println!(
+                "CoreBluetoothAdapter creation failed (expected on CI): {}",
+                e
+            );
         }
     }
 }

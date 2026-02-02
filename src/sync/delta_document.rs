@@ -66,6 +66,7 @@
 #[cfg(not(feature = "std"))]
 use alloc::{string::String, vec::Vec};
 
+use crate::registry::AppOperation;
 use crate::sync::crdt::Peripheral;
 use crate::sync::delta::VectorClock;
 use crate::NodeId;
@@ -164,6 +165,12 @@ pub enum Operation {
         /// Timestamp of emergency being cleared
         emergency_timestamp: u64,
     },
+
+    /// App-layer document operation (0x10-0x1F range)
+    ///
+    /// Used for extensible document types registered via DocumentRegistry.
+    /// The AppOperation contains type_id, op_code, source_node, timestamp, and payload.
+    App(AppOperation),
 }
 
 impl Operation {
@@ -180,6 +187,7 @@ impl Operation {
             Operation::ClearEmergency {
                 emergency_timestamp,
             } => *emergency_timestamp,
+            Operation::App(op) => op.timestamp,
         }
     }
 
@@ -215,6 +223,13 @@ impl Operation {
                 return alloc::format!("ack:{}", node_id.as_u32());
             }
             Operation::ClearEmergency { .. } => "clear_emergency".into(),
+            Operation::App(op) => {
+                // Key includes type_id, source_node, and timestamp for document identity
+                #[cfg(feature = "std")]
+                return format!("app:{}:{}:{}", op.type_id, op.source_node, op.timestamp);
+                #[cfg(not(feature = "std"))]
+                return alloc::format!("app:{}:{}:{}", op.type_id, op.source_node, op.timestamp);
+            }
         }
     }
 
@@ -271,6 +286,10 @@ impl Operation {
             } => {
                 buf.push(op_type::CLEAR_EMERGENCY);
                 buf.extend_from_slice(&emergency_timestamp.to_le_bytes());
+            }
+            Operation::App(op) => {
+                // AppOperation has its own encode that includes op_type byte (0x10-0x1F)
+                buf.extend_from_slice(&op.encode());
             }
         }
 
@@ -390,6 +409,11 @@ impl Operation {
                     },
                     9,
                 ))
+            }
+            // App-layer operations (0x10-0x1F range)
+            op if AppOperation::is_app_op_type(op) => {
+                let (app_op, consumed) = AppOperation::decode(data)?;
+                Some((Operation::App(app_op), consumed))
             }
             _ => None,
         }

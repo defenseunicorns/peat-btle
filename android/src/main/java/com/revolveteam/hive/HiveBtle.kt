@@ -46,6 +46,23 @@ import android.os.Handler
 import android.os.Looper
 import java.util.Collections
 
+// UniFFI-generated bindings for Rust HiveMesh
+import uniffi.hive_btle.HiveMesh
+import uniffi.hive_btle.DeviceIdentity
+import uniffi.hive_btle.MeshGenesis
+import uniffi.hive_btle.IdentityAttestation
+import uniffi.hive_btle.PeripheralType
+import uniffi.hive_btle.EventType
+import uniffi.hive_btle.DisconnectReason
+import uniffi.hive_btle.ConnectionState
+import uniffi.hive_btle.PeerConnectionState
+import uniffi.hive_btle.StateCountSummary
+import uniffi.hive_btle.FullStateCountSummary
+import uniffi.hive_btle.IndirectPeer
+import uniffi.hive_btle.ViaPeerRoute
+import uniffi.hive_btle.CannedMessageInfo
+import uniffi.hive_btle.deriveNodeIdFromMac
+
 /**
  * Main entry point for HIVE BLE operations on Android.
  *
@@ -144,6 +161,9 @@ class HiveBtle(
 
     companion object {
         private const val TAG = "HiveBtle"
+
+        /** Wire marker for app-layer messages (0xAF) - passed to onDecryptedData for apps to handle */
+        private const val APP_LAYER_MARKER: Byte = 0xAF.toByte()
 
         /**
          * HIVE BLE Service UUID (canonical: f47ac10b-58cc-4372-a567-0e02b2c3d479)
@@ -323,16 +343,79 @@ class HiveBtle(
          * @return NodeId derived from last 4 bytes of MAC, or 0 if parsing fails
          */
         @JvmStatic
-        external fun nativeDeriveNodeId(macAddress: String): Long
+        fun nativeDeriveNodeId(macAddress: String): Long {
+            return deriveNodeIdFromMac(macAddress).toLong()
+        }
 
-        init {
-            try {
-                System.loadLibrary("hive_btle")
-                Log.i(TAG, "Loaded hive_btle native library")
-            } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "Failed to load hive_btle native library", e)
+        // ==================== Build-time Configuration ====================
+
+        /**
+         * Get the build-time embedded encryption secret, if configured.
+         *
+         * Set via environment variable when building:
+         * ```
+         * HIVE_ENCRYPTION_SECRET=0102030405060708091011121314151617181920212223242526272829303132 \
+         *   ./gradlew assembleRelease
+         * ```
+         *
+         * Or override in downstream project's build.gradle.kts:
+         * ```
+         * buildConfigField("String", "HIVE_ENCRYPTION_SECRET", "\"<64-char-hex>\"")
+         * ```
+         *
+         * @return 32-byte secret array, or null if not configured or invalid
+         */
+        @JvmStatic
+        fun getEmbeddedEncryptionSecret(): ByteArray? {
+            val hex = BuildConfig.HIVE_ENCRYPTION_SECRET
+            if (hex.isNullOrEmpty() || hex.length != 64) return null
+            return try {
+                hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            } catch (e: NumberFormatException) {
+                Log.w(TAG, "Invalid HIVE_ENCRYPTION_SECRET format: $e")
+                null
             }
         }
+
+        /**
+         * Get the build-time embedded mesh ID, if configured.
+         *
+         * Set via environment variable when building:
+         * ```
+         * HIVE_MESH_ID=ALPHA ./gradlew assembleRelease
+         * ```
+         *
+         * @return Mesh ID string, or null if not configured
+         */
+        @JvmStatic
+        fun getEmbeddedMeshId(): String? {
+            val meshId = BuildConfig.HIVE_MESH_ID
+            return if (meshId.isNullOrEmpty()) null else meshId
+        }
+
+        /**
+         * Check if build-time encryption credentials are configured.
+         */
+        @JvmStatic
+        fun hasEmbeddedEncryption(): Boolean {
+            return getEmbeddedEncryptionSecret() != null
+        }
+
+        /**
+         * Get effective mesh ID, checking embedded config first, then environment.
+         *
+         * Priority:
+         * 1. Build-time HIVE_MESH_ID
+         * 2. Runtime environment/system property
+         * 3. DEFAULT_MESH_ID ("DEMO")
+         */
+        @JvmStatic
+        fun getEffectiveMeshId(): String {
+            return getEmbeddedMeshId() ?: getMeshIdFromEnvironment()
+        }
+
+        // Note: Native library loading is handled automatically by UniFFI/JNA
+        // when the first UniFFI type is accessed. No manual System.loadLibrary needed.
     }
 
     // Android Bluetooth components
@@ -349,6 +432,10 @@ class HiveBtle(
     private val connections = ConcurrentHashMap<String, BluetoothGatt>()
     private val gattCallbacks = ConcurrentHashMap<String, GattCallbackProxy>()
     private val connectionIdCounter = AtomicLong(0)
+
+    // Write queues for serializing BLE writes (BLE only allows one pending write at a time)
+    private val writeQueues = ConcurrentHashMap<String, java.util.concurrent.ConcurrentLinkedQueue<ByteArray>>()
+    private val writeInProgress = ConcurrentHashMap<String, Boolean>()
 
     // GATT Server (as Peripheral - others connect to us)
     private var gattServer: BluetoothGattServer? = null
@@ -370,9 +457,6 @@ class HiveBtle(
     private var isScanning = false
     private var isAdvertising = false
     private var isMeshRunning = false
-
-    // Native handle
-    private var nativeHandle: Long = 0
 
     // HiveMesh instance for ConnectionStateGraph API
     private var _mesh: HiveMesh? = null
@@ -401,6 +485,9 @@ class HiveBtle(
     // Mesh management
     private val peers = ConcurrentHashMap<Long, HivePeer>() // nodeId -> peer
     private val addressToNodeId = ConcurrentHashMap<String, Long>() // address -> nodeId
+    private val nameToNodeId = ConcurrentHashMap<String, Long>() // device name -> nodeId (for address rotation dedup)
+    private val callsignToNodeId = ConcurrentHashMap<String, Long>() // callsign -> nodeId (for identity resolution)
+    private val nodeIdToCallsign = ConcurrentHashMap<Long, String>() // nodeId -> callsign (reverse lookup, persisted)
     private val peerSyncState = ConcurrentHashMap<Long, PeerSyncState>() // nodeId -> sync state for delta tracking
     // Track processed chat messages to avoid duplicate notifications (key = "originNode:timestamp")
     private val processedChatMessages = Collections.synchronizedSet(mutableSetOf<String>())
@@ -411,15 +498,34 @@ class HiveBtle(
     private var localCounter = mutableListOf<GCounterEntry>()
 
     // Mesh configuration
-    private val PEER_TIMEOUT_MS = 30000L // Remove peers after 30s without advertisement
+    private val PEER_TIMEOUT_MS = 30000L // Remove disconnected peers after 30s without advertisement
+    private val CONNECTED_PEER_TIMEOUT_MS = 60000L // Remove "connected" peers after 60s without any activity (handles stale connections)
     private val CLEANUP_INTERVAL_MS = 10000L // Cleanup check interval
     private val SYNC_INTERVAL_MS = 3000L // Sync documents every 3s
+    private val RECONNECT_INTERVAL_MS = 5000L // Check for lost peers every 5s
+    private val RECONNECT_BASE_DELAY_MS = 2000L // Base delay for exponential backoff
+    private val RECONNECT_MAX_DELAY_MS = 60000L // Max 60s between reconnection attempts
+    private val RECONNECT_MAX_ATTEMPTS = 10 // Give up after 10 attempts
+
+    // Track reconnection attempts per peer for exponential backoff
+    private val reconnectAttempts = ConcurrentHashMap<String, Int>() // address -> attempt count
+    private val lastReconnectAttempt = ConcurrentHashMap<String, Long>() // address -> timestamp
 
     private val cleanupRunnable = object : Runnable {
         override fun run() {
             cleanupStalePeers()
             if (isMeshRunning) {
                 handler.postDelayed(this, CLEANUP_INTERVAL_MS)
+            }
+        }
+    }
+
+    // Periodic reconnection runnable - attempts to reconnect lost peers
+    private val reconnectRunnable = object : Runnable {
+        override fun run() {
+            reconnectLostPeers()
+            if (isMeshRunning) {
+                handler.postDelayed(this, RECONNECT_INTERVAL_MS)
             }
         }
     }
@@ -467,32 +573,33 @@ class HiveBtle(
         // Get LE advertiser (may be null if not supported)
         leAdvertiser = bluetoothAdapter?.bluetoothLeAdvertiser
 
-        // Auto-generate nodeId from adapter address if not provided
-        if (_nodeId == null) {
+        // Use identity.nodeId when identity is provided (Ed25519-derived),
+        // otherwise auto-generate from Bluetooth adapter MAC address
+        if (identity != null) {
+            _nodeId = identity.getNodeId().toLong()
+            Log.i(TAG, "Using identity-derived nodeId: ${String.format("%08X", nodeId)}")
+        } else if (_nodeId == null) {
             _nodeId = generateNodeIdFromAdapter()
             Log.i(TAG, "Auto-generated nodeId from adapter: ${String.format("%08X", nodeId)}")
-        }
-
-        // Initialize native adapter
-        nativeHandle = nativeInit(context, nodeId)
-        if (nativeHandle == 0L) {
-            throw IllegalStateException("Failed to initialize native adapter")
         }
 
         // Create HiveMesh for ConnectionStateGraph API
         // Use encrypted mesh if identity and genesis are provided
         _mesh = if (identity != null && genesis != null) {
             Log.i(TAG, "Creating encrypted mesh from genesis")
-            HiveMesh.createFromGenesis(genesis, identity, "ANDROID")
+            HiveMesh.newFromGenesis("ANDROID", identity, genesis)
         } else {
             Log.i(TAG, "Creating unencrypted mesh")
-            HiveMesh(
-                nodeId = nodeId,
-                callsign = "ANDROID",
-                meshId = meshId,
-                peripheralType = PeripheralType.SOLDIER_SENSOR
+            HiveMesh.newWithPeripheral(
+                nodeId.toUInt(),
+                "ANDROID",
+                meshId,
+                PeripheralType.SOLDIER_SENSOR
             )
         }
+
+        // Load persisted callsign mappings
+        loadCallsignCache()
 
         isInitialized = true
         Log.i(TAG, "Initialized for node ${String.format("%08X", nodeId)}")
@@ -617,7 +724,7 @@ class HiveBtle(
      * @param txPower TX power level (default: medium)
      */
     fun startAdvertising(
-        mode: Int = AdvertiseSettings.ADVERTISE_MODE_LOW_POWER,
+        mode: Int = AdvertiseSettings.ADVERTISE_MODE_BALANCED,
         txPower: Int = AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
     ) {
         checkInitialized()
@@ -649,14 +756,14 @@ class HiveBtle(
         meshIdBytes.copyInto(serviceDataBytes, 4)
 
         // Build advertise data with 16-bit service UUID alias and service data
-        // Using 16-bit UUID (0xF47A) saves space vs full 128-bit UUID (31-byte BLE limit)
+        // Device name goes in scan response to stay within 31-byte advertising limit
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(false) // Name goes in scan response
+            .setIncludeDeviceName(false)
             .addServiceUuid(ParcelUuid(HIVE_SERVICE_UUID_16))
             .addServiceData(ParcelUuid(HIVE_SERVICE_UUID_16), serviceDataBytes)
             .build()
 
-        // Build scan response with device name (for debugging/visibility)
+        // Scan response with device name
         val scanResponse = AdvertiseData.Builder()
             .setIncludeDeviceName(true)
             .build()
@@ -829,7 +936,7 @@ class HiveBtle(
                             notifyPeerConnected(peer)
                         }
                         // Update HiveMesh ConnectionStateGraph
-                        _mesh?.onBleConnected(address, System.currentTimeMillis())
+                        _mesh?.onBleConnected(address, System.currentTimeMillis().toULong())
                         notifyMeshUpdated()
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
@@ -864,8 +971,16 @@ class HiveBtle(
                 Log.d(TAG, "Read request from $address for ${characteristic.uuid}")
 
                 if (characteristic.uuid == HIVE_CHAR_DOCUMENT) {
-                    // Return current document state with peripheral data (location, health, etc.)
-                    val documentBytes = HiveDocument.encode(nodeId, localCounter, localPeripheral)
+                    // Return current document state
+                    // When encryption is enabled, use native mesh to get properly encrypted document
+                    val documentBytes = if (isEncryptionEnabled() && _mesh != null) {
+                        // Sync local peripheral state to native before building document
+                        syncLocalPeripheralToNative(System.currentTimeMillis())
+                        Log.d(TAG, "[ENCRYPTED] Read request: using native buildDocument")
+                        _mesh!!.buildDocument()
+                    } else {
+                        HiveDocument.encode(nodeId, localCounter, localPeripheral)
+                    }
                     val response = if (offset > documentBytes.size) {
                         ByteArray(0)
                     } else {
@@ -979,6 +1094,26 @@ class HiveBtle(
                         return
                     }
 
+                    if (value.isNotEmpty() && value[0] == APP_LAYER_MARKER) {
+                        // app-layer message (0xAF) - hive-lite tactical messaging
+                        val peer = peers.values.find { it.address == address }
+                            ?: HivePeer(
+                                nodeId = 0,
+                                address = address,
+                                name = "Unknown",
+                                meshId = meshId,
+                                rssi = 0,
+                                isConnected = true,
+                                lastDocument = null,
+                                lastSeen = System.currentTimeMillis()
+                            )
+                        handleAppLayerMessage(peer, value)
+                        if (responseNeeded) {
+                            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                        }
+                        return
+                    }
+
                     // Parse the document (regular HiveDocument format)
                     val document = HiveDocument.decode(value)
                     if (document != null) {
@@ -1017,11 +1152,11 @@ class HiveBtle(
                                 _mesh?.onBleDiscovered(
                                     identifier = address,
                                     name = peerName,
-                                    rssi = 0,
-                                    deviceMeshId = meshId,
-                                    nowMs = now
+                                    rssi = 0.toByte(),
+                                    meshId = meshId,
+                                    nowMs = now.toULong()
                                 )
-                                _mesh?.onBleConnected(identifier = address, nowMs = now)
+                                _mesh?.onBleConnected(identifier = address, nowMs = now.toULong())
                             } else {
                                 // Update existing peer
                                 val now = System.currentTimeMillis()
@@ -1041,19 +1176,156 @@ class HiveBtle(
                                 val discoveredPeer = _mesh?.onBleDiscovered(
                                     identifier = address,
                                     name = peer.name,
-                                    rssi = 0,
-                                    deviceMeshId = meshId,
-                                    nowMs = now
+                                    rssi = 0.toByte(),
+                                    meshId = meshId,
+                                    nowMs = now.toULong()
                                 )
                                 Log.d(TAG, "[GATT-SERVER] Re-discovered existing peer: ${peer.displayName()}, result=${discoveredPeer != null}")
-                                _mesh?.onBleConnected(identifier = address, nowMs = now)
+                                _mesh?.onBleConnected(identifier = address, nowMs = now.toULong())
                             }
 
                             // Handle document content (pass raw bytes for CRDT merge)
                             handlePeerDocumentInternal(peer, document, value, address)
                         }
+                    } else if (value.isNotEmpty() && value[0] == 0xAE.toByte()) {
+                        // Encrypted document (0xAE marker) - pass directly to native mesh for decryption
+                        Log.d(TAG, "[ENCRYPTED] Received ${value.size} byte encrypted document from $address")
+
+                        val now = System.currentTimeMillis()
+
+                        // Use anonymous decryption path - decrypts first, extracts source_node from
+                        // decrypted document header, and registers the identifier->nodeId mapping.
+                        // This handles BLE address rotation where peer connects from different address.
+                        val chatCountBefore = _mesh?.chatCount()?.toInt() ?: 0
+                        val result = _mesh?.onBleDataReceivedAnonymous(address, value, now.toULong())
+                        if (result != null) {
+                            Log.i(TAG, "[ENCRYPTED-MERGE] sourceNode=${String.format("%08X", result.sourceNode.toLong())}, isAck=${result.isAck}, counterChanged=${result.counterChanged}, total=${result.totalCount}")
+
+                            // Update peer mapping with source node from decrypted document
+                            val sourceNodeId = result.sourceNode.toLong()
+                            if (sourceNodeId != 0L && sourceNodeId != nodeId) {
+                                addressToNodeId[address] = sourceNodeId
+                                var peer = peers[sourceNodeId]
+                                if (peer == null) {
+                                    // New peer discovered through encrypted document
+                                    val peerName = generateDeviceName(meshId, sourceNodeId)
+                                    peer = HivePeer(
+                                        nodeId = sourceNodeId,
+                                        address = address,
+                                        name = peerName,
+                                        meshId = meshId,
+                                        rssi = 0,
+                                        isConnected = true,
+                                        lastDocument = null,
+                                        lastSeen = now
+                                    )
+                                    peers[sourceNodeId] = peer
+                                    Log.i(TAG, "[ENCRYPTED] Added peer from encrypted doc: ${peer.displayName()}")
+                                    // Update native mesh with proper peer info
+                                    _mesh?.onBleDiscovered(address, peerName, 0.toByte(), meshId, now.toULong())
+                                    _mesh?.onBleConnected(address, now.toULong())
+                                    // Notify listener about new peer - triggers platform creation
+                                    handler.post {
+                                        meshListener?.onPeerConnected(peer)
+                                    }
+                                    // Notify mesh updated so UI reflects the new peer
+                                    notifyMeshUpdated()
+                                } else {
+                                    // Existing peer - update last seen and ensure listener is notified
+                                    peer.lastSeen = now
+                                    peer.isConnected = true
+                                }
+
+                                // Check for relayData containing app-layer message (0xAF marker)
+                                // app-layer messages are app-layer protocol; hive-btle just transports them
+                                val relay = result.relayData
+                                if (relay != null && relay.isNotEmpty() && relay[0] == APP_LAYER_MARKER) {
+                                    Log.i(TAG, "[ENCRYPTED-CANNED] app-layer message ${relay.size} bytes from ${peer.displayName()}")
+                                    handleAppLayerMessage(peer, relay)
+                                }
+
+                                // Check for ACK/emergency events (server callback path)
+                                // ACK can come either as emergency ACK (is_ack flag) or peripheral event (eventType=6)
+                                if (result.isAck || result.eventType == EventType.ACK) {
+                                    Log.i(TAG, "[ENCRYPTED-SERVER] ACK received from ${peer.displayName()} (isAck=${result.isAck}, eventType=${result.eventType})")
+                                    handler.post {
+                                        meshListener?.onPeerEvent(peer, HiveEventType.ACK)
+                                    }
+                                }
+                                if (result.isEmergency || result.eventType == EventType.EMERGENCY) {
+                                    Log.i(TAG, "[ENCRYPTED-SERVER] EMERGENCY from ${peer.displayName()} (isEmergency=${result.isEmergency}, eventType=${result.eventType})")
+                                    handler.post {
+                                        meshListener?.onPeerEvent(peer, HiveEventType.EMERGENCY)
+                                    }
+                                }
+
+                                // Check for new chat messages and notify listener
+                                val chatCountAfter = _mesh?.chatCount()?.toInt() ?: 0
+                                if (chatCountAfter > chatCountBefore) {
+                                    Log.i(TAG, "[ENCRYPTED-CHAT] ${chatCountAfter - chatCountBefore} new chat message(s)")
+                                    val allChats = getAllChatMessages()
+                                    for (chat in allChats) {
+                                        val key = "${chat.originNode}:${chat.timestamp}"
+                                        if (!processedChatMessages.contains(key)) {
+                                            processedChatMessages.add(key)
+                                            if (chat.originNode != nodeId) {
+                                                Log.i(TAG, "[ENCRYPTED-CHAT] New message from ${chat.sender}: ${chat.message}")
+                                                val sourcePeer = peer
+                                                handler.post {
+                                                    meshListener?.onChatReceived(chat, sourcePeer)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Notify document synced callback with peripheral data from result
+                                // Build HivePeripheral from DataReceivedResult fields
+                                val eventType = result.eventType?.let { HiveEventType.fromEventType(it) } ?: HiveEventType.NONE
+                                val lat = result.latitude
+                                val lon = result.longitude
+                                val alt = result.altitude
+                                val peerPeripheral = HivePeripheral(
+                                    id = sourceNodeId,
+                                    parentNode = sourceNodeId,
+                                    peripheralType = HivePeripheralType.SOLDIER_SENSOR,
+                                    callsign = result.callsign ?: "",
+                                    health = HiveHealthStatus(
+                                        batteryPercent = result.batteryPercent?.toInt() ?: 0,
+                                        heartRate = result.heartRate?.toInt(),
+                                        activityLevel = 0,
+                                        alerts = 0
+                                    ),
+                                    lastEvent = if (eventType != HiveEventType.NONE)
+                                        HivePeripheralEvent(eventType, System.currentTimeMillis()) else null,
+                                    location = if (lat != null && lon != null)
+                                        HiveLocation(lat, lon, alt ?: 0f) else null,
+                                    timestamp = System.currentTimeMillis()
+                                )
+                                // Update callsign cache if we received a valid callsign
+                                result.callsign?.let { updateCallsignForNode(sourceNodeId, it) }
+
+                                // Include peripheral if ANY data is present (callsign, location, battery, etc.)
+                                val hasPeripheralData = result.callsign != null ||
+                                    result.latitude != null ||
+                                    result.batteryPercent != null ||
+                                    result.heartRate != null ||
+                                    result.eventType != null
+                                val syntheticDoc = HiveDocument(
+                                    version = 1,
+                                    nodeId = sourceNodeId,
+                                    counter = emptyList(),
+                                    peripheral = if (hasPeripheralData) peerPeripheral else null
+                                )
+                                handler.post {
+                                    meshListener?.onDocumentSynced(syntheticDoc)
+                                }
+                            }
+                        } else {
+                            Log.w(TAG, "[ENCRYPTED-MERGE] onBleDataReceived returned null - decryption may have failed")
+                        }
                     } else {
-                        Log.w(TAG, "Failed to decode document from $address")
+                        Log.w(TAG, "Failed to decode document from $address (${value.size} bytes, first byte: ${if (value.isNotEmpty()) String.format("0x%02X", value[0]) else "empty"})")
                     }
 
                     if (responseNeeded) {
@@ -1198,6 +1470,8 @@ class HiveBtle(
     fun disconnect(address: String) {
         val gatt = connections.remove(address)
         gattCallbacks.remove(address)
+        writeQueues.remove(address)
+        writeInProgress.remove(address)
 
         try {
             gatt?.disconnect()
@@ -1254,6 +1528,7 @@ class HiveBtle(
         // Start periodic tasks
         handler.post(cleanupRunnable)
         handler.postDelayed(syncRunnable, SYNC_INTERVAL_MS)
+        handler.postDelayed(reconnectRunnable, RECONNECT_INTERVAL_MS)
 
         Log.i(TAG, "Mesh started for HIVE-${String.format("%08X", nodeId)} with GATT server")
     }
@@ -1267,6 +1542,9 @@ class HiveBtle(
         isMeshRunning = false
         handler.removeCallbacks(cleanupRunnable)
         handler.removeCallbacks(syncRunnable)
+        handler.removeCallbacks(reconnectRunnable)
+        reconnectAttempts.clear()
+        lastReconnectAttempt.clear()
 
         stopScan()
         stopAdvertising()
@@ -1279,9 +1557,48 @@ class HiveBtle(
 
         peers.clear()
         addressToNodeId.clear()
+        nameToNodeId.clear()
         meshListener = null
 
         Log.i(TAG, "Mesh stopped")
+    }
+
+    /**
+     * Update local peripheral state for document sync.
+     *
+     * This sets the peripheral data that will be included in documents
+     * sent during periodic syncWithPeers(). Unlike sendEvent(), this does
+     * NOT trigger an immediate send - the next sync cycle will include
+     * the updated peripheral data.
+     *
+     * @param callsign Device callsign (max 12 chars)
+     * @param batteryPercent Battery level 0-100
+     * @param heartRate Optional heart rate
+     * @param location Optional location
+     * @param eventType Optional event type (PING, ACK, etc.)
+     */
+    fun updatePeripheralState(
+        callsign: String = "ANDROID",
+        batteryPercent: Int = 100,
+        heartRate: Int? = null,
+        location: HiveLocation? = null,
+        eventType: HiveEventType? = null
+    ) {
+        val peripheral = HivePeripheral(
+            id = nodeId,
+            parentNode = 0,
+            peripheralType = HivePeripheralType.SOLDIER_SENSOR,
+            callsign = callsign.take(12),
+            health = HiveHealthStatus(batteryPercent, heartRate, 0, 0),
+            lastEvent = eventType?.let { HivePeripheralEvent(it, System.currentTimeMillis()) },
+            location = location,
+            timestamp = System.currentTimeMillis()
+        )
+
+        localPeripheral = peripheral
+        Log.d(TAG, "Updated peripheral state: callsign=$callsign, battery=$batteryPercent%, " +
+                "location=${location?.let { "(${it.latitude}, ${it.longitude})" } ?: "null"}, " +
+                "event=$eventType")
     }
 
     /**
@@ -1335,7 +1652,56 @@ class HiveBtle(
             Log.d(TAG, "Emergency bypass: cleared peer sync state for full document sync")
         }
 
-        val documentBytes = HiveDocument.encode(nodeId, localCounter, peripheral)
+        // When encryption is enabled, use native mesh for document building
+        // This ensures documents have correct format (0xAE encrypted header)
+        val documentBytes = if (isEncryptionEnabled()) {
+            val mesh = _mesh
+            if (mesh == null) {
+                Log.w(TAG, "Encryption enabled but mesh not initialized, using unencrypted encoding")
+                HiveDocument.encode(nodeId, localCounter, peripheral)
+            } else {
+                // Update native peripheral state BEFORE building document
+                // This ensures location, callsign, and other state is included in encrypted docs
+                val nativeEventType: EventType? = when (eventType) {
+                    HiveEventType.NONE -> EventType.NONE
+                    HiveEventType.PING -> EventType.PING
+                    HiveEventType.NEED_ASSIST -> EventType.NEED_ASSIST
+                    HiveEventType.EMERGENCY -> EventType.EMERGENCY
+                    HiveEventType.MOVING -> EventType.MOVING
+                    HiveEventType.IN_POSITION -> EventType.IN_POSITION
+                    HiveEventType.ACK -> EventType.ACK
+                }
+                mesh.updatePeripheralState(
+                    callsign = callsign.take(12),
+                    batteryPercent = battery.coerceIn(0, 255).toUByte(),
+                    heartRate = heartRate?.coerceIn(0, 255)?.toUByte(),
+                    latitude = location?.latitude?.toFloat(),
+                    longitude = location?.longitude?.toFloat(),
+                    altitude = location?.altitude?.toFloat(),
+                    eventType = nativeEventType,
+                    timestampMs = System.currentTimeMillis().toULong()
+                )
+                Log.d(TAG, "[ENCRYPTED] Updated native peripheral state: location=${location != null}, callsign=$callsign")
+
+                when (eventType) {
+                    HiveEventType.EMERGENCY -> {
+                        Log.d(TAG, "[ENCRYPTED] Using native sendEmergency")
+                        mesh.sendEmergency(System.currentTimeMillis().toULong())
+                    }
+                    HiveEventType.ACK -> {
+                        Log.d(TAG, "[ENCRYPTED] Using native sendAck")
+                        mesh.sendAck(System.currentTimeMillis().toULong())
+                    }
+                    else -> {
+                        // For non-emergency events, use buildDocument which includes all CRDT state
+                        Log.d(TAG, "[ENCRYPTED] Using native buildDocument for event type: $eventType")
+                        mesh.buildDocument()
+                    }
+                }
+            }
+        } else {
+            HiveDocument.encode(nodeId, localCounter, peripheral)
+        }
 
         // Send to all connected peripherals (devices we connected to as Central)
         for ((address, gatt) in connections) {
@@ -1410,7 +1776,8 @@ class HiveBtle(
             return
         }
 
-        Log.i(TAG, "[CHAT-CRDT] Sending: '${chat.message}' from ${chat.sender}")
+        val chatCountBefore = mesh.chatCount()
+        Log.i(TAG, "[CHAT-CRDT] Sending: '${chat.message}' from ${chat.sender} (chatCount=$chatCountBefore)")
 
         // Use CRDT-based chat - stores message locally and returns document to broadcast
         // Pass the timestamp from the HiveChat to ensure consistency between caller and CRDT
@@ -1418,32 +1785,60 @@ class HiveBtle(
             mesh.sendChatReply(
                 chat.sender.take(12),  // CRDT max sender is 12 chars
                 chat.message.take(128), // CRDT max text is 128 chars
-                chat.replyToNode,
-                chat.replyToTimestamp,
-                chat.timestamp
+                chat.replyToNode.toUInt(),
+                chat.replyToTimestamp.toULong(),
+                chat.timestamp.toULong()
             )
         } else {
             mesh.sendChat(
                 chat.sender.take(12),
                 chat.message.take(128),
-                chat.timestamp
+                chat.timestamp.toULong()
             )
         }
 
-        if (docBytes.isEmpty()) {
+        val chatCountAfter = mesh.chatCount()
+        Log.i(TAG, "[CHAT-CRDT] After sendChat: chatCount=$chatCountAfter (was $chatCountBefore)")
+
+        if (docBytes == null || docBytes.isEmpty()) {
             Log.d(TAG, "[CHAT-CRDT] Message was duplicate, not broadcasting")
             return
         }
 
-        Log.i(TAG, "[CHAT-CRDT] Broadcasting ${docBytes.size} bytes to ${connections.size} peripherals and ${connectedCentrals.size} centrals")
+        // Log document details for debugging
+        val firstByte = if (docBytes.isNotEmpty()) String.format("0x%02X", docBytes[0]) else "empty"
+        Log.i(TAG, "[CHAT-CRDT] Broadcasting ${docBytes.size} bytes (first=$firstByte) to ${connections.size} peripherals and ${connectedCentrals.size} centrals")
 
-        // Send document to all connected peripherals
+        // Log which peers we're sending to
+        for ((address, _) in connections) {
+            val nodeId = addressToNodeId[address]
+            val peer = nodeId?.let { peers[it] }
+            Log.i(TAG, "[CHAT-CRDT] -> peripheral: ${peer?.displayName() ?: address}")
+        }
+        for ((address, _) in connectedCentrals) {
+            val nodeId = addressToNodeId[address]
+            val peer = nodeId?.let { peers[it] }
+            Log.i(TAG, "[CHAT-CRDT] -> central: ${peer?.displayName() ?: address}")
+        }
+
+        // Send CRDT document to all connected peripherals and centrals
         for ((address, gatt) in connections) {
             writeDocumentToGatt(gatt, docBytes)
         }
-
-        // Send document to all connected centrals
         notifyConnectedCentrals(docBytes)
+
+        // Also send standalone 0xAD chat document for backwards compatibility with
+        // devices that don't process chat CRDT from the full encrypted document.
+        // This ensures chat works with older WearTAK versions.
+        val standaloneChat = chat.copy(originNode = nodeId)
+        val standaloneChatBytes = HiveChat.encode(standaloneChat)
+        if (standaloneChatBytes.isNotEmpty()) {
+            Log.i(TAG, "[CHAT-STANDALONE] Also sending ${standaloneChatBytes.size} byte standalone 0xAD chat")
+            for ((address, gatt) in connections) {
+                writeDocumentToGatt(gatt, standaloneChatBytes)
+            }
+            notifyConnectedCentrals(standaloneChatBytes)
+        }
     }
 
     /**
@@ -1462,12 +1857,120 @@ class HiveBtle(
     }
 
     /**
+     * Broadcast raw bytes to all connected peers.
+     *
+     * Takes raw payload bytes, encrypts them (if encryption is enabled),
+     * and sends to all connected peripherals and centrals.
+     *
+     * This is useful for sending extension data like CannedMessages from hive-lite.
+     *
+     * @param payload The raw bytes to broadcast
+     */
+    fun broadcastBytes(payload: ByteArray) {
+        if (!isMeshRunning) {
+            Log.w(TAG, "Mesh not running, cannot broadcast bytes")
+            return
+        }
+
+        val mesh = _mesh
+        if (mesh == null) {
+            Log.w(TAG, "Mesh not initialized, cannot broadcast bytes")
+            return
+        }
+
+        // Encrypt the payload
+        val docBytes = mesh.broadcastBytes(payload)
+
+        Log.i(TAG, "[BROADCAST] Sending ${docBytes.size} bytes to ${connections.size} peripherals and ${connectedCentrals.size} centrals")
+
+        // Send to all connected peripherals
+        for ((_, gatt) in connections) {
+            writeDocumentToGatt(gatt, docBytes)
+        }
+
+        // Send to all connected centrals
+        notifyConnectedCentrals(docBytes)
+    }
+
+    /**
+     * Store a CannedMessage document for CRDT sync.
+     *
+     * Takes raw hive-lite encoded bytes (including 0xAF marker).
+     * The document will be stored and synced to peers via delta sync.
+     *
+     * @param encodedBytes The hive-lite encoded CannedMessageAckEvent bytes
+     * @return true if the document was newly added or changed via merge
+     */
+    fun storeCannedMessageDocument(encodedBytes: ByteArray): Boolean {
+        val mesh = _mesh
+        if (mesh == null) {
+            Log.w(TAG, "Mesh not initialized, cannot store canned message")
+            return false
+        }
+        val result = mesh.storeCannedMessageDocument(encodedBytes)
+        Log.d(TAG, "[CANNED-MSG] Stored document: ${encodedBytes.size} bytes, changed=$result")
+        return result
+    }
+
+    /**
+     * Record an ACK on a stored CannedMessage document.
+     *
+     * @param sourceNode The source node that created the document
+     * @param timestamp The document timestamp
+     * @param ackerNode The node recording the ACK
+     * @param ackTimestamp The ACK timestamp
+     * @return true if the ACK was new (document changed)
+     */
+    fun ackCannedMessage(sourceNode: UInt, timestamp: ULong, ackerNode: UInt, ackTimestamp: ULong): Boolean {
+        val mesh = _mesh
+        if (mesh == null) {
+            Log.w(TAG, "Mesh not initialized, cannot ACK canned message")
+            return false
+        }
+        val result = mesh.ackCannedMessage(sourceNode, timestamp, ackerNode, ackTimestamp)
+        Log.d(TAG, "[CANNED-MSG] ACK recorded: source=$sourceNode ts=$timestamp acker=$ackerNode, changed=$result")
+        return result
+    }
+
+    /**
+     * Get the number of stored app documents.
+     */
+    fun appDocumentCount(): Int {
+        return (_mesh?.appDocumentCount() ?: 0u).toInt()
+    }
+
+    /**
+     * Get all stored CannedMessage documents.
+     *
+     * Returns a list of CannedMessageInfo objects containing:
+     * - sourceNode: The node that created the message
+     * - timestamp: When the message was created
+     * - encodedBytes: The hive-lite encoded bytes (with 0xAF marker)
+     *
+     * @return List of CannedMessageInfo, or empty list if mesh not initialized
+     */
+    fun getAllCannedMessages(): List<CannedMessageInfo> {
+        return _mesh?.getAllCannedMessages() ?: emptyList()
+    }
+
+    /**
+     * Get a specific CannedMessage document as encoded bytes.
+     *
+     * @param sourceNode The source node of the message
+     * @param timestamp The timestamp of the message
+     * @return The encoded bytes (with 0xAF marker), or null if not found
+     */
+    fun getCannedMessageDocument(sourceNode: UInt, timestamp: ULong): ByteArray? {
+        return _mesh?.getCannedMessageDocument(sourceNode, timestamp)
+    }
+
+    /**
      * Get the number of chat messages stored in the local CRDT.
      *
      * @return Number of messages, or 0 if mesh not initialized
      */
     fun getChatCount(): Int {
-        return _mesh?.chatCount() ?: 0
+        return (_mesh?.chatCount() ?: 0u).toInt()
     }
 
     /**
@@ -1489,7 +1992,7 @@ class HiveBtle(
      */
     fun getChatMessagesSince(sinceTimestamp: Long): List<HiveChat> {
         val mesh = _mesh ?: return emptyList()
-        val json = mesh.getChatMessagesSince(sinceTimestamp)
+        val json = mesh.getChatMessagesSince(sinceTimestamp.toULong())
         return parseChatMessagesJson(json)
     }
 
@@ -1555,6 +2058,37 @@ class HiveBtle(
             return
         }
 
+        // Handle BLE address rotation for ALL devices with stable names
+        // This prevents duplicate peers when the same device advertises from a new MAC address
+        // Works for: WearTAK (WEAROS-*), HIVE devices (HIVE_*), and any device with consistent naming
+        if (device.name.isNotEmpty()) {
+            // O(1) lookup using nameToNodeId map
+            val existingNodeId = nameToNodeId[device.name]
+            if (existingNodeId != null) {
+                val existingPeer = peers[existingNodeId]
+                if (existingPeer != null) {
+                    // Same device seen from new address - update mappings
+                    val oldAddress = existingPeer.address
+
+                    // Clean up old address mapping to prevent memory leak
+                    if (oldAddress.isNotEmpty() && oldAddress != device.address) {
+                        addressToNodeId.remove(oldAddress)
+                        Log.d(TAG, "Address rotation: ${device.name} moved from $oldAddress to ${device.address}")
+                    }
+
+                    // Update peer with new address and RSSI
+                    existingPeer.address = device.address
+                    existingPeer.rssi = device.rssi
+                    existingPeer.lastSeen = System.currentTimeMillis()
+                    addressToNodeId[device.address] = existingNodeId
+
+                    Log.d(TAG, "Device ${device.name} seen from new address ${device.address}, mapped to existing nodeId ${String.format("%08X", existingNodeId)}")
+                    notifyMeshUpdated()
+                    return
+                }
+            }
+        }
+
         // Derive nodeId from name, service data, or address for new peers
         val peerNodeId = device.nodeId ?: nativeDeriveNodeId(device.address)
 
@@ -1568,40 +2102,65 @@ class HiveBtle(
             return
         }
 
-        val now = System.currentTimeMillis()
-        addressToNodeId[device.address] = peerNodeId
-
+        // Final deduplication check: see if we already have this nodeId
+        // This catches cases where nodeId was derived differently but is actually the same device
         val existingPeer = peers[peerNodeId]
         if (existingPeer != null) {
-            // Update existing peer
+            // Update existing peer - also update address if it changed
+            val oldAddress = existingPeer.address
+            if (oldAddress != device.address) {
+                if (oldAddress.isNotEmpty()) {
+                    addressToNodeId.remove(oldAddress)
+                }
+                existingPeer.address = device.address
+                addressToNodeId[device.address] = peerNodeId
+            }
             existingPeer.rssi = device.rssi
-            existingPeer.lastSeen = now
-        } else {
-            // New peer discovered
-            val peer = HivePeer(
-                nodeId = peerNodeId,
-                address = device.address,
-                name = device.name.ifEmpty { generateDeviceName(device.meshId ?: meshId, peerNodeId) },
-                meshId = device.meshId,
-                rssi = device.rssi,
-                isConnected = false,
-                lastDocument = null,
-                lastSeen = now
-            )
-            peers[peerNodeId] = peer
-            Log.i(TAG, "New peer discovered: ${peer.displayName()} (mesh: ${device.meshId ?: "legacy"})")
+            existingPeer.lastSeen = System.currentTimeMillis()
 
-            // Auto-connect to new peer
-            connectToPeer(peer)
+            // Update name mapping if we have a name
+            if (device.name.isNotEmpty()) {
+                nameToNodeId[device.name] = peerNodeId
+            }
+            notifyMeshUpdated()
+            return
         }
+
+        // New peer discovered
+        val now = System.currentTimeMillis()
+        // Use cached callsign if available, otherwise BLE name, otherwise generate
+        val peerName = nodeIdToCallsign[peerNodeId]
+            ?: device.name.ifEmpty { generateDeviceName(device.meshId ?: meshId, peerNodeId) }
+        val peer = HivePeer(
+            nodeId = peerNodeId,
+            address = device.address,
+            name = peerName,
+            meshId = device.meshId,
+            rssi = device.rssi,
+            isConnected = false,
+            lastDocument = null,
+            lastSeen = now
+        )
+
+        // Add to all maps
+        peers[peerNodeId] = peer
+        addressToNodeId[device.address] = peerNodeId
+        if (peerName.isNotEmpty()) {
+            nameToNodeId[peerName] = peerNodeId
+        }
+
+        Log.i(TAG, "New peer discovered: ${peer.displayName()} (mesh: ${device.meshId ?: "legacy"})")
+
+        // Auto-connect to new peer
+        connectToPeer(peer)
 
         // Update HiveMesh ConnectionStateGraph
         _mesh?.onBleDiscovered(
             identifier = device.address,
             name = device.name.ifEmpty { null },
-            rssi = device.rssi,
-            deviceMeshId = device.meshId,
-            nowMs = now
+            rssi = device.rssi.coerceIn(-128, 127).toByte(),
+            meshId = device.meshId,
+            nowMs = now.toULong()
         )
 
         notifyMeshUpdated()
@@ -1657,9 +2216,11 @@ class HiveBtle(
                     }
                     if (connected) {
                         // Update HiveMesh ConnectionStateGraph
-                        _mesh?.onBleConnected(peer.address, System.currentTimeMillis())
+                        _mesh?.onBleConnected(peer.address, System.currentTimeMillis().toULong())
                         // Notify listener of peer connection for immediate UI update
                         currentPeer?.let { notifyPeerConnected(it) }
+                        // Reset reconnection tracking on successful connection
+                        resetReconnectTracking(peer.address)
                     } else {
                         // Update HiveMesh ConnectionStateGraph
                         _mesh?.onBleDisconnected(peer.address, DisconnectReason.LINK_LOSS)
@@ -1667,17 +2228,18 @@ class HiveBtle(
                         currentPeer?.let { notifyPeerDisconnected(it) }
                         connections.remove(peer.address)
                         gattCallbacks.remove(peer.address)
-                        // Retry connection after a delay if mesh is still running
-                        if (isMeshRunning && currentPeer != null) {
-                            handler.postDelayed({
-                                if (isMeshRunning && !connections.containsKey(peer.address)) {
-                                    Log.i(TAG, "Retrying connection to ${currentPeer.displayName()}")
-                                    connectToPeer(currentPeer)
-                                }
-                            }, 2000)
-                        }
+                        // Clean up write queue for disconnected peer
+                        writeQueues.remove(peer.address)
+                        writeInProgress.remove(peer.address)
+                        // Note: reconnection is handled by reconnectLostPeers() with exponential backoff
+                        Log.d(TAG, "Peer ${peer.displayName()} disconnected, will retry via reconnectLostPeers()")
                     }
                     notifyMeshUpdated()
+                }
+
+                override fun onWriteComplete(success: Boolean) {
+                    // Process next item in write queue
+                    onWriteCompleteForConnection(peer.address)
                 }
             }
 
@@ -1699,6 +2261,9 @@ class HiveBtle(
     }
 
     private fun handlePeerDocument(peer: HivePeer, data: ByteArray) {
+        val firstByte = if (data.isNotEmpty()) String.format("0x%02X", data[0]) else "empty"
+        Log.i(TAG, "[DOC-RX] From ${peer.displayName()}: ${data.size} bytes, first=$firstByte")
+
         // Check for marker document (0xAC)
         if (data.isNotEmpty() && data[0] == MARKER_SECTION_MARKER) {
             handlePeerMarkerDocument(peer, data)
@@ -1711,9 +2276,21 @@ class HiveBtle(
             return
         }
 
+        // Check for canned message (0xAF) - hive-lite tactical messaging
+        if (data.isNotEmpty() && data[0] == APP_LAYER_MARKER) {
+            handleAppLayerMessage(peer, data)
+            return
+        }
+
         // Check for delta document marker (0xB2)
         if (HiveDeltaDocument.isDeltaDocument(data)) {
             handlePeerDeltaDocument(peer, data)
+            return
+        }
+
+        // Check for encrypted document marker (0xAE) - process via native mesh for decryption
+        if (data.isNotEmpty() && data[0] == 0xAE.toByte()) {
+            handlePeerEncryptedDocument(peer, data)
             return
         }
 
@@ -1790,6 +2367,11 @@ class HiveBtle(
         peer.lastDocument = document
         peer.lastSeen = System.currentTimeMillis()
 
+        // Update callsign cache if document has callsign
+        document.peripheral?.callsign?.takeIf { it.isNotEmpty() }?.let {
+            updateCallsignForNode(document.nodeId, it)
+        }
+
         // Merge counters (CRDT merge)
         mergeCounter(document.counter)
 
@@ -1803,19 +2385,19 @@ class HiveBtle(
                 identifier = sourceAddress,
                 name = hiveName,
                 rssi = 0,
-                deviceMeshId = meshId,
-                nowMs = now
+                meshId = meshId,
+                nowMs = now.toULong()
             )
             Log.d(TAG, "[CRDT-REGISTER] onBleDiscovered(addr=$sourceAddress, name=$hiveName, meshId=$meshId) -> ${discoveredPeer != null}")
-            _mesh?.onBleConnected(identifier = sourceAddress, nowMs = now)
+            _mesh?.onBleConnected(identifier = sourceAddress, nowMs = now.toULong())
         }
 
         // Merge document into native CRDT (includes chat messages)
         // Track chat count before merge to detect new messages
-        val chatCountBefore = _mesh?.chatCount() ?: 0
+        val chatCountBefore = _mesh?.chatCount() ?.toInt() ?: 0
         Log.d(TAG, "[CRDT-DEBUG] rawBytes=${rawBytes?.size}, sourceAddress=$sourceAddress, _mesh=${_mesh != null}, chatCountBefore=$chatCountBefore")
         if (rawBytes != null && rawBytes.isNotEmpty() && sourceAddress != null) {
-            val result = _mesh?.onBleDataReceived(sourceAddress, rawBytes)
+            val result = _mesh?.onBleDataReceived(sourceAddress, rawBytes, System.currentTimeMillis().toULong())
             if (result != null) {
                 Log.i(TAG, "[CRDT-MERGE] From ${peer.displayName()}: counterChanged=${result.counterChanged}, total=${result.totalCount}")
             } else {
@@ -1826,7 +2408,7 @@ class HiveBtle(
         }
 
         // Check for new chat messages after CRDT merge
-        val chatCountAfter = _mesh?.chatCount() ?: 0
+        val chatCountAfter = _mesh?.chatCount()?.toInt() ?: 0
         if (chatCountAfter > chatCountBefore) {
             val newChatCount = chatCountAfter - chatCountBefore
             Log.i(TAG, "[CHAT-CRDT] $newChatCount new chat message(s) after merge (before=$chatCountBefore, after=$chatCountAfter)")
@@ -2003,7 +2585,7 @@ class HiveBtle(
                 ((data[offset + 1].toInt() and 0xFF) shl 8)
         offset += 2
 
-        Log.i(TAG, "[MARKER-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId)}): $markerCount markers")
+        Log.i(TAG, "[MARKER-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId.toLong())}): $markerCount markers")
 
         // Find the source peer (might be relayed)
         val sourcePeer = peers[sourceNodeId] ?: peer
@@ -2050,13 +2632,13 @@ class HiveBtle(
         synchronized(seenMessagesLock) {
             val lastSeen = seenMessages[messageHash]
             if (lastSeen != null && (now - lastSeen) < 30_000) {
-                Log.v(TAG, "[CHAT-RX] Skipping duplicate chat from ${String.format("%08X", sourceNodeId)}")
+                Log.v(TAG, "[CHAT-RX] Skipping duplicate chat from ${String.format("%08X", sourceNodeId.toLong())}")
                 return
             }
             seenMessages[messageHash] = now
         }
 
-        Log.i(TAG, "[CHAT-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId)}): '${chat.sender}' says '${chat.message}'")
+        Log.i(TAG, "[CHAT-RX] From ${peer.displayName()} (origin=${String.format("%08X", sourceNodeId.toLong())}): '${chat.sender}' says '${chat.message}'")
 
         // Find the source peer (might be relayed)
         val sourcePeer = peers[sourceNodeId] ?: peer
@@ -2095,6 +2677,247 @@ class HiveBtle(
 
         if (forwardCount > 0) {
             Log.d(TAG, "[CHAT-RELAY] Forwarded to $forwardCount peers")
+        }
+    }
+
+    /**
+     * Handle an incoming app-layer message (0xAF marker) from a peer.
+     *
+     * hive-btle is transport-only: we pass raw bytes to the app via onDecryptedData
+     * and relay to other connected peers. Apps use hive-lite to decode the content.
+     */
+    private fun handleAppLayerMessage(peer: HivePeer, data: ByteArray) {
+        Log.d(TAG, "[APP-LAYER] Received ${data.size} byte app-layer message from ${peer.displayName()}")
+
+        // Pass raw bytes to app - apps use hive-lite to decode
+        handler.post {
+            meshListener?.onDecryptedData(peer, data)
+        }
+
+        // Relay to other connected peers (transport layer mesh forwarding)
+        relayToOtherPeers(data, peer.address)
+    }
+
+    /**
+     * Relay data to all connected peers except the source.
+     */
+    private fun relayToOtherPeers(rawBytes: ByteArray, sourceAddress: String?) {
+        // Deduplication: Use Rust-side deduplication via HiveMesh.
+        // This prevents broadcast storms when relaying CannedMessages.
+        //
+        // CannedMessage wire format: 0xAF marker, msg_code, source_node (4B LE), target (4B), timestamp (8B LE)
+        // Document identity is at bytes 2-5 (source_node) and 10-17 (timestamp)
+        if (rawBytes.size >= 18 && rawBytes[0] == APP_LAYER_MARKER) {
+            // Extract document identity: source_node (bytes 2-5) + timestamp (bytes 10-17)
+            val sourceNode = ((rawBytes[2].toInt() and 0xFF)) or
+                ((rawBytes[3].toInt() and 0xFF) shl 8) or
+                ((rawBytes[4].toInt() and 0xFF) shl 16) or
+                ((rawBytes[5].toInt() and 0xFF) shl 24)
+            val timestamp = ((rawBytes[10].toLong() and 0xFF)) or
+                ((rawBytes[11].toLong() and 0xFF) shl 8) or
+                ((rawBytes[12].toLong() and 0xFF) shl 16) or
+                ((rawBytes[13].toLong() and 0xFF) shl 24) or
+                ((rawBytes[14].toLong() and 0xFF) shl 32) or
+                ((rawBytes[15].toLong() and 0xFF) shl 40) or
+                ((rawBytes[16].toLong() and 0xFF) shl 48) or
+                ((rawBytes[17].toLong() and 0xFF) shl 56)
+
+            // Use Rust-side deduplication (centralizes logic in HiveMesh)
+            val mesh = _mesh
+            if (mesh != null) {
+                val isNew = mesh.checkCannedMessage(sourceNode.toUInt(), timestamp.toULong(), 30_000UL)
+                if (!isNew) {
+                    Log.v(TAG, "[RELAY-SKIP] Already relayed CannedMessage from ${String.format("%08X", sourceNode)} ts=$timestamp")
+                    return
+                }
+                // Mark as seen to prevent future relays
+                mesh.markCannedMessageSeen(sourceNode.toUInt(), timestamp.toULong())
+            } else {
+                // Fallback to local deduplication if mesh not available
+                val now = System.currentTimeMillis()
+                val docId = (sourceNode.toLong() shl 32) or (timestamp and 0xFFFFFFFFL)
+                synchronized(seenMessagesLock) {
+                    val lastSeen = seenMessages[docId]
+                    if (lastSeen != null && (now - lastSeen) < 30_000) {
+                        Log.v(TAG, "[RELAY-SKIP] Already relayed CannedMessage from ${String.format("%08X", sourceNode)} ts=$timestamp (fallback)")
+                        return
+                    }
+                    seenMessages[docId] = now
+                }
+            }
+        }
+
+        var forwardCount = 0
+
+        // Debug: log connection counts
+        val connCount = connections.size
+        val centralCount = connectedCentrals.size
+        if (connCount + centralCount > 4) {
+            Log.w(TAG, "[RELAY-DEBUG] Unexpected peer count: connections=$connCount (${connections.keys}), centrals=$centralCount (${connectedCentrals.keys})")
+        }
+
+        // Forward to peripherals (devices we connected to)
+        for ((address, gatt) in connections) {
+            if (address == sourceAddress) continue
+            writeDocumentToGatt(gatt, rawBytes)
+            forwardCount++
+        }
+
+        // Forward to centrals (devices that connected to us)
+        val centralsToNotify = connectedCentrals.keys.filter { it != sourceAddress }
+        if (centralsToNotify.isNotEmpty()) {
+            notifySpecificCentrals(centralsToNotify, rawBytes)
+            forwardCount += centralsToNotify.size
+        }
+
+        if (forwardCount > 0) {
+            Log.d(TAG, "[RELAY] Forwarded ${rawBytes.size} bytes to $forwardCount peers (conn=$connCount, central=$centralCount)")
+        }
+    }
+
+    /**
+     * Handle an incoming encrypted document (0xAE) from a peer via notifications.
+     * Decrypts and passes raw bytes to app via onDecryptedData callback,
+     * then continues with legacy parsing for backward compatibility.
+     */
+    private fun handlePeerEncryptedDocument(peer: HivePeer, data: ByteArray) {
+        val headerHex = data.take(16).joinToString(" ") { String.format("%02X", it) }
+        Log.d(TAG, "[ENCRYPTED-NOTIFY] Received ${data.size} byte encrypted document from ${peer.displayName()}, header: $headerHex")
+
+        val now = System.currentTimeMillis()
+        val address = peer.address
+
+        // TRANSPORT LAYER: Decrypt and pass raw bytes to app
+        val decryptedBytes = _mesh?.decryptOnly(data)
+        if (decryptedBytes != null && decryptedBytes.isNotEmpty()) {
+            val marker = decryptedBytes[0]
+            Log.d(TAG, "[TRANSPORT] Decrypted ${decryptedBytes.size} bytes, marker=0x${String.format("%02X", marker)}")
+            handler.post {
+                meshListener?.onDecryptedData(peer, decryptedBytes)
+            }
+
+            // NOTE: App-layer messages (0xAF) now flow through delta sync for proper CRDT handling.
+            // They are stored in the document registry and synced via Operation::App.
+            // The onDecryptedData callback above provides raw bytes for legacy apps.
+        }
+
+        // LEGACY: Continue with existing parsing for backward compatibility
+        // Only for document types (0xAA, 0xB2, etc.) - not app-layer message (0xAF)
+        // Use anonymous decryption path - decrypts first, extracts source_node from
+        // decrypted document header, and registers the identifier->nodeId mapping.
+        val chatCountBefore = _mesh?.chatCount()?.toInt() ?: 0
+        val result = _mesh?.onBleDataReceivedAnonymous(address, data, System.currentTimeMillis().toULong())
+        if (result != null) {
+            Log.i(TAG, "[ENCRYPTED-MERGE] sourceNode=${String.format("%08X", result.sourceNode.toLong())}, isAck=${result.isAck}, counterChanged=${result.counterChanged}, total=${result.totalCount}")
+
+            val sourceNodeId = result.sourceNode.toLong()
+            if (sourceNodeId != 0L && sourceNodeId != nodeId) {
+                addressToNodeId[address] = sourceNodeId
+
+                // Update peer info
+                var sourcePeer = peers[sourceNodeId]
+                if (sourcePeer == null) {
+                    val peerName = generateDeviceName(meshId, sourceNodeId)
+                    sourcePeer = HivePeer(
+                        nodeId = sourceNodeId,
+                        address = address,
+                        name = peerName,
+                        meshId = meshId,
+                        rssi = peer.rssi,
+                        isConnected = true,
+                        lastDocument = null,
+                        lastSeen = now
+                    )
+                    peers[sourceNodeId] = sourcePeer
+                    Log.i(TAG, "[ENCRYPTED-NOTIFY] Added peer: ${sourcePeer.displayName()}")
+                } else {
+                    sourcePeer.lastSeen = now
+                    sourcePeer.isConnected = true
+                }
+
+                // Check for ACK/emergency events
+                // ACK can come either as emergency ACK (is_ack flag) or peripheral event (eventType=6)
+                if (result.isAck || result.eventType == EventType.ACK) {
+                    Log.i(TAG, "[ENCRYPTED-NOTIFY] ACK received from ${sourcePeer.displayName()} (isAck=${result.isAck}, eventType=${result.eventType})")
+                    handler.post {
+                        meshListener?.onPeerEvent(sourcePeer, HiveEventType.ACK)
+                    }
+                }
+                if (result.isEmergency || result.eventType == EventType.EMERGENCY) {
+                    Log.i(TAG, "[ENCRYPTED-NOTIFY] EMERGENCY from ${sourcePeer.displayName()} (isEmergency=${result.isEmergency}, eventType=${result.eventType})")
+                    handler.post {
+                        meshListener?.onPeerEvent(sourcePeer, HiveEventType.EMERGENCY)
+                    }
+                }
+
+                // Check for new chat messages
+                val chatCountAfter = _mesh?.chatCount()?.toInt() ?: 0
+                if (chatCountAfter > chatCountBefore) {
+                    Log.i(TAG, "[ENCRYPTED-CHAT] ${chatCountAfter - chatCountBefore} new chat message(s)")
+                    val allChats = getAllChatMessages()
+                    for (chat in allChats) {
+                        val key = "${chat.originNode}:${chat.timestamp}"
+                        if (!processedChatMessages.contains(key)) {
+                            processedChatMessages.add(key)
+                            if (chat.originNode != nodeId) {
+                                handler.post {
+                                    meshListener?.onChatReceived(chat, sourcePeer)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Update callsign cache if we received a valid callsign
+                result.callsign?.let { updateCallsignForNode(sourceNodeId, it) }
+
+                // Build and notify document synced
+                val eventType = result.eventType?.let { HiveEventType.fromEventType(it) } ?: HiveEventType.NONE
+                val hasPeripheralData = result.callsign != null ||
+                    result.latitude != null ||
+                    result.batteryPercent != null ||
+                    result.heartRate != null ||
+                    result.eventType != null
+
+                if (hasPeripheralData) {
+                    val lat = result.latitude
+                    val lon = result.longitude
+                    val alt = result.altitude
+                    val peerPeripheral = HivePeripheral(
+                        id = sourceNodeId,
+                        parentNode = sourceNodeId,
+                        peripheralType = HivePeripheralType.SOLDIER_SENSOR,
+                        callsign = result.callsign ?: "",
+                        health = HiveHealthStatus(
+                            batteryPercent = result.batteryPercent?.toInt() ?: 0,
+                            heartRate = result.heartRate?.toInt(),
+                            activityLevel = 0,
+                            alerts = 0
+                        ),
+                        lastEvent = if (eventType != HiveEventType.NONE)
+                            HivePeripheralEvent(eventType, now) else null,
+                        location = if (lat != null && lon != null)
+                            HiveLocation(lat, lon, alt ?: 0f) else null,
+                        timestamp = now
+                    )
+                    val syntheticDoc = HiveDocument(
+                        version = 1,
+                        nodeId = sourceNodeId,
+                        counter = emptyList(),
+                        peripheral = peerPeripheral
+                    )
+                    handler.post {
+                        meshListener?.onDocumentSynced(syntheticDoc)
+                    }
+
+                    // Update peer's last document
+                    sourcePeer.lastDocument = syntheticDoc
+                }
+
+                notifyMeshUpdated()
+            }
+        } else {
+            Log.w(TAG, "[ENCRYPTED-NOTIFY] Failed to decrypt/process ${data.size} byte document from ${peer.displayName()}")
         }
     }
 
@@ -2143,10 +2966,15 @@ class HiveBtle(
                     } else {
                         localCounter.add(GCounterEntry(op.nodeId, op.amount))
                     }
-                    Log.v(TAG, "  - IncrementCounter: node=${String.format("%08X", op.nodeId)}, +${op.amount}")
+                    Log.v(TAG, "  - IncrementCounter: node=${String.format("%08X", op.nodeId.toLong())}, +${op.amount}")
                 }
 
                 is DeltaOperation.UpdatePeripheral -> {
+                    // Update callsign cache if peripheral has callsign
+                    op.peripheral.callsign.takeIf { it.isNotEmpty() }?.let {
+                        updateCallsignForNode(docNodeId, it)
+                    }
+
                     // Update peer's peripheral state
                     val currentPeer = peers[docNodeId]
                     if (currentPeer != null) {
@@ -2187,7 +3015,7 @@ class HiveBtle(
                 }
 
                 is DeltaOperation.SetEmergency -> {
-                    Log.i(TAG, "  - SetEmergency: source=${String.format("%08X", op.sourceNode)}")
+                    Log.i(TAG, "  - SetEmergency: source=${String.format("%08X", op.sourceNode.toLong())}")
                     peers[op.sourceNode]?.let { emergencyPeer ->
                         handler.post {
                             meshListener?.onPeerEvent(emergencyPeer, HiveEventType.EMERGENCY)
@@ -2196,7 +3024,7 @@ class HiveBtle(
                 }
 
                 is DeltaOperation.AckEmergency -> {
-                    Log.i(TAG, "  - AckEmergency: from=${String.format("%08X", op.nodeId)}")
+                    Log.i(TAG, "  - AckEmergency: from=${String.format("%08X", op.nodeId.toLong())}")
                     peers[op.nodeId]?.let { ackPeer ->
                         handler.post {
                             meshListener?.onPeerEvent(ackPeer, HiveEventType.ACK)
@@ -2277,6 +3105,9 @@ class HiveBtle(
                 }
 
                 is DeltaOperation.UpdateCallsign -> {
+                    // Update callsign cache
+                    updateCallsignForNode(docNodeId, op.callsign)
+
                     // Field-level callsign update - apply to existing peripheral
                     val currentPeer = peers[docNodeId]
                     if (currentPeer != null) {
@@ -2379,6 +3210,42 @@ class HiveBtle(
         }
     }
 
+    /**
+     * Sync localPeripheral state to native HiveMesh.
+     *
+     * This ensures that when buildDocument() is called on the native side,
+     * it includes the current location, callsign, health, and event data.
+     * Without this, encrypted documents would be missing positional data.
+     */
+    private fun syncLocalPeripheralToNative(timestamp: Long) {
+        val mesh = _mesh ?: return
+        val peripheral = localPeripheral ?: return
+
+        // Map Kotlin event type to native event type
+        val nativeEventType: EventType? = peripheral.lastEvent?.let { event ->
+            when (event.eventType) {
+                HiveEventType.NONE -> EventType.NONE
+                HiveEventType.PING -> EventType.PING
+                HiveEventType.NEED_ASSIST -> EventType.NEED_ASSIST
+                HiveEventType.EMERGENCY -> EventType.EMERGENCY
+                HiveEventType.MOVING -> EventType.MOVING
+                HiveEventType.IN_POSITION -> EventType.IN_POSITION
+                HiveEventType.ACK -> EventType.ACK
+            }
+        }
+
+        mesh.updatePeripheralState(
+            callsign = peripheral.callsign,
+            batteryPercent = peripheral.health.batteryPercent.coerceIn(0, 255).toUByte(),
+            heartRate = peripheral.health.heartRate?.coerceIn(0, 255)?.toUByte(),
+            latitude = peripheral.location?.latitude?.toFloat(),
+            longitude = peripheral.location?.longitude?.toFloat(),
+            altitude = peripheral.location?.altitude?.toFloat(),
+            eventType = nativeEventType,
+            timestampMs = timestamp.toULong()
+        )
+    }
+
     private fun syncWithPeers() {
         if (connections.isEmpty() && connectedCentrals.isEmpty()) return
 
@@ -2415,15 +3282,20 @@ class HiveBtle(
      * Returns delta document otherwise.
      */
     private fun buildSyncDocumentForPeer(peerId: Long, now: Long, currentCounterValue: Long): ByteArray? {
+        val mesh = _mesh ?: return null
         val state = peerSyncState.getOrPut(peerId) { PeerSyncState() }
 
-        // Determine if we need a full sync
+        // Sync local peripheral state to native before building document
+        // This ensures location and other state is included in encrypted docs
+        syncLocalPeripheralToNative(now)
+
+        // Determine if we need a full sync (first sync or every FULL_SYNC_INTERVAL)
         val needsFullSync = state.syncCount == 0 ||
                             state.syncCount % FULL_SYNC_INTERVAL == 0
 
         if (needsFullSync) {
-            // Full document sync - use native builder which includes chat CRDT
-            val documentBytes = _mesh?.buildDocument() ?: return null
+            // Full delta document - includes all state including app documents
+            val documentBytes = mesh.buildFullDeltaDocument(now.toULong())
             state.lastSentTimestamp = now
             state.lastSentPeripheral = localPeripheral?.copy()
             state.lastSentCounterValue = currentCounterValue
@@ -2432,90 +3304,22 @@ class HiveBtle(
             return documentBytes
         }
 
-        // Check what changed since last sync to this peer
-        val operations = mutableListOf<DeltaOperation>()
-
-        // Check counter changes
-        if (currentCounterValue != state.lastSentCounterValue) {
-            val increment = currentCounterValue - state.lastSentCounterValue
-            if (increment > 0) {
-                operations.add(DeltaOperation.IncrementCounter(
-                    counterId = 0,
-                    nodeId = nodeId,
-                    amount = increment,
-                    timestamp = now
-                ))
-            }
-        }
-
-        // Check peripheral changes - emit field-level deltas for bandwidth efficiency
-        val currentPeripheral = localPeripheral
-        val lastPeripheral = state.lastSentPeripheral
-        if (currentPeripheral != null) {
-            // Check location change
-            if (currentPeripheral.location != lastPeripheral?.location) {
-                currentPeripheral.location?.let { loc ->
-                    operations.add(DeltaOperation.UpdateLocation(
-                        latitude = loc.latitude.toFloat(),
-                        longitude = loc.longitude.toFloat(),
-                        altitude = loc.altitude.toFloat()
-                    ))
-                }
-            }
-
-            // Check health changes
-            val lastHealth = lastPeripheral?.health
-            if (currentPeripheral.health.batteryPercent != lastHealth?.batteryPercent ||
-                currentPeripheral.health.heartRate != lastHealth?.heartRate ||
-                currentPeripheral.health.activityLevel != lastHealth?.activityLevel ||
-                currentPeripheral.health.alerts != lastHealth?.alerts) {
-                operations.add(DeltaOperation.UpdateHealth(
-                    batteryPercent = currentPeripheral.health.batteryPercent,
-                    heartRate = currentPeripheral.health.heartRate,
-                    activityLevel = currentPeripheral.health.activityLevel,
-                    alerts = currentPeripheral.health.alerts
-                ))
-            }
-
-            // Check callsign change
-            if (currentPeripheral.callsign != lastPeripheral?.callsign) {
-                operations.add(DeltaOperation.UpdateCallsign(currentPeripheral.callsign))
-            }
-
-            // Check event change
-            val lastEvent = lastPeripheral?.lastEvent
-            if (currentPeripheral.lastEvent != lastEvent) {
-                currentPeripheral.lastEvent?.let { event ->
-                    operations.add(DeltaOperation.UpdateEvent(
-                        eventType = event.eventType,
-                        timestamp = event.timestamp
-                    ))
-                }
-            }
-        }
-
-        // If nothing changed, skip this sync entirely
-        if (operations.isEmpty()) {
+        // Per-peer delta - only sends what's new for this peer, including app documents
+        // The Rust side tracks per-peer state and filters operations
+        val deltaBytes = mesh.buildDeltaDocumentForPeer(peerId.toUInt(), now.toULong())
+        if (deltaBytes == null) {
             Log.v(TAG, "[SKIP] Peer ${String.format("%08X", peerId)}: no changes")
             state.syncCount++
             return null
         }
 
-        // Build and encode delta document
-        val deltaDoc = HiveDeltaDocument(
-            originNode = nodeId,
-            timestampMs = now,
-            operations = operations
-        )
-        val deltaBytes = HiveDeltaDocument.encode(deltaDoc)
-
-        // Update sync state
+        // Update local state tracking
         state.lastSentTimestamp = now
-        state.lastSentPeripheral = currentPeripheral?.copy()
+        state.lastSentPeripheral = localPeripheral?.copy()
         state.lastSentCounterValue = currentCounterValue
         state.syncCount++
 
-        Log.d(TAG, "[DELTA] Peer ${String.format("%08X", peerId)}: ${deltaBytes.size} bytes, ${operations.size} ops (sync #${state.syncCount})")
+        Log.d(TAG, "[DELTA] Peer ${String.format("%08X", peerId)}: ${deltaBytes.size} bytes (sync #${state.syncCount})")
         return deltaBytes
     }
 
@@ -2575,8 +3379,20 @@ class HiveBtle(
 
     private fun cleanupStalePeers() {
         val now = System.currentTimeMillis()
+
+        // Find stale peers:
+        // 1. Disconnected peers not seen in PEER_TIMEOUT_MS
+        // 2. "Connected" peers not seen in CONNECTED_PEER_TIMEOUT_MS (handles stale/ghost connections)
         val staleNodeIds = peers.filter { (_, peer) ->
-            now - peer.lastSeen > PEER_TIMEOUT_MS && !peer.isConnected
+            val timeSinceLastSeen = now - peer.lastSeen
+            if (peer.isConnected) {
+                // Connected peers get longer timeout, but still cleaned up if truly stale
+                // This handles cases where BLE disconnect event was missed
+                timeSinceLastSeen > CONNECTED_PEER_TIMEOUT_MS
+            } else {
+                // Disconnected peers cleaned up faster
+                timeSinceLastSeen > PEER_TIMEOUT_MS
+            }
         }.keys
 
         if (staleNodeIds.isNotEmpty()) {
@@ -2584,12 +3400,83 @@ class HiveBtle(
             for (nodeId in staleNodeIds) {
                 val peer = peers.remove(nodeId)
                 peer?.let {
+                    Log.i(TAG, "Removed stale peer: ${it.displayName()} (connected=${it.isConnected}, lastSeen=${now - it.lastSeen}ms ago)")
+                    // Clean up all maps to prevent memory leaks
                     addressToNodeId.remove(it.address)
+                    nameToNodeId.remove(it.name)
+                    // Also clean up callsign mappings for stale peers
+                    val cachedCallsign = nodeIdToCallsign.remove(nodeId)
+                    cachedCallsign?.let { cs -> callsignToNodeId.remove(cs) }
                     disconnect(it.address)
+                    // Clear reconnection tracking for removed peers
+                    reconnectAttempts.remove(it.address)
+                    lastReconnectAttempt.remove(it.address)
                 }
             }
+            // Persist the updated callsign cache
+            saveCallsignCache()
             notifyMeshUpdated()
         }
+    }
+
+    /**
+     * Attempt to reconnect lost peers using exponential backoff.
+     *
+     * This runs periodically and tries to reconnect peers that:
+     * - Were previously connected but are now disconnected
+     * - Haven't exceeded the max reconnection attempts
+     * - Enough time has passed since the last attempt (exponential backoff)
+     */
+    private fun reconnectLostPeers() {
+        if (!isMeshRunning) return
+
+        val now = System.currentTimeMillis()
+        val lostPeers = peers.values.filter { peer ->
+            !peer.isConnected && !connections.containsKey(peer.address)
+        }
+
+        if (lostPeers.isEmpty()) return
+
+        Log.d(TAG, "[RECONNECT] Found ${lostPeers.size} disconnected peers to check")
+
+        for (peer in lostPeers) {
+            val attempts = reconnectAttempts[peer.address] ?: 0
+            val lastAttempt = lastReconnectAttempt[peer.address] ?: 0L
+
+            // Skip if we've exceeded max attempts
+            if (attempts >= RECONNECT_MAX_ATTEMPTS) {
+                Log.d(TAG, "[RECONNECT] Skipping ${peer.displayName()} - max attempts ($attempts) reached")
+                continue
+            }
+
+            // Calculate delay with exponential backoff: 2s, 4s, 8s, 16s, 32s, 60s (capped)
+            val delay = minOf(RECONNECT_BASE_DELAY_MS * (1L shl attempts), RECONNECT_MAX_DELAY_MS)
+
+            // Check if enough time has passed
+            if (now - lastAttempt < delay) {
+                Log.v(TAG, "[RECONNECT] Skipping ${peer.displayName()} - waiting ${delay - (now - lastAttempt)}ms more")
+                continue
+            }
+
+            // Attempt reconnection
+            Log.i(TAG, "[RECONNECT] Attempting to reconnect to ${peer.displayName()} (attempt ${attempts + 1}/$RECONNECT_MAX_ATTEMPTS)")
+            reconnectAttempts[peer.address] = attempts + 1
+            lastReconnectAttempt[peer.address] = now
+
+            try {
+                connectToPeer(peer)
+            } catch (e: Exception) {
+                Log.e(TAG, "[RECONNECT] Failed to reconnect to ${peer.displayName()}: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Reset reconnection tracking for a peer (called when connection succeeds).
+     */
+    private fun resetReconnectTracking(address: String) {
+        reconnectAttempts.remove(address)
+        lastReconnectAttempt.remove(address)
     }
 
     private fun notifyMeshUpdated() {
@@ -2684,10 +3571,159 @@ class HiveBtle(
         }
     }
 
-    private fun writeDocumentToGatt(gatt: BluetoothGatt, data: ByteArray) {
+    // ========================================================================
+    // Callsign Cache - Maps nodeId <-> callsign for identity resolution
+    // ========================================================================
+
+    /**
+     * Load persisted callsign mappings from SharedPreferences.
+     * Called during init() to restore mappings across app restarts.
+     */
+    private fun loadCallsignCache() {
         try {
-            val service = gatt.getService(HIVE_SERVICE_UUID) ?: return
-            val char = service.getCharacteristic(HIVE_CHAR_DOCUMENT) ?: return
+            val prefs = context.getSharedPreferences("hive_btle_callsigns", Context.MODE_PRIVATE)
+            val mappingsJson = prefs.getString("callsign_mappings", null)
+            if (mappingsJson != null) {
+                val mappings = org.json.JSONObject(mappingsJson)
+                for (key in mappings.keys()) {
+                    val nodeId = key.toLongOrNull() ?: continue
+                    val callsign = mappings.getString(key)
+                    if (callsign.isNotBlank() && !callsign.equals("ANDROID", ignoreCase = true)) {
+                        nodeIdToCallsign[nodeId] = callsign
+                        callsignToNodeId[callsign] = nodeId
+                    }
+                }
+                Log.i(TAG, "Loaded ${nodeIdToCallsign.size} callsign mappings from cache")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load callsign cache: ${e.message}")
+        }
+    }
+
+    /**
+     * Save callsign mappings to SharedPreferences.
+     */
+    private fun saveCallsignCache() {
+        try {
+            val mappings = org.json.JSONObject()
+            for ((nodeId, callsign) in nodeIdToCallsign) {
+                mappings.put(nodeId.toString(), callsign)
+            }
+            val prefs = context.getSharedPreferences("hive_btle_callsigns", Context.MODE_PRIVATE)
+            prefs.edit().putString("callsign_mappings", mappings.toString()).apply()
+            Log.d(TAG, "Saved ${nodeIdToCallsign.size} callsign mappings to cache")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to save callsign cache: ${e.message}")
+        }
+    }
+
+    /**
+     * Update the callsign for a nodeId.
+     * Updates both the cache and any existing HivePeer with matching nodeId.
+     *
+     * @param nodeId The node ID
+     * @param callsign The callsign (ignored if blank or "ANDROID")
+     * @return true if the callsign was updated
+     */
+    private fun updateCallsignForNode(nodeId: Long, callsign: String): Boolean {
+        // Filter out empty or default callsigns
+        val trimmedCallsign = callsign.trim()
+        if (trimmedCallsign.isBlank() || trimmedCallsign.equals("ANDROID", ignoreCase = true)) {
+            return false
+        }
+
+        val existingCallsign = nodeIdToCallsign[nodeId]
+        if (existingCallsign == trimmedCallsign) {
+            return false // No change
+        }
+
+        // Update mappings
+        nodeIdToCallsign[nodeId] = trimmedCallsign
+        callsignToNodeId[trimmedCallsign] = nodeId
+
+        // Remove old callsign mapping if it changed
+        if (existingCallsign != null && existingCallsign != trimmedCallsign) {
+            callsignToNodeId.remove(existingCallsign)
+        }
+
+        // Update the peer's name if it exists
+        val peer = peers[nodeId]
+        if (peer != null && peer.name != trimmedCallsign) {
+            val oldName = peer.name
+            peer.name = trimmedCallsign  // Direct update since name is now var
+            // Also update nameToNodeId mapping
+            nameToNodeId.remove(oldName)
+            nameToNodeId[trimmedCallsign] = nodeId
+            Log.i(TAG, "[CALLSIGN] Updated peer ${String.format("%08X", nodeId)}: '$oldName' -> '$trimmedCallsign'")
+            notifyMeshUpdated()  // Notify listeners of the name change
+        } else if (peer == null) {
+            Log.d(TAG, "[CALLSIGN] Cached callsign for ${String.format("%08X", nodeId)}: '$trimmedCallsign' (peer not yet created)")
+        }
+
+        // Persist the mapping
+        saveCallsignCache()
+        return true
+    }
+
+    /**
+     * Get the cached callsign for a nodeId, or null if not known.
+     */
+    fun getCachedCallsign(nodeId: Long): String? = nodeIdToCallsign[nodeId]
+
+    /**
+     * Get the nodeId for a callsign, or null if not known.
+     */
+    fun getNodeIdForCallsign(callsign: String): Long? = callsignToNodeId[callsign]
+
+    /**
+     * Queue a document write for a GATT connection.
+     * BLE only allows one pending write at a time, so we queue writes and process them sequentially.
+     */
+    private fun writeDocumentToGatt(gatt: BluetoothGatt, data: ByteArray) {
+        val address = gatt.device?.address ?: return
+
+        // Get or create the queue for this connection
+        val queue = writeQueues.getOrPut(address) { java.util.concurrent.ConcurrentLinkedQueue() }
+        queue.add(data)
+
+        // Try to process the queue (will only proceed if no write is in progress)
+        processWriteQueue(address, gatt)
+    }
+
+    /**
+     * Process the write queue for a connection.
+     * Called when a new item is queued or when a previous write completes.
+     */
+    private fun processWriteQueue(address: String, gatt: BluetoothGatt) {
+        // Check if a write is already in progress
+        if (writeInProgress.getOrDefault(address, false)) {
+            return
+        }
+
+        val queue = writeQueues[address] ?: return
+        val data = queue.poll() ?: return
+
+        // Mark write as in progress
+        writeInProgress[address] = true
+
+        try {
+            val service = gatt.getService(HIVE_SERVICE_UUID)
+            if (service == null) {
+                Log.w(TAG, "[WRITE-QUEUE] No HIVE service for $address, dropping write")
+                writeInProgress[address] = false
+                processWriteQueue(address, gatt)  // Try next item
+                return
+            }
+
+            val char = service.getCharacteristic(HIVE_CHAR_DOCUMENT)
+            if (char == null) {
+                Log.w(TAG, "[WRITE-QUEUE] No document characteristic for $address, dropping write")
+                writeInProgress[address] = false
+                processWriteQueue(address, gatt)  // Try next item
+                return
+            }
+
+            Log.d(TAG, "[WRITE-QUEUE] Writing ${data.size} bytes to $address (queue size: ${queue.size})")
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 gatt.writeCharacteristic(char, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
@@ -2698,7 +3734,21 @@ class HiveBtle(
                 gatt.writeCharacteristic(char)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to write document", e)
+            Log.e(TAG, "[WRITE-QUEUE] Failed to write document to $address", e)
+            writeInProgress[address] = false
+            processWriteQueue(address, gatt)  // Try next item
+        }
+    }
+
+    /**
+     * Called when a write operation completes for a connection.
+     * Processes the next item in the queue.
+     */
+    internal fun onWriteCompleteForConnection(address: String) {
+        writeInProgress[address] = false
+        val gatt = connections[address]
+        if (gatt != null) {
+            processWriteQueue(address, gatt)
         }
     }
 
@@ -2748,13 +3798,7 @@ class HiveBtle(
             disconnect(address)
         }
 
-        // Clean up native resources
-        if (nativeHandle != 0L) {
-            nativeShutdown(nativeHandle)
-            nativeHandle = 0
-        }
-
-        // Destroy HiveMesh
+        // Destroy HiveMesh (UniFFI handles resource cleanup)
         _mesh?.destroy()
         _mesh = null
 
@@ -2798,10 +3842,6 @@ class HiveBtle(
         }
     }
 
-    // Native methods
-
-    private external fun nativeInit(context: Context, nodeId: Long): Long
-    private external fun nativeShutdown(handle: Long)
 }
 
 /**
@@ -2822,8 +3862,8 @@ data class DiscoveredDevice(
  */
 data class HivePeer(
     val nodeId: Long,
-    val address: String,
-    val name: String,
+    var address: String,  // Mutable to support BLE address rotation
+    var name: String,     // Mutable to update when callsign is received
     val meshId: String?,
     var rssi: Int,
     var isConnected: Boolean,
@@ -2832,10 +3872,21 @@ data class HivePeer(
 ) {
     /**
      * Get the display name for this peer.
-     * Uses new format (HIVE_MESHID-NODEID) if mesh ID is available,
-     * otherwise falls back to legacy format (HIVE-NODEID).
+     * Priority: 1) callsign from document, 2) BLE device name, 3) HIVE format with nodeId
      */
     fun displayName(): String {
+        // First: try callsign from received document (most user-friendly)
+        val docCallsign = lastDocument?.peripheral?.callsign?.takeIf { it.isNotEmpty() }
+        if (docCallsign != null) {
+            return docCallsign
+        }
+
+        // Second: use BLE device name if it looks like a WearTAK name
+        if (name.isNotEmpty() && (name.startsWith("WEAROS-") || name.startsWith("WT-WEAROS-"))) {
+            return name.removePrefix("WT-")  // Normalize to "WEAROS-XXXX"
+        }
+
+        // Third: fall back to HIVE format
         return if (meshId != null) {
             "HIVE_${meshId}-${String.format("%08X", nodeId)}"
         } else {
@@ -2898,6 +3949,22 @@ interface HiveMeshListener {
      * @param fromPeer The peer that relayed this message (may differ from chat.originNode for multi-hop)
      */
     fun onChatReceived(chat: HiveChat, fromPeer: HivePeer) {}
+
+    /**
+     * Called when decrypted data is received from a peer.
+     *
+     * This is the raw transport callback - hive-btle only handles encryption/decryption,
+     * the app is responsible for parsing message types using hive-lite or other libraries.
+     *
+     * Inspect data[0] to determine message type:
+     * - 0xAF: app-layer message (use hive-lite app-layer messageEvent.decode())
+     * - 0xAA: HiveDocument (legacy standalone format)
+     * - 0xB2: DeltaDocument (legacy delta sync)
+     *
+     * @param peer The peer that sent the data (null if from unknown/anonymous source)
+     * @param data Raw decrypted bytes
+     */
+    fun onDecryptedData(peer: HivePeer?, data: ByteArray) {}
 }
 
 /**
@@ -3077,6 +4144,17 @@ enum class HiveEventType(val value: Int) {
 
     companion object {
         fun fromValue(v: Int): HiveEventType = entries.find { it.value == v } ?: NONE
+
+        /** Convert from UniFFI EventType enum */
+        fun fromEventType(et: EventType): HiveEventType = when (et) {
+            EventType.NONE -> NONE
+            EventType.PING -> PING
+            EventType.NEED_ASSIST -> NEED_ASSIST
+            EventType.EMERGENCY -> EMERGENCY
+            EventType.MOVING -> MOVING
+            EventType.IN_POSITION -> IN_POSITION
+            EventType.ACK -> ACK
+        }
     }
 }
 

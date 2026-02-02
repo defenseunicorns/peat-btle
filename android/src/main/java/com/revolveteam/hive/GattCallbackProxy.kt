@@ -41,14 +41,20 @@ interface HiveDocumentListener {
      * Called when connection state changes.
      */
     fun onConnectionStateChanged(connected: Boolean) {}
+
+    /**
+     * Called when a characteristic write operation completes.
+     * Used for write queue management.
+     */
+    fun onWriteComplete(success: Boolean) {}
 }
 
 /**
- * Proxy class that forwards GATT events to native Rust code via JNI.
+ * Proxy class that forwards GATT events to the HiveBtle layer.
  *
  * This class extends Android's BluetoothGattCallback and bridges all GATT
- * events to the hive-btle Rust implementation. It handles connection state
- * changes, service discovery, characteristic reads/writes, and notifications.
+ * events via the HiveDocumentListener interface. The actual mesh processing
+ * happens in HiveBtle via UniFFI bindings to the Rust HiveMesh.
  *
  * ## MTU Negotiation
  *
@@ -60,10 +66,11 @@ interface HiveDocumentListener {
  * Usage:
  * ```kotlin
  * val proxy = GattCallbackProxy(connectionId)
+ * proxy.documentListener = myListener
  * device.connectGatt(context, false, proxy, BluetoothDevice.TRANSPORT_LE)
  * ```
  *
- * @param connectionId Unique identifier for this connection (used by native code)
+ * @param connectionId Unique identifier for this connection (for logging)
  */
 class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback() {
 
@@ -102,14 +109,6 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
          * with most BLE devices. Maximum supported is 517 bytes (BLE 5.0).
          */
         const val REQUESTED_MTU = 185
-
-        init {
-            try {
-                System.loadLibrary("hive_btle")
-            } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "Failed to load hive_btle native library", e)
-            }
-        }
     }
 
     /**
@@ -127,10 +126,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
             STATE_DISCONNECTING -> "DISCONNECTING"
             else -> "UNKNOWN($newState)"
         }
-        Log.i(TAG, "Connection state changed: $stateStr (status=$status)")
-
-        val address = gatt.device?.address ?: ""
-        nativeOnConnectionStateChange(connectionId, address, status, newState)
+        Log.i(TAG, "[$connectionId] Connection state changed: $stateStr (status=$status)")
 
         // Notify listener
         documentListener?.onConnectionStateChanged(newState == STATE_CONNECTED)
@@ -138,11 +134,11 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         // On connect: request larger MTU first (service discovery happens in onMtuChanged)
         // This is required because HiveDocument can exceed the default 23-byte BLE MTU
         if (newState == STATE_CONNECTED && status == GATT_SUCCESS) {
-            Log.d(TAG, "Requesting MTU: $REQUESTED_MTU")
+            Log.d(TAG, "[$connectionId] Requesting MTU: $REQUESTED_MTU")
             val mtuRequested = gatt.requestMtu(REQUESTED_MTU)
             if (!mtuRequested) {
                 // MTU request failed, fall back to immediate service discovery
-                Log.w(TAG, "MTU request failed, proceeding with default MTU")
+                Log.w(TAG, "[$connectionId] MTU request failed, proceeding with default MTU")
                 gatt.discoverServices()
             }
         }
@@ -155,26 +151,17 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
      * @param status Status of the discovery operation
      */
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-        Log.i(TAG, "Services discovered (status=$status)")
+        Log.i(TAG, "[$connectionId] Services discovered (status=$status)")
 
         if (status == GATT_SUCCESS) {
             // Log discovered services
             for (service in gatt.services) {
-                Log.d(TAG, "  Service: ${service.uuid}")
+                Log.d(TAG, "[$connectionId]   Service: ${service.uuid}")
                 for (char in service.characteristics) {
-                    Log.d(TAG, "    Char: ${char.uuid} (props=${char.properties})")
+                    Log.d(TAG, "[$connectionId]     Char: ${char.uuid} (props=${char.properties})")
                 }
             }
         }
-
-        val address = gatt.device?.address ?: ""
-        val serviceUuids = if (status == GATT_SUCCESS) {
-            gatt.services.map { it.uuid.toString() }.toTypedArray()
-        } else {
-            emptyArray()
-        }
-
-        nativeOnServicesDiscovered(connectionId, address, status, serviceUuids)
 
         // Notify listener
         if (status == GATT_SUCCESS) {
@@ -196,15 +183,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         status: Int
     ) {
         val value = characteristic.value ?: ByteArray(0)
-        Log.d(TAG, "Characteristic read: ${characteristic.uuid} (${value.size} bytes, status=$status)")
-
-        nativeOnCharacteristicRead(
-            connectionId,
-            characteristic.service.uuid.toString(),
-            characteristic.uuid.toString(),
-            status,
-            value
-        )
+        Log.d(TAG, "[$connectionId] Characteristic read: ${characteristic.uuid} (${value.size} bytes, status=$status)")
 
         // Notify listener if this is the HIVE document characteristic
         if (status == GATT_SUCCESS && isHiveDocumentCharacteristic(characteristic)) {
@@ -226,15 +205,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         value: ByteArray,
         status: Int
     ) {
-        Log.d(TAG, "Characteristic read: ${characteristic.uuid} (${value.size} bytes, status=$status)")
-
-        nativeOnCharacteristicRead(
-            connectionId,
-            characteristic.service.uuid.toString(),
-            characteristic.uuid.toString(),
-            status,
-            value
-        )
+        Log.d(TAG, "[$connectionId] Characteristic read: ${characteristic.uuid} (${value.size} bytes, status=$status)")
 
         // Notify listener if this is the HIVE document characteristic
         if (status == GATT_SUCCESS && isHiveDocumentCharacteristic(characteristic)) {
@@ -254,14 +225,10 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         characteristic: BluetoothGattCharacteristic,
         status: Int
     ) {
-        Log.d(TAG, "Characteristic write: ${characteristic.uuid} (status=$status)")
+        Log.d(TAG, "[$connectionId] Characteristic write: ${characteristic.uuid} (status=$status)")
 
-        nativeOnCharacteristicWrite(
-            connectionId,
-            characteristic.service.uuid.toString(),
-            characteristic.uuid.toString(),
-            status
-        )
+        // Notify listener for write queue management
+        documentListener?.onWriteComplete(status == BluetoothGatt.GATT_SUCCESS)
     }
 
     /**
@@ -276,14 +243,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         characteristic: BluetoothGattCharacteristic
     ) {
         val value = characteristic.value ?: ByteArray(0)
-        Log.d(TAG, "Characteristic changed: ${characteristic.uuid} (${value.size} bytes)")
-
-        nativeOnCharacteristicChanged(
-            connectionId,
-            characteristic.service.uuid.toString(),
-            characteristic.uuid.toString(),
-            value
-        )
+        Log.d(TAG, "[$connectionId] Characteristic changed: ${characteristic.uuid} (${value.size} bytes)")
 
         // Notify listener if this is the HIVE document characteristic
         if (isHiveDocumentCharacteristic(characteristic)) {
@@ -299,14 +259,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         characteristic: BluetoothGattCharacteristic,
         value: ByteArray
     ) {
-        Log.d(TAG, "Characteristic changed: ${characteristic.uuid} (${value.size} bytes)")
-
-        nativeOnCharacteristicChanged(
-            connectionId,
-            characteristic.service.uuid.toString(),
-            characteristic.uuid.toString(),
-            value
-        )
+        Log.d(TAG, "[$connectionId] Characteristic changed: ${characteristic.uuid} (${value.size} bytes)")
 
         // Notify listener if this is the HIVE document characteristic
         if (isHiveDocumentCharacteristic(characteristic)) {
@@ -326,15 +279,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         descriptor: BluetoothGattDescriptor,
         status: Int
     ) {
-        Log.d(TAG, "Descriptor write: ${descriptor.uuid} (status=$status)")
-
-        nativeOnDescriptorWrite(
-            connectionId,
-            descriptor.characteristic.service.uuid.toString(),
-            descriptor.characteristic.uuid.toString(),
-            descriptor.uuid.toString(),
-            status
-        )
+        Log.d(TAG, "[$connectionId] Descriptor write: ${descriptor.uuid} (status=$status)")
     }
 
     /**
@@ -350,15 +295,13 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
     override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
         if (status == GATT_SUCCESS) {
             negotiatedMtu = mtu
-            Log.i(TAG, "MTU negotiated: $mtu bytes")
+            Log.i(TAG, "[$connectionId] MTU negotiated: $mtu bytes")
         } else {
-            Log.w(TAG, "MTU negotiation failed (status=$status), using default: $negotiatedMtu")
+            Log.w(TAG, "[$connectionId] MTU negotiation failed (status=$status), using default: $negotiatedMtu")
         }
 
-        nativeOnMtuChanged(connectionId, mtu, status)
-
         // Proceed with service discovery now that MTU is negotiated
-        Log.d(TAG, "Starting service discovery (MTU=$negotiatedMtu)")
+        Log.d(TAG, "[$connectionId] Starting service discovery (MTU=$negotiatedMtu)")
         gatt.discoverServices()
     }
 
@@ -371,8 +314,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
      * @param status Status of the PHY update
      */
     override fun onPhyUpdate(gatt: BluetoothGatt, txPhy: Int, rxPhy: Int, status: Int) {
-        Log.i(TAG, "PHY updated: tx=$txPhy, rx=$rxPhy (status=$status)")
-        nativeOnPhyUpdate(connectionId, txPhy, rxPhy, status)
+        Log.i(TAG, "[$connectionId] PHY updated: tx=$txPhy, rx=$rxPhy (status=$status)")
     }
 
     /**
@@ -383,59 +325,6 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
      * @param status Status of the RSSI read
      */
     override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
-        Log.d(TAG, "RSSI read: $rssi dBm (status=$status)")
-        nativeOnReadRemoteRssi(connectionId, rssi, status)
+        Log.d(TAG, "[$connectionId] RSSI read: $rssi dBm (status=$status)")
     }
-
-    // Native methods implemented in Rust via JNI
-
-    private external fun nativeOnConnectionStateChange(
-        connectionId: Long,
-        address: String,
-        status: Int,
-        newState: Int
-    )
-
-    private external fun nativeOnServicesDiscovered(
-        connectionId: Long,
-        address: String,
-        status: Int,
-        serviceUuids: Array<String>
-    )
-
-    private external fun nativeOnCharacteristicRead(
-        connectionId: Long,
-        serviceUuid: String,
-        charUuid: String,
-        status: Int,
-        value: ByteArray
-    )
-
-    private external fun nativeOnCharacteristicWrite(
-        connectionId: Long,
-        serviceUuid: String,
-        charUuid: String,
-        status: Int
-    )
-
-    private external fun nativeOnCharacteristicChanged(
-        connectionId: Long,
-        serviceUuid: String,
-        charUuid: String,
-        value: ByteArray
-    )
-
-    private external fun nativeOnDescriptorWrite(
-        connectionId: Long,
-        serviceUuid: String,
-        charUuid: String,
-        descriptorUuid: String,
-        status: Int
-    )
-
-    private external fun nativeOnMtuChanged(connectionId: Long, mtu: Int, status: Int)
-
-    private external fun nativeOnPhyUpdate(connectionId: Long, txPhy: Int, rxPhy: Int, status: Int)
-
-    private external fun nativeOnReadRemoteRssi(connectionId: Long, rssi: Int, status: Int)
 }

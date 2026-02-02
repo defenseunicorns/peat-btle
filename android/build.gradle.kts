@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.1.0-rc3"  // RC3 with HiveBtle encryption integration
+version = "0.1.0-rc30"  // RC30: MembershipToken + SignedPayload for tactical trust
 
 android {
     namespace = "com.revolveteam.hive"
@@ -38,6 +38,21 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
+
+        // Build-time configuration for mesh credentials
+        // Set via environment variables when building:
+        //   HIVE_ENCRYPTION_SECRET=<64-char-hex> ./gradlew assembleRelease
+        //   HIVE_MESH_ID=ALPHA ./gradlew assembleRelease
+        // Downstream projects can override in their build.gradle.kts:
+        //   buildConfigField("String", "HIVE_ENCRYPTION_SECRET", "\"...\"")
+        buildConfigField("String", "HIVE_ENCRYPTION_SECRET",
+            "\"${System.getenv("HIVE_ENCRYPTION_SECRET") ?: ""}\"")
+        buildConfigField("String", "HIVE_MESH_ID",
+            "\"${System.getenv("HIVE_MESH_ID") ?: ""}\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
@@ -79,6 +94,9 @@ dependencies {
     implementation("androidx.annotation:annotation:1.7.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
+    // UniFFI uses JNA for FFI
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
@@ -107,19 +125,19 @@ tasks.register<Exec>("buildNativeLibs") {
 
         # Build for arm64-v8a (modern Android devices)
         echo "Building for aarch64-linux-android (arm64-v8a)..."
-        cargo build --release --target aarch64-linux-android --features android
+        cargo build --release --target aarch64-linux-android --features android,hive-lite-sync
         mkdir -p android/src/main/jniLibs/arm64-v8a
         cp target/aarch64-linux-android/release/libhive_btle.so android/src/main/jniLibs/arm64-v8a/
 
         # Build for armeabi-v7a (older devices)
         echo "Building for armv7-linux-androideabi (armeabi-v7a)..."
-        cargo build --release --target armv7-linux-androideabi --features android
+        cargo build --release --target armv7-linux-androideabi --features android,hive-lite-sync
         mkdir -p android/src/main/jniLibs/armeabi-v7a
         cp target/armv7-linux-androideabi/release/libhive_btle.so android/src/main/jniLibs/armeabi-v7a/
 
         # Build for x86_64 (emulators)
         echo "Building for x86_64-linux-android (x86_64)..."
-        cargo build --release --target x86_64-linux-android --features android
+        cargo build --release --target x86_64-linux-android --features android,hive-lite-sync
         mkdir -p android/src/main/jniLibs/x86_64
         cp target/x86_64-linux-android/release/libhive_btle.so android/src/main/jniLibs/x86_64/
 

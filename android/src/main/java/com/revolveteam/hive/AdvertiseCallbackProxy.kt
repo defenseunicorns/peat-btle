@@ -21,10 +21,11 @@ import android.bluetooth.le.AdvertiseSettings
 import android.util.Log
 
 /**
- * Proxy class that forwards BLE advertising events to native Rust code via JNI.
+ * Proxy class that handles BLE advertising events.
  *
- * This class extends Android's AdvertiseCallback and bridges advertising
- * start/stop events to the hive-btle Rust implementation.
+ * This class extends Android's AdvertiseCallback and logs advertising
+ * start/stop events. The actual mesh state management happens in HiveBtle
+ * via UniFFI bindings to the Rust HiveMesh.
  *
  * Usage:
  * ```kotlin
@@ -36,14 +37,6 @@ class AdvertiseCallbackProxy : AdvertiseCallback() {
 
     companion object {
         private const val TAG = "HiveBtle.AdvertiseCb"
-
-        init {
-            try {
-                System.loadLibrary("hive_btle")
-            } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "Failed to load hive_btle native library", e)
-            }
-        }
     }
 
     /**
@@ -66,13 +59,6 @@ class AdvertiseCallbackProxy : AdvertiseCallback() {
             else -> "UNKNOWN"
         }
         Log.i(TAG, "Advertising started: mode=$mode, txPower=$txPower, connectable=${settingsInEffect.isConnectable}")
-
-        nativeOnStartSuccess(
-            settingsInEffect.mode,
-            settingsInEffect.txPowerLevel,
-            settingsInEffect.isConnectable,
-            settingsInEffect.timeout
-        )
     }
 
     /**
@@ -90,32 +76,5 @@ class AdvertiseCallbackProxy : AdvertiseCallback() {
             else -> "Unknown error"
         }
         Log.e(TAG, "Advertising failed: $errorMsg (code=$errorCode)")
-
-        nativeOnStartFailure(errorCode, errorMsg)
     }
-
-    // Native methods implemented in Rust via JNI
-
-    /**
-     * Native callback for advertising start success.
-     *
-     * @param mode Advertising mode (LOW_POWER=0, BALANCED=1, LOW_LATENCY=2)
-     * @param txPowerLevel TX power level
-     * @param isConnectable Whether advertising is connectable
-     * @param timeout Advertising timeout in milliseconds (0 = no timeout)
-     */
-    private external fun nativeOnStartSuccess(
-        mode: Int,
-        txPowerLevel: Int,
-        isConnectable: Boolean,
-        timeout: Int
-    )
-
-    /**
-     * Native callback for advertising start failure.
-     *
-     * @param errorCode Android advertise error code
-     * @param errorMessage Human-readable error message
-     */
-    private external fun nativeOnStartFailure(errorCode: Int, errorMessage: String)
 }

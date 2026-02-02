@@ -234,6 +234,83 @@ impl DocumentSync {
         self.bump_version();
     }
 
+    /// Update heart rate
+    pub fn update_heart_rate(&self, heart_rate: u8) {
+        let mut peripheral = self.peripheral.write().unwrap();
+        peripheral.health.heart_rate = Some(heart_rate);
+        self.bump_version();
+    }
+
+    /// Update location
+    pub fn update_location(&self, latitude: f32, longitude: f32, altitude: Option<f32>) {
+        let mut peripheral = self.peripheral.write().unwrap();
+        peripheral.set_location(latitude, longitude, altitude);
+        self.bump_version();
+    }
+
+    /// Clear location
+    pub fn clear_location(&self) {
+        let mut peripheral = self.peripheral.write().unwrap();
+        peripheral.clear_location();
+        self.bump_version();
+    }
+
+    /// Update callsign
+    pub fn update_callsign(&self, callsign: &str) {
+        let mut peripheral = self.peripheral.write().unwrap();
+        peripheral.set_callsign(callsign);
+        self.bump_version();
+    }
+
+    /// Set peripheral event type
+    pub fn set_peripheral_event(&self, event_type: EventType, timestamp: u64) {
+        let mut peripheral = self.peripheral.write().unwrap();
+        peripheral.set_event(event_type, timestamp);
+        self.bump_version();
+    }
+
+    /// Clear peripheral event
+    pub fn clear_peripheral_event(&self) {
+        let mut peripheral = self.peripheral.write().unwrap();
+        peripheral.clear_event();
+        self.bump_version();
+    }
+
+    /// Update full peripheral state in one call
+    ///
+    /// Takes many parameters for efficiency - allows updating all state in one call
+    /// rather than multiple JNI calls from Android.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_peripheral_state(
+        &self,
+        callsign: &str,
+        battery_percent: u8,
+        heart_rate: Option<u8>,
+        latitude: Option<f32>,
+        longitude: Option<f32>,
+        altitude: Option<f32>,
+        event_type: Option<EventType>,
+        timestamp: u64,
+    ) {
+        let mut peripheral = self.peripheral.write().unwrap();
+        peripheral.set_callsign(callsign);
+        peripheral.health.battery_percent = battery_percent;
+        if let Some(hr) = heart_rate {
+            peripheral.health.heart_rate = Some(hr);
+        }
+        if let (Some(lat), Some(lon)) = (latitude, longitude) {
+            peripheral.set_location(lat, lon, altitude);
+        } else {
+            peripheral.clear_location();
+        }
+        if let Some(evt) = event_type {
+            peripheral.set_event(evt, timestamp);
+        }
+        peripheral.timestamp = timestamp;
+        drop(peripheral);
+        self.bump_version();
+    }
+
     // ==================== Emergency Management ====================
 
     /// Start a new emergency event
@@ -539,6 +616,7 @@ impl DocumentSync {
         Some(MergeResult {
             source_node: received.node_id,
             event,
+            peer_peripheral: received.peripheral,
             counter_changed,
             emergency_changed,
             chat_changed,

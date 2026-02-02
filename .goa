@@ -2,6 +2,11 @@
 # Goa CI script for hive-btle
 # Triggered when changes are detected on the Radicle repo
 #
+# Architecture:
+#   - CI machine (kitlab): Runs fmt, clippy, tests, examples, runs BLE test client
+#   - Raspberry Pi: Runs BLE responder (syncs source via rsync, builds with cargo)
+#   - Loopback test: kitlab ←─BLE─→ Pi (discover, connect, sync, verify)
+#
 # Security: Only runs CI for:
 #   - Patches from delegates (automatic)
 #   - Community patches approved by delegate comment "ok-to-test"
@@ -70,7 +75,13 @@ FMT_STATUS="skip"
 CLIPPY_STATUS="skip"
 TESTS_STATUS="skip"
 EXAMPLES_STATUS="skip"
+FUNCTIONAL_STATUS="skip"
 HAS_FAILURE=0
+
+# Raspberry Pi loopback test rig configuration
+# The Pi should have 2 BT adapters (onboard + USB dongle) and SSH access
+LOOPBACK_HOST="${LOOPBACK_HOST:-kit@192.168.228.13}"
+LOOPBACK_REPO="${LOOPBACK_REPO:-/home/kit/hive-btle}"
 
 # Run CI checks with timeouts
 CI_TIMEOUT=300  # 5 minutes per step
@@ -86,7 +97,7 @@ fi
 
 echo ""
 echo "--- Clippy ---"
-if timeout $CI_TIMEOUT cargo clippy -- -D warnings; then
+if timeout $CI_TIMEOUT cargo clippy --features linux -- -D warnings; then
     CLIPPY_STATUS="pass"
 else
     CLIPPY_STATUS="FAIL"
@@ -95,7 +106,7 @@ fi
 
 echo ""
 echo "--- Tests ---"
-if timeout $CI_TIMEOUT cargo test; then
+if timeout $CI_TIMEOUT cargo test --features linux; then
     TESTS_STATUS="pass"
 else
     TESTS_STATUS="FAIL"
@@ -104,7 +115,7 @@ fi
 
 echo ""
 echo "--- Examples ---"
-if timeout $CI_TIMEOUT cargo check --examples; then
+if timeout $CI_TIMEOUT cargo check --examples --features linux; then
     EXAMPLES_STATUS="pass"
 else
     EXAMPLES_STATUS="FAIL"
@@ -112,9 +123,74 @@ else
 fi
 
 echo ""
+echo "--- Functional Test (kitlab ↔ Pi loopback) ---"
+# Loopback test: kitlab runs client, Pi runs responder, they sync over BLE
+
+# Build client locally first
+echo "Building test client locally..."
+cargo build --release --features linux --example ble_test_client
+
+# Check local BT adapter
+LOCAL_BT=$(hciconfig 2>/dev/null | grep -c "^hci" || echo 0)
+if [[ "$LOCAL_BT" -lt 1 ]]; then
+    echo "Skipped (no local BT adapter)"
+    FUNCTIONAL_STATUS="skip"
+elif ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$LOOPBACK_HOST" "true" 2>/dev/null; then
+    echo "Skipped (Pi unreachable: $LOOPBACK_HOST)"
+    FUNCTIONAL_STATUS="skip"
+else
+    # Check Pi has BT adapter
+    PI_BT=$(ssh -o BatchMode=yes "$LOOPBACK_HOST" "hciconfig 2>/dev/null | grep -c '^hci' || echo 0")
+    if [[ "$PI_BT" -lt 1 ]]; then
+        echo "Skipped (Pi has no BT adapter)"
+        FUNCTIONAL_STATUS="skip"
+    else
+        echo "Local: $LOCAL_BT adapter(s), Pi: $PI_BT adapter(s)"
+        echo "Syncing source to Pi..."
+
+        # Sync source to Pi
+        rsync -az --delete \
+            --exclude 'target/' \
+            --exclude 'android/build/' \
+            --exclude 'android/.gradle/' \
+            --exclude '.git/' \
+            ./ "$LOOPBACK_HOST:$LOOPBACK_REPO/"
+
+        echo "Building responder on Pi..."
+        ssh -o BatchMode=yes "$LOOPBACK_HOST" "cd $LOOPBACK_REPO && source ~/.cargo/env && cargo build --release --features linux --example ble_responder"
+
+        echo "Starting responder on Pi..."
+        # Start responder on Pi (background), capture PID
+        ssh -o BatchMode=yes "$LOOPBACK_HOST" "cd $LOOPBACK_REPO && source ~/.cargo/env && nohup ./target/release/examples/ble_responder --mesh-id CITEST --callsign PI-RESP > /tmp/responder.log 2>&1 & echo \$!" > /tmp/responder_pid.txt
+        REMOTE_PID=$(cat /tmp/responder_pid.txt)
+        echo "Responder PID on Pi: $REMOTE_PID"
+        sleep 3
+
+        echo "Running client locally (kitlab → Pi)..."
+        # Run client locally - it should discover and sync with Pi
+        RESULT=0
+        timeout 90 ./target/release/examples/ble_test_client --adapter hci0 --mesh-id CITEST --timeout 60 || RESULT=$?
+
+        # Stop responder on Pi
+        echo "Stopping responder on Pi..."
+        ssh -o BatchMode=yes "$LOOPBACK_HOST" "kill $REMOTE_PID 2>/dev/null || true"
+
+        if [[ $RESULT -eq 0 ]]; then
+            FUNCTIONAL_STATUS="pass"
+        else
+            echo "Client failed with exit code: $RESULT"
+            echo "--- Pi responder log ---"
+            ssh -o BatchMode=yes "$LOOPBACK_HOST" "tail -30 /tmp/responder.log" || true
+            FUNCTIONAL_STATUS="FAIL"
+            HAS_FAILURE=1
+        fi
+    fi
+fi
+
+echo ""
 
 # Build status message
-STATUS_MSG="fmt: ${FMT_STATUS}, clippy: ${CLIPPY_STATUS}, tests: ${TESTS_STATUS}, examples: ${EXAMPLES_STATUS}"
+STATUS_MSG="fmt: ${FMT_STATUS}, clippy: ${CLIPPY_STATUS}, tests: ${TESTS_STATUS}, examples: ${EXAMPLES_STATUS}, functional: ${FUNCTIONAL_STATUS}"
 
 # Report results to patch if this is a patch trigger
 if [ -n "${GOA_PATCH_ID:-}" ]; then

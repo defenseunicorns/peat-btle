@@ -282,6 +282,35 @@ impl BluerAdapter {
         let state = self.state.read().await;
         state.node_to_address.get(node_id).copied()
     }
+
+    /// Set callback for when sync data is received from a connected peer
+    ///
+    /// This is invoked when a remote device writes to the sync_data characteristic.
+    /// Use this to feed received documents into `HiveMesh::on_ble_data_received_anonymous`.
+    pub async fn set_sync_data_callback<F>(&self, callback: F)
+    where
+        F: Fn(Vec<u8>) + Send + Sync + 'static,
+    {
+        *self.gatt_state.sync_data_callback.lock().await = Some(Box::new(callback));
+    }
+
+    /// Clear the sync data callback
+    pub async fn clear_sync_data_callback(&self) {
+        *self.gatt_state.sync_data_callback.lock().await = None;
+    }
+
+    /// Update the sync state data that connected peers can read
+    ///
+    /// Call this with the output of `HiveMesh::tick()` or `HiveMesh::build_document()`
+    /// to make the current mesh state available to connected peers.
+    pub async fn update_sync_state(&self, data: &[u8]) {
+        *self.gatt_state.sync_state.lock().await = data.to_vec();
+    }
+
+    /// Get current sync state data
+    pub async fn get_sync_state(&self) -> Vec<u8> {
+        self.gatt_state.sync_state.lock().await.clone()
+    }
 }
 
 #[async_trait]

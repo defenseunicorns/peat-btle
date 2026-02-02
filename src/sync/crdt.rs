@@ -897,6 +897,8 @@ pub struct Peripheral {
     pub health: HealthStatus,
     /// Most recent event (if any)
     pub last_event: Option<PeripheralEvent>,
+    /// Current location (if available)
+    pub location: Option<Position>,
     /// Last update timestamp
     pub timestamp: u64,
 }
@@ -911,6 +913,7 @@ impl Peripheral {
             callsign: [0u8; 12],
             health: HealthStatus::default(),
             last_event: None,
+            location: None,
             timestamp: 0,
         }
     }
@@ -921,6 +924,14 @@ impl Peripheral {
         let len = bytes.len().min(12);
         self.callsign[..len].copy_from_slice(&bytes[..len]);
         self
+    }
+
+    /// Update callsign in place
+    pub fn set_callsign(&mut self, callsign: &str) {
+        self.callsign = [0u8; 12];
+        let bytes = callsign.as_bytes();
+        let len = bytes.len().min(12);
+        self.callsign[..len].copy_from_slice(&bytes[..len]);
     }
 
     /// Get callsign as string
@@ -935,6 +946,26 @@ impl Peripheral {
         self
     }
 
+    /// Set location (builder pattern)
+    pub fn with_location(mut self, location: Position) -> Self {
+        self.location = Some(location);
+        self
+    }
+
+    /// Update location in place
+    pub fn set_location(&mut self, latitude: f32, longitude: f32, altitude: Option<f32>) {
+        let mut pos = Position::new(latitude, longitude);
+        if let Some(alt) = altitude {
+            pos = pos.with_altitude(alt);
+        }
+        self.location = Some(pos);
+    }
+
+    /// Clear location
+    pub fn clear_location(&mut self) {
+        self.location = None;
+    }
+
     /// Record an event
     pub fn set_event(&mut self, event_type: EventType, timestamp: u64) {
         self.last_event = Some(PeripheralEvent::new(event_type, timestamp));
@@ -947,10 +978,10 @@ impl Peripheral {
     }
 
     /// Encode to bytes for BLE transmission
-    /// Format: [id:4][parent:4][type:1][callsign:12][health:4][has_event:1][event:9?][timestamp:8]
-    /// Size: 34 bytes without event, 43 bytes with event
+    /// Format: [id:4][parent:4][type:1][callsign:12][health:4][has_event:1][event:9?][timestamp:8][has_location:1][location:9-20?]
+    /// Size: 35 bytes minimum (no event, no location), up to 64 bytes with both
     pub fn encode(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(43);
+        let mut buf = Vec::with_capacity(64);
         buf.extend_from_slice(&self.id.to_le_bytes());
         buf.extend_from_slice(&self.parent_node.to_le_bytes());
         buf.push(self.peripheral_type as u8);
@@ -965,6 +996,15 @@ impl Peripheral {
         }
 
         buf.extend_from_slice(&self.timestamp.to_le_bytes());
+
+        // Location encoding (added in v0.1.0-rc.7)
+        if let Some(ref location) = self.location {
+            buf.push(1); // has location
+            buf.extend_from_slice(&location.encode());
+        } else {
+            buf.push(0); // no location
+        }
+
         buf
     }
 
@@ -1031,6 +1071,20 @@ impl Peripheral {
             return None;
         }
 
+        // Decode location if present (added in v0.1.0-rc.7)
+        // For backward compatibility, treat missing has_location byte as no location
+        let location_offset = timestamp_offset + 8;
+        let location = if data.len() > location_offset {
+            let has_location = data[location_offset] != 0;
+            if has_location && data.len() > location_offset + 1 {
+                Position::decode(&data[location_offset + 1..])
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Some(Self {
             id,
             parent_node,
@@ -1038,6 +1092,7 @@ impl Peripheral {
             callsign,
             health,
             last_event,
+            location,
             timestamp,
         })
     }
@@ -1998,7 +2053,7 @@ mod tests {
             .with_parent(0x11223344);
 
         let encoded = peripheral.encode();
-        assert_eq!(encoded.len(), 34); // No event
+        assert_eq!(encoded.len(), 35); // No event + 1 byte has_location flag
 
         let decoded = Peripheral::decode(&encoded).unwrap();
         assert_eq!(decoded.id, 0xAABBCCDD);
@@ -2006,6 +2061,7 @@ mod tests {
         assert_eq!(decoded.peripheral_type, PeripheralType::SoldierSensor);
         assert_eq!(decoded.callsign_str(), "BRAVO-2");
         assert!(decoded.last_event.is_none());
+        assert!(decoded.location.is_none());
     }
 
     #[test]
@@ -2017,7 +2073,7 @@ mod tests {
         peripheral.set_event(EventType::NeedAssist, TEST_TIMESTAMP);
 
         let encoded = peripheral.encode();
-        assert_eq!(encoded.len(), 43); // With event
+        assert_eq!(encoded.len(), 44); // With event + 1 byte has_location flag
 
         let decoded = Peripheral::decode(&encoded).unwrap();
         assert_eq!(decoded.id, 0x12345678);
@@ -2028,6 +2084,30 @@ mod tests {
         let event = decoded.last_event.as_ref().unwrap();
         assert_eq!(event.event_type, EventType::NeedAssist);
         assert_eq!(event.timestamp, TEST_TIMESTAMP);
+        assert!(decoded.location.is_none());
+    }
+
+    #[test]
+    fn test_peripheral_encode_decode_with_location() {
+        let location = Position::new(37.7749, -122.4194).with_altitude(10.0);
+        let peripheral = Peripheral::new(0x12345678, PeripheralType::SoldierSensor)
+            .with_callsign("DELTA")
+            .with_location(location);
+
+        let encoded = peripheral.encode();
+        // 35 base + 13 location bytes (lat:4 + lon:4 + flags:1 + alt:4)
+        assert_eq!(encoded.len(), 48);
+
+        let decoded = Peripheral::decode(&encoded).unwrap();
+        assert_eq!(decoded.id, 0x12345678);
+        assert_eq!(decoded.callsign_str(), "DELTA");
+        assert!(decoded.location.is_some());
+
+        let loc = decoded.location.unwrap();
+        assert!((loc.latitude - 37.7749).abs() < 0.0001);
+        assert!((loc.longitude - (-122.4194)).abs() < 0.0001);
+        assert!(loc.altitude.is_some());
+        assert!((loc.altitude.unwrap() - 10.0).abs() < 1.0);
     }
 
     #[test]
