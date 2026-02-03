@@ -875,10 +875,15 @@ class HiveBtle(
      *
      * This allows iOS and other devices to connect to this Android device
      * and read/write the HIVE document characteristic.
+     *
+     * The GATT server is persistent across mesh restarts to avoid Android
+     * Bluetooth stack leaks where closed servers don't immediately release
+     * their registration.
      */
     private fun startGattServer() {
+        // Reuse existing GATT server if already created (prevents registration leaks)
         if (gattServer != null) {
-            Log.w(TAG, "GATT server already running")
+            Log.i(TAG, "Reusing existing GATT server")
             return
         }
 
@@ -932,9 +937,24 @@ class HiveBtle(
     }
 
     /**
-     * Stop the GATT server.
+     * Pause the GATT server (disconnect centrals but keep server open).
+     *
+     * This does NOT close the GATT server to avoid Android Bluetooth stack
+     * registration leaks. The server remains open and is reused on next mesh start.
      */
-    private fun stopGattServer() {
+    private fun pauseGattServer() {
+        connectedCentrals.clear()
+        Log.i(TAG, "GATT server paused (connections cleared, server kept open)")
+    }
+
+    /**
+     * Close the GATT server permanently (only called from shutdown).
+     *
+     * This should only be called when the HiveBtle instance is being destroyed.
+     * Calling this during mesh stop/restart causes GATT server registration leaks
+     * on Android where closed servers don't immediately release their registration.
+     */
+    private fun closeGattServer() {
         try {
             gattServer?.close()
         } catch (e: SecurityException) {
@@ -942,8 +962,9 @@ class HiveBtle(
         }
         gattServer = null
         gattServerCallback = null
+        syncDataCharacteristic = null
         connectedCentrals.clear()
-        Log.i(TAG, "GATT server stopped")
+        Log.i(TAG, "GATT server closed")
     }
 
     /**
@@ -1614,7 +1635,7 @@ class HiveBtle(
 
         stopScan()
         stopAdvertising()
-        stopGattServer()
+        pauseGattServer()
 
         // Disconnect all peers
         for (address in connections.keys.toList()) {
@@ -3858,6 +3879,9 @@ class HiveBtle(
         stopMesh()
         stopScan()
         stopAdvertising()
+
+        // Close GATT server permanently (only done in shutdown to avoid registration leaks)
+        closeGattServer()
 
         // Disconnect all
         for (address in connections.keys.toList()) {
