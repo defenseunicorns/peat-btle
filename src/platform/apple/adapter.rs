@@ -145,7 +145,10 @@ impl CoreBluetoothAdapter {
     }
 
     /// Process events from central and peripheral managers
-    async fn process_events(&self) -> Result<()> {
+    ///
+    /// Call this periodically in your event loop to process CoreBluetooth callbacks
+    /// and invoke discovery/connection callbacks.
+    pub async fn poll(&self) -> Result<()> {
         self.central.process_events().await?;
         self.peripheral.process_events().await?;
 

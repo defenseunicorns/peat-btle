@@ -1426,6 +1426,8 @@ dependencies = [
 [[package]]
 name = "hive-lite"
 version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74743f7629ed140c2428c0a79a577d4e45c47b9b56d59299f69125f137d4ccb5"
 dependencies = [
  "heapless",
 ]
