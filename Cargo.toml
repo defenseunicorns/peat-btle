@@ -75,7 +75,7 @@ hashbrown = "0.15"
 
 # hive-lite integration (optional)
 # Provides DocumentType impl for CannedMessageAckEvent
-hive-lite = { version = "0.0.4", optional = true, path = "../hive-lite" }
+hive-lite = { version = "0.0.4", optional = true }
 
 # UniFFI for cross-language bindings (optional)
 uniffi = { version = "0.31", optional = true }

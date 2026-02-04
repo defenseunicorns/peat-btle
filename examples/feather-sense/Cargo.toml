@@ -1,0 +1,95 @@
+[package]
+name = "feather-sense-hive"
+version = "0.1.0"
+edition = "2021"
+authors = ["(r)evolve - Revolve Team LLC"]
+license = "Apache-2.0"
+description = "HIVE SOS beacon on Adafruit Feather nRF52840 Sense"
+
+[dependencies]
+# Embassy async runtime
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = ["arch-cortex-m", "executor-thread", "defmt"] }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", features = ["defmt"] }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy" }
+
+# Embassy nRF HAL
+embassy-nrf = { git = "https://github.com/embassy-rs/embassy", features = [
+    "defmt",
+    "nrf52840",
+    "gpiote",
+    "time-driver-rtc1",
+] }
+
+# nRF SoftDevice BLE stack
+nrf-softdevice = { git = "https://github.com/embassy-rs/nrf-softdevice", features = [
+    "defmt",
+    "nrf52840",
+    "s140",
+    "ble-peripheral",
+    "ble-gatt-server",
+    "critical-section-impl",
+] }
+nrf-softdevice-s140 = { git = "https://github.com/embassy-rs/nrf-softdevice" }
+
+# Cortex-M support
+cortex-m = { version = "0.7" }
+cortex-m-rt = "0.7"
+
+# Portable atomics (AtomicU64 not available on thumbv7)
+portable-atomic = { version = "1.13", features = ["require-cas"] }
+
+# Defmt logging
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+
+# Async utilities
+futures = { version = "0.3", default-features = false }
+
+# Note: Don't use nrf52840-pac directly - embassy-nrf provides its own PAC
+
+[profile.release]
+debug = 2
+lto = true
+opt-level = "s"
+
+[profile.dev]
+debug = 2
+opt-level = 1
+
+[[bin]]
+name = "blinky"
+path = "src/blinky.rs"
+
+[[bin]]
+name = "minimal"
+path = "src/minimal.rs"
+
+[[bin]]
+name = "sd_test"
+path = "src/sd_test.rs"
+
+[[bin]]
+name = "adv_test"
+path = "src/adv_test.rs"
+
+[[bin]]
+name = "blinky_periph"
+path = "src/blinky_periph.rs"
+
+[[bin]]
+name = "blinky_adv"
+path = "src/blinky_adv.rs"
+
+[[bin]]
+name = "exact_example"
+path = "src/exact_example.rs"
+
+[[bin]]
+name = "minimal_adv"
+path = "src/minimal_adv.rs"
+
+[[bin]]
+name = "sd_blink"
+path = "src/sd_blink.rs"
