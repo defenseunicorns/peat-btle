@@ -1,9 +1,15 @@
-/* Memory layout for nRF52840 with Adafruit Bootloader (SoftDevice S140 6.1.1) */
+/* Memory layout for nRF52840 - Pure Rust (no SoftDevice)
+ *
+ * This layout uses full flash and RAM, starting at 0x0.
+ * Requires flashing via probe-rs (SWD debug probe).
+ *
+ * For SoftDevice builds, use memory-softdevice.x instead.
+ */
 MEMORY
 {
-  /* Flash: Bootloader+SoftDevice takes first 0x26000 */
-  FLASH : ORIGIN = 0x00026000, LENGTH = 872K
+  /* Full 1MB flash */
+  FLASH : ORIGIN = 0x00000000, LENGTH = 1024K
 
-  /* RAM: SoftDevice uses first 24KB (0x6000) */
-  RAM : ORIGIN = 0x20006000, LENGTH = 232K
+  /* Full 256KB RAM */
+  RAM : ORIGIN = 0x20000000, LENGTH = 256K
 }

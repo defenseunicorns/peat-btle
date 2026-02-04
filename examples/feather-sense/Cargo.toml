@@ -6,6 +6,13 @@ authors = ["(r)evolve - Revolve Team LLC"]
 license = "Apache-2.0"
 description = "HIVE SOS beacon on Adafruit Feather nRF52840 Sense"
 
+[features]
+default = ["pure"]
+# Pure Rust mode (no SoftDevice) - uses cortex-m critical section
+pure = ["cortex-m/critical-section-single-core"]
+# Use Nordic SoftDevice BLE stack (proprietary binary blob)
+softdevice = ["dep:nrf-softdevice", "dep:nrf-softdevice-s140"]
+
 [dependencies]
 # Embassy async runtime
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = ["arch-cortex-m", "executor-thread", "defmt"] }
@@ -21,7 +28,7 @@ embassy-nrf = { git = "https://github.com/embassy-rs/embassy", features = [
     "time-driver-rtc1",
 ] }
 
-# nRF SoftDevice BLE stack
+# nRF SoftDevice BLE stack (optional - use --features softdevice)
 nrf-softdevice = { git = "https://github.com/embassy-rs/nrf-softdevice", features = [
     "defmt",
     "nrf52840",
@@ -29,11 +36,14 @@ nrf-softdevice = { git = "https://github.com/embassy-rs/nrf-softdevice", feature
     "ble-peripheral",
     "ble-gatt-server",
     "critical-section-impl",
-] }
-nrf-softdevice-s140 = { git = "https://github.com/embassy-rs/nrf-softdevice" }
+], optional = true }
+nrf-softdevice-s140 = { git = "https://github.com/embassy-rs/nrf-softdevice", optional = true }
+
+# Critical section for non-SoftDevice builds
+critical-section = "1.2"
 
 # Cortex-M support
-cortex-m = { version = "0.7" }
+cortex-m = "0.7"
 cortex-m-rt = "0.7"
 
 # Portable atomics (AtomicU64 not available on thumbv7)
@@ -93,3 +103,20 @@ path = "src/minimal_adv.rs"
 [[bin]]
 name = "sd_blink"
 path = "src/sd_blink.rs"
+
+# Pure Rust binaries (no SoftDevice)
+[[bin]]
+name = "pure_blinky"
+path = "src/pure_blinky.rs"
+
+[[bin]]
+name = "bare_blinky"
+path = "src/bare_blinky.rs"
+
+[[bin]]
+name = "sd_minimal"
+path = "src/sd_minimal.rs"
+
+[[bin]]
+name = "raw_blinky"
+path = "src/raw_blinky.rs"
