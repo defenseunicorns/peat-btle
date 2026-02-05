@@ -201,12 +201,9 @@ impl PeerLifetimeManager {
             }
         } else {
             // New peer
-            log::debug!(
-                "New peer {} (connected: {})",
-                address,
-                connected
-            );
-            self.peers.insert(address.to_string(), PeerState::new(connected));
+            log::debug!("New peer {} (connected: {})", address, connected);
+            self.peers
+                .insert(address.to_string(), PeerState::new(connected));
         }
     }
 
@@ -232,7 +229,10 @@ impl PeerLifetimeManager {
 
     /// Check if a peer is connected
     pub fn is_connected(&self, address: &str) -> bool {
-        self.peers.get(address).map(|s| s.connected).unwrap_or(false)
+        self.peers
+            .get(address)
+            .map(|s| s.connected)
+            .unwrap_or(false)
     }
 
     /// Get the list of stale peers that should be removed

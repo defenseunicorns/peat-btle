@@ -256,14 +256,14 @@ impl BluerAdapter {
     ///
     /// Matches Android's advertisement format for maximum compatibility:
     /// - 16-bit HIVE service UUID alias (0xF47A)
-    /// - Service data with [nodeId:4 bytes BE][meshId:UTF-8]
+    /// - Service data with [nodeId:4 bytes BE][meshId:4 bytes BE]
     /// - Device name goes in scan response (handled by BlueZ via adapter alias)
     ///
     /// This keeps the advertisement packet under 31 bytes:
     /// - Flags: 3 bytes
     /// - Service UUID (16-bit): 4 bytes
-    /// - Service data: 2 (UUID) + 4 (nodeId) + 8 (meshId) + 2 (header) = 16 bytes
-    /// - Total: 23 bytes (well under 31)
+    /// - Service data: 2 (header) + 2 (UUID) + 4 (nodeId) + 4 (meshId) = 12 bytes
+    /// - Total: 19 bytes (name in scan response)
     fn build_advertisement(&self, config: &BleConfig) -> Advertisement {
         use std::collections::BTreeMap;
 
@@ -271,11 +271,27 @@ impl BluerAdapter {
         let service_uuid_16bit =
             uuid::Uuid::parse_str("0000F47A-0000-1000-8000-00805F9B34FB").unwrap();
 
-        // Build service data: [nodeId:4 bytes BE]
-        // Note: We omit mesh_id to fit within 31-byte legacy advertisement limit
-        // Size calculation:
-        //   Flags: 3, UUID: 4, Service data: 8 (2+4+2), Name: 15 = 30 bytes (OK!)
-        let service_data_bytes = config.node_id.as_u32().to_be_bytes().to_vec();
+        // Build service data: [nodeId:4 bytes BE][meshId:4 bytes BE]
+        // meshId is an 8-char hex string like "29C916FA" -> 4 bytes
+        let mut service_data_bytes = config.node_id.as_u32().to_be_bytes().to_vec();
+
+        // Parse mesh_id as hex and append (4 bytes)
+        if let Ok(mesh_id_int) = u32::from_str_radix(&config.mesh.mesh_id, 16) {
+            service_data_bytes.extend_from_slice(&mesh_id_int.to_be_bytes());
+            log::debug!(
+                "Advertisement includes mesh_id: {} (0x{:08X})",
+                config.mesh.mesh_id,
+                mesh_id_int
+            );
+        } else {
+            // Fallback: use first 4 bytes of mesh_id string as ASCII
+            let mesh_bytes: Vec<u8> = config.mesh.mesh_id.bytes().take(4).collect();
+            service_data_bytes.extend_from_slice(&mesh_bytes);
+            log::debug!(
+                "Advertisement includes mesh_id as ASCII: {}",
+                config.mesh.mesh_id
+            );
+        }
 
         let mut service_data = BTreeMap::new();
         service_data.insert(service_uuid_16bit, service_data_bytes);
@@ -298,9 +314,10 @@ impl BluerAdapter {
 
     /// Set the adapter's alias (used for scan response device name)
     pub async fn set_adapter_alias(&self, alias: &str) -> Result<()> {
-        self.adapter.set_alias(alias.to_string()).await.map_err(|e| {
-            BleError::PlatformError(format!("Failed to set adapter alias: {}", e))
-        })
+        self.adapter
+            .set_alias(alias.to_string())
+            .await
+            .map_err(|e| BleError::PlatformError(format!("Failed to set adapter alias: {}", e)))
     }
 
     /// Parse HIVE beacon from advertising data
@@ -435,7 +452,10 @@ impl BluerAdapter {
     /// that can happen when BlueZ tries to scan and connect simultaneously.
     pub async fn stop_discovery(&self) -> Result<()> {
         // Note: This doesn't stop our discovery stream task, just tells the adapter to pause
-        self.adapter.set_discovery_filter(bluer::DiscoveryFilter::default()).await.ok();
+        self.adapter
+            .set_discovery_filter(bluer::DiscoveryFilter::default())
+            .await
+            .ok();
         Ok(())
     }
 
@@ -449,6 +469,19 @@ impl BluerAdapter {
             ..Default::default()
         };
         self.adapter.set_discovery_filter(filter).await.ok();
+        Ok(())
+    }
+
+    /// Remove a device from BlueZ's cache
+    ///
+    /// This can help clear stale state that causes connection failures.
+    /// Use this when repeated connection attempts fail.
+    pub async fn remove_device(&self, address: Address) -> Result<()> {
+        self.adapter
+            .remove_device(address)
+            .await
+            .map_err(|e| BleError::ConnectionFailed(format!("Failed to remove device: {}", e)))?;
+        log::debug!("Removed device {} from BlueZ cache", address);
         Ok(())
     }
 }

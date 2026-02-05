@@ -94,7 +94,15 @@ impl TestState {
         }
     }
 
-    fn log_structured(&mut self, event_type: &str, node_id: u32, rssi: i16, callsign: Option<&str>, lat: Option<f32>, lon: Option<f32>) {
+    fn log_structured(
+        &mut self,
+        event_type: &str,
+        node_id: u32,
+        rssi: i16,
+        callsign: Option<&str>,
+        lat: Option<f32>,
+        lon: Option<f32>,
+    ) {
         let timestamp = now_ms();
         // Format: RANGE_TEST|timestamp|event|node_id|rssi|callsign|lat|lon|sos_active
         let line = format!(
@@ -104,8 +112,10 @@ impl TestState {
             node_id,
             rssi,
             callsign.unwrap_or("?"),
-            lat.map(|v| format!("{:.6}", v)).unwrap_or_else(|| "0".to_string()),
-            lon.map(|v| format!("{:.6}", v)).unwrap_or_else(|| "0".to_string()),
+            lat.map(|v| format!("{:.6}", v))
+                .unwrap_or_else(|| "0".to_string()),
+            lon.map(|v| format!("{:.6}", v))
+                .unwrap_or_else(|| "0".to_string()),
             if self.sos_active { "SOS" } else { "NORMAL" }
         );
         println!("{}", line);
@@ -137,8 +147,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|s| s.as_str());
 
     // Decode WEARTAK genesis
-    let genesis = MeshGenesis::decode(WEARTAK_GENESIS_BYTES)
-        .ok_or("Failed to decode WEARTAK genesis")?;
+    let genesis =
+        MeshGenesis::decode(WEARTAK_GENESIS_BYTES).ok_or("Failed to decode WEARTAK genesis")?;
 
     let mesh_id = genesis.mesh_id();
 
@@ -233,7 +243,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         peer.last_seen = now_ms();
                         peer.last_rssi = device_clone.rssi as i16;
                         if let Some(name) = &device_clone.name {
-                            if let Some(cs) = name.strip_prefix("HIVE_").and_then(|s| s.split('-').next()) {
+                            if let Some(cs) =
+                                name.strip_prefix("HIVE_").and_then(|s| s.split('-').next())
+                            {
                                 peer.callsign = Some(cs.to_string());
                             }
                         }
@@ -276,7 +288,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let now = now_ms();
                 let mesh_guard = mesh.read().await;
 
-                if let Some(result) = mesh_guard.on_ble_data_received_anonymous("gatt-peer", &data, now) {
+                if let Some(result) =
+                    mesh_guard.on_ble_data_received_anonymous("gatt-peer", &data, now)
+                {
                     let mut state = test_state.write().await;
 
                     let node_id = result.source_node.as_u32();
@@ -340,7 +354,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mesh_guard = mesh.read().await;
         let initial_doc = mesh_guard.build_document();
         adapter.update_sync_state(&initial_doc).await;
-        log::info!("Initial sync_state set ({} bytes, encrypted)", initial_doc.len());
+        log::info!(
+            "Initial sync_state set ({} bytes, encrypted)",
+            initial_doc.len()
+        );
     }
 
     // Start advertising and scanning
@@ -400,133 +417,149 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         // Parse address
                         if let Ok(addr) = address.parse::<bluer::Address>() {
-                            // Get the device handle
-                            match adapter.get_device(addr) {
-                                Ok(device) => {
-                                    // Trust the device to avoid pairing prompts
-                                    let _ = device.set_trusted(true).await;
+                            // Get the device handle (uses cached BlueZ device from discovery)
+                            let device = match adapter.get_device(addr) {
+                                Ok(d) => d,
+                                Err(e) => {
+                                    log::warn!("Failed to get device {}: {}", address, e);
+                                    let _ = adapter.resume_discovery().await;
+                                    let mut state = test_state.write().await;
+                                    state.connecting.remove(&address);
+                                    return;
+                                }
+                            };
 
-                                    // Try to connect with retry
-                                    let mut connected = false;
-                                    for attempt in 1..=3 {
-                                        log::info!("Connection attempt {} to {}", attempt, address);
-                                        match device.connect().await {
-                                            Ok(()) => {
-                                                connected = true;
-                                                break;
-                                            }
-                                            Err(e) => {
-                                                log::warn!("Connection attempt {} failed: {}", attempt, e);
-                                                tokio::time::sleep(Duration::from_millis(500)).await;
+                            // Trust the device to avoid pairing prompts
+                            let _ = device.set_trusted(true).await;
+
+                            // Check if WearOS random address
+                            let is_random = BluerAdapter::is_random_address(&addr);
+                            if is_random {
+                                log::info!("Device {} uses random address (WearOS)", address);
+                            }
+
+                            // Try to connect with retry
+                            let mut device_opt: Option<bluer::Device> = None;
+                            for attempt in 1..=3 {
+                                log::info!("Connection attempt {} to {}", attempt, address);
+
+                                match device.connect().await {
+                                    Ok(()) => {
+                                        log::info!("Connected to {}", address);
+                                        device_opt = Some(device.clone());
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        log::warn!("Connection attempt {} failed: {}", attempt, e);
+                                        tokio::time::sleep(Duration::from_millis(1000)).await;
+                                    }
+                                }
+                            }
+
+                            if let Some(device) = device_opt {
+                                log::info!("Connected to {} ({:08X})", address, nid.as_u32());
+
+                                // Wait for services to be resolved
+                                tokio::time::sleep(Duration::from_millis(1000)).await;
+
+                                // Find HIVE service
+                                match device.services().await {
+                                    Ok(services) => {
+                                        // Find HIVE service by UUID
+                                        let mut hive_service = None;
+                                        for s in &services {
+                                            if let Ok(uuid) = s.uuid().await {
+                                                if uuid == HIVE_SERVICE_UUID {
+                                                    hive_service = Some(s);
+                                                    break;
+                                                }
                                             }
                                         }
-                                    }
 
-                                    if connected {
-                                        log::info!("Connected to {} ({:08X})", address, nid.as_u32());
+                                        if let Some(service) = hive_service {
+                                            log::info!("Found HIVE service on {}", address);
 
-                                            // Wait for services to be resolved
-                                            tokio::time::sleep(Duration::from_millis(500)).await;
+                                            // Find sync_state characteristic
+                                            match service.characteristics().await {
+                                                Ok(chars) => {
+                                                    let sync_state_uuid = HiveCharacteristicUuids::sync_state();
+                                                    let sync_data_uuid = HiveCharacteristicUuids::sync_data();
 
-                                            // Find HIVE service
-                                            match device.services().await {
-                                                Ok(services) => {
-                                                    // Find HIVE service by UUID
-                                                    let mut hive_service = None;
-                                                    for s in &services {
-                                                        if let Ok(uuid) = s.uuid().await {
-                                                            if uuid == HIVE_SERVICE_UUID {
-                                                                hive_service = Some(s);
-                                                                break;
+                                                    // Find characteristics by UUID
+                                                    let mut sync_state_char = None;
+                                                    let mut sync_data_char = None;
+                                                    for c in &chars {
+                                                        if let Ok(uuid) = c.uuid().await {
+                                                            if uuid == sync_state_uuid {
+                                                                sync_state_char = Some(c);
+                                                            } else if uuid == sync_data_uuid {
+                                                                sync_data_char = Some(c);
                                                             }
                                                         }
                                                     }
 
-                                                    if let Some(service) = hive_service {
-                                                        log::info!("Found HIVE service on {}", address);
+                                                    // Build our document
+                                                    let mesh_guard = mesh.read().await;
+                                                    let doc = mesh_guard.build_document();
+                                                    drop(mesh_guard);
 
-                                                        // Find sync_state characteristic
-                                                        match service.characteristics().await {
-                                                            Ok(chars) => {
-                                                                let sync_state_uuid = HiveCharacteristicUuids::sync_state();
-                                                                let sync_data_uuid = HiveCharacteristicUuids::sync_data();
+                                                    // Write our document to sync_data
+                                                    if let Some(char) = sync_data_char {
+                                                        if let Err(e) = char.write(&doc).await {
+                                                            log::warn!("Failed to write sync_data: {}", e);
+                                                        } else {
+                                                            log::info!("Wrote {} bytes to sync_data", doc.len());
+                                                        }
+                                                    }
 
-                                                                // Find characteristics by UUID
-                                                                let mut sync_state_char = None;
-                                                                let mut sync_data_char = None;
-                                                                for c in &chars {
-                                                                    if let Ok(uuid) = c.uuid().await {
-                                                                        if uuid == sync_state_uuid {
-                                                                            sync_state_char = Some(c);
-                                                                        } else if uuid == sync_data_uuid {
-                                                                            sync_data_char = Some(c);
-                                                                        }
-                                                                    }
-                                                                }
+                                                    // Read peer's sync_state
+                                                    if let Some(char) = sync_state_char {
+                                                        match char.read().await {
+                                                            Ok(peer_doc) => {
+                                                                log::info!("Read {} bytes from peer sync_state", peer_doc.len());
+                                                                let mut state = test_state.write().await;
+                                                                state.log(&format!("SYNC_READ: {} bytes from {:08X}", peer_doc.len(), nid.as_u32()));
 
-                                                                // Build our document
+                                                                // Process the document
+                                                                let now = now_ms();
                                                                 let mesh_guard = mesh.read().await;
-                                                                let doc = mesh_guard.build_document();
-                                                                drop(mesh_guard);
-
-                                                                // Write our document to sync_data
-                                                                if let Some(char) = sync_data_char {
-                                                                    if let Err(e) = char.write(&doc).await {
-                                                                        log::warn!("Failed to write sync_data: {}", e);
-                                                                    } else {
-                                                                        log::info!("Wrote {} bytes to sync_data", doc.len());
-                                                                    }
-                                                                }
-
-                                                                // Read peer's sync_state
-                                                                if let Some(char) = sync_state_char {
-                                                                    match char.read().await {
-                                                                        Ok(peer_doc) => {
-                                                                            log::info!("Read {} bytes from peer sync_state", peer_doc.len());
-                                                                            let mut state = test_state.write().await;
-                                                                            state.log(&format!("SYNC_READ: {} bytes from {:08X}", peer_doc.len(), nid.as_u32()));
-
-                                                                            // Process the document
-                                                                            let now = now_ms();
-                                                                            let mesh_guard = mesh.read().await;
-                                                                            if let Some(result) = mesh_guard.on_ble_data_received_anonymous(&address, &peer_doc, now) {
-                                                                                state.log(&format!(
-                                                                                    "SYNC: {:08X} callsign={:?} emergency={} counter_changed={}",
-                                                                                    result.source_node.as_u32(),
-                                                                                    result.callsign,
-                                                                                    result.is_emergency,
-                                                                                    result.counter_changed
-                                                                                ));
-                                                                            }
-                                                                        }
-                                                                        Err(e) => {
-                                                                            log::warn!("Failed to read sync_state: {}", e);
-                                                                        }
-                                                                    }
-                                                                } else {
-                                                                    log::warn!("sync_state characteristic not found");
+                                                                if let Some(result) = mesh_guard.on_ble_data_received_anonymous(&address, &peer_doc, now) {
+                                                                    state.log(&format!(
+                                                                        "SYNC: {:08X} callsign={:?} emergency={} counter_changed={}",
+                                                                        result.source_node.as_u32(),
+                                                                        result.callsign,
+                                                                        result.is_emergency,
+                                                                        result.counter_changed
+                                                                    ));
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                log::warn!("Failed to get characteristics: {}", e);
+                                                                log::warn!("Failed to read sync_state: {}", e);
                                                             }
                                                         }
                                                     } else {
-                                                        log::warn!("HIVE service not found on {}", address);
+                                                        log::warn!("sync_state characteristic not found");
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    log::warn!("Failed to get services: {}", e);
+                                                    log::warn!("Failed to get characteristics: {}", e);
                                                 }
                                             }
-
-                                            // Disconnect
-                                            let _ = device.disconnect().await;
+                                        } else {
+                                            log::warn!("HIVE service not found on {}", address);
                                         }
+                                    }
+                                    Err(e) => {
+                                        log::warn!("Failed to get services: {}", e);
+                                    }
                                 }
-                                Err(e) => {
-                                    log::warn!("Failed to get device {}: {}", address, e);
-                                }
+
+                                // Disconnect
+                                let _ = device.disconnect().await;
+                            } else {
+                                // All connection attempts failed - remove stale device from BlueZ cache
+                                log::warn!("All connection attempts to {} failed, clearing BlueZ cache", address);
+                                let _ = adapter.remove_device(addr).await;
                             }
                         }
 

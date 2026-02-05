@@ -284,7 +284,10 @@ impl ReconnectionManager {
     /// Removes the peer from reconnection tracking.
     pub fn on_connection_success(&mut self, address: &str) {
         if self.peers.remove(address).is_some() {
-            log::debug!("Connection succeeded for {}, removed from reconnection tracking", address);
+            log::debug!(
+                "Connection succeeded for {}, removed from reconnection tracking",
+                address
+            );
         }
     }
 

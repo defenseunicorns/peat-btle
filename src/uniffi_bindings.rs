@@ -1664,8 +1664,7 @@ impl PeerLifetimeManager {
 use crate::address_rotation::{
     AddressRotationHandler as InternalAddressRotationHandler,
     AddressRotationStats as InternalAddressRotationStats,
-    DeviceLookupResult as InternalDeviceLookupResult,
-    DevicePattern as InternalDevicePattern,
+    DeviceLookupResult as InternalDeviceLookupResult, DevicePattern as InternalDevicePattern,
 };
 
 /// Patterns that indicate a device may rotate its BLE address
@@ -1815,10 +1814,7 @@ impl AddressRotationHandler {
 
     /// Update the address for a device (used when address rotation is detected)
     pub fn update_address(&self, name: &str, new_address: &str) -> bool {
-        self.inner
-            .lock()
-            .unwrap()
-            .update_address(name, new_address)
+        self.inner.lock().unwrap().update_address(name, new_address)
     }
 
     /// Update the name for a device
