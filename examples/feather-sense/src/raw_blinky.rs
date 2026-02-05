@@ -12,9 +12,11 @@ use core::panic::PanicInfo;
 use embassy_nrf as _;
 
 // GPIO P1 registers (nRF52840)
-const P1_OUTSET: *mut u32 = 0x5000_0504 as *mut u32; // OUT register
-const P1_OUTCLR: *mut u32 = 0x5000_050C as *mut u32; // OUTCLR
-const P1_DIRSET: *mut u32 = 0x5000_0518 as *mut u32; // DIRSET
+// P0 base = 0x50000000, P1 base = 0x50000300
+const P1_BASE: u32 = 0x5000_0300;
+const P1_OUTSET: *mut u32 = (P1_BASE + 0x508) as *mut u32;
+const P1_OUTCLR: *mut u32 = (P1_BASE + 0x50C) as *mut u32;
+const P1_DIRSET: *mut u32 = (P1_BASE + 0x518) as *mut u32;
 
 const RED_LED: u32 = 9;   // P1.09
 const BLUE_LED: u32 = 10; // P1.10
