@@ -2209,6 +2209,16 @@ class HiveBtle(
             if (device.name.isNotEmpty()) {
                 nameToNodeId[device.name] = peerNodeId
             }
+
+            // CRITICAL: If peer is disconnected and re-discovered, reconnect!
+            // This handles the case where a peer walked out of range, exhausted
+            // all reconnection attempts, then came back in range.
+            if (!existingPeer.isConnected && !connections.containsKey(existingPeer.address)) {
+                Log.i(TAG, "Re-discovered disconnected peer ${existingPeer.displayName()}, attempting reconnect")
+                resetReconnectTracking(existingPeer.address)
+                connectToPeer(existingPeer)
+            }
+
             notifyMeshUpdated()
             return
         }
