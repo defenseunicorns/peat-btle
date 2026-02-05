@@ -286,9 +286,14 @@ declare_class!(
             };
 
             // Check if HIVE service UUID is present in the advertisement
-            let hive_uuid_str = HIVE_SERVICE_UUID.to_string().to_uppercase();
+            // Check full 128-bit UUID, 16-bit expanded form, and bare 16-bit form
+            // CoreBluetooth may report any of these depending on how the device advertises
+            let hive_uuid_full = HIVE_SERVICE_UUID.to_string().to_uppercase();
+            let hive_uuid_16bit_expanded = "0000F47A-0000-1000-8000-00805F9B34FB";
+            let hive_uuid_16bit_bare = "F47A";
             let has_hive_service = service_uuids.iter().any(|uuid| {
-                uuid.to_uppercase() == hive_uuid_str
+                let upper = uuid.to_uppercase();
+                upper == hive_uuid_full || upper == hive_uuid_16bit_expanded || upper == hive_uuid_16bit_bare
             });
 
             // Check if this is a HIVE node by:
@@ -307,10 +312,18 @@ declare_class!(
                     .map(|(_, node_id)| node_id)
             });
 
-            log::debug!(
-                "Discovered peripheral: {} ({:?}) RSSI: {} HIVE: {} (service_uuid: {}, name: {})",
-                identifier, name, rssi_val, is_hive_node, has_hive_service, name_indicates_hive
-            );
+            // Log with service UUIDs for debugging
+            if !service_uuids.is_empty() || name_indicates_hive {
+                log::debug!(
+                    "Discovered peripheral: {} ({:?}) RSSI: {} HIVE: {} (service_uuid: {}, name: {}, uuids: {:?})",
+                    identifier, name, rssi_val, is_hive_node, has_hive_service, name_indicates_hive, service_uuids
+                );
+            } else {
+                log::trace!(
+                    "Discovered peripheral: {} ({:?}) RSSI: {}",
+                    identifier, name, rssi_val
+                );
+            }
 
             // Store the peripheral for later connection
             if let Ok(mut guard) = self.ivars().peripherals.lock() {

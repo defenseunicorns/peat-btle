@@ -93,7 +93,7 @@ android_logger = { version = "0.14", optional = true }
 # Apple CoreBluetooth (optional)
 objc2 = { version = "0.5", optional = true }
 block2 = { version = "0.5", optional = true }
-objc2-foundation = { version = "0.2", optional = true }
+objc2-foundation = { version = "0.2", features = ["NSRunLoop", "NSDate", "NSString", "NSObjCRuntime"], optional = true }
 objc2-core-bluetooth = { version = "0.2", features = ["all"], optional = true }
 
 # Windows WinRT (optional)

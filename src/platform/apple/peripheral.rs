@@ -629,7 +629,19 @@ impl PeripheralManager {
     }
 
     /// Process pending delegate events
+    ///
+    /// This also pumps the Objective-C run loop to ensure CoreBluetooth callbacks
+    /// are delivered.
     pub(super) async fn process_events(&self) -> Result<()> {
+        // Pump the Objective-C run loop to deliver pending CoreBluetooth callbacks
+        unsafe {
+            use objc2_foundation::NSRunLoop;
+            let run_loop = NSRunLoop::mainRunLoop();
+            let mode = objc2_foundation::NSDefaultRunLoopMode;
+            let date = objc2_foundation::NSDate::dateWithTimeIntervalSinceNow(0.001);
+            run_loop.runMode_beforeDate(mode, &date);
+        }
+
         let mut event_rx = self.event_rx.write().await;
 
         while let Ok(event) = event_rx.try_recv() {

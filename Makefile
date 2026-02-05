@@ -2,7 +2,8 @@
         build-android generate-bindings build-aar publish-maven-local verify-jni \
         build-android-demo deploy-android android check-android \
         ci ci-rust ci-android \
-        publish-crates publish-maven-central
+        publish-crates publish-maven-central \
+        range-macos range-linux
 
 # ============================================
 # HIVE-BTLE Build System
@@ -220,3 +221,19 @@ clean:
 	rm -rf android/build
 	rm -rf ../examples/android-hive-demo/app/build
 	@echo "✓ Clean complete"
+
+# ============================================
+# Range Test Targets
+# ============================================
+
+range-macos:
+	@echo "Running macOS range test node..."
+	RUST_LOG=info cargo run --features macos --example range_test_node_macos
+
+range-macos-debug:
+	@echo "Running macOS range test node (DEBUG - all BLE devices)..."
+	RUST_LOG=debug cargo run --features macos --example range_test_node_macos -- --debug
+
+range-linux:
+	@echo "Running Linux range test node..."
+	RUST_LOG=info cargo run --features linux --example range_test_node

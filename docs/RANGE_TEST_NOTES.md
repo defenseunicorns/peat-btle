@@ -2,12 +2,37 @@
 
 ## Current State (2026-02-05)
 
-### What Works
-- **Linux BLE Advertising**: Successfully advertising as `HIVE-BA5E0001` with GATT service
+### What Works (macOS - PRIMARY)
+- **CoreBluetooth Adapter**: Successfully initialized (waits for PoweredOn state)
+- **BLE Advertising**: Advertising as `HIVE-BA5E0001` with HIVE service UUID
 - **GATT Server**: 5 characteristics registered (node_info, sync_state, sync_data, command, status)
+- **BLE Discovery**: Working! Discovers all nearby BLE devices
+- **NSRunLoop Integration**: Pumps run loop to deliver CoreBluetooth callbacks
+- **Service UUID Filtering**: Supports both 128-bit and 16-bit expanded forms
+- **Self-Discovery Filtering**: Ignores own advertisements
+- **Mesh Integration**: Using same WEARTAK genesis as watches (mesh ID: 29C916FA)
+- **GATT Client Connections**: Full outbound connection support to discovered watches
+- **Service/Characteristic Discovery**: Discovers HIVE service (F47AC10B) and characteristics
+- **Sync Data Read**: Reads sync_data (F47A0003) from connected watches
+- **Document Decryption**: Decrypts received documents via HiveMesh with shared encryption key
+- **Data Extraction**: Extracts node_id, callsign, location, battery, heart rate, emergency status
+- **Bidirectional Sync**: Writes our sync document back to watches after receiving theirs
+
+### Discovered Devices (Test Results 2026-02-05)
+- `WEAROS-4059`, `WEAROS-3301` - WearOS watches visible but not advertising as HIVE
+- Various other BLE devices (TV, soundbar, HomePods, etc.)
+- Self: `HIVE-BA5E0` (name truncated by CoreBluetooth)
+
+**Note**: WearTAK watches only advertise HIVE service UUID when actively syncing. To test:
+1. Open WearTAK app on watch
+2. Trigger a sync or ensure BLE advertising is enabled
+3. Watch should then appear as `HIVE_WEARTAK-xxxx`
+
+### What Works (Linux)
+- **Linux BLE Advertising**: Successfully advertising as `HIVE-BA5E0001` with GATT service
+- **GATT Server**: 5 characteristics registered
 - **Encrypted Documents**: Initial sync_state populated with 81-byte encrypted document
 - **Discovery**: Successfully discovering WearTAK watches (e.g., `HIVE-C8E32F88`)
-- **Mesh Integration**: Using same WEARTAK genesis as watches (mesh ID: 29C916FA)
 
 ### What Doesn't Work (Linux/BlueZ)
 - **Outbound Connections**: BlueZ consistently fails with `le-connection-abort-by-local`
@@ -20,7 +45,40 @@
 ### Files Changed
 - `src/platform/linux/adapter.rs`: Added helper methods for device access, discovery control, adapter alias, MTU tracking
 - `src/platform/linux/connection.rs`: Added MTU discovery via GATT operations, better default MTU (185 bytes)
-- `examples/range_test_node.rs`: Range test orchestrator with active/passive connection modes
+- `src/platform/apple/adapter.rs`: Fixed scan filter to use HIVE service UUID
+- `examples/range_test_node.rs`: Range test orchestrator with active/passive connection modes (Linux)
+- `examples/range_test_node_macos.rs`: Range test orchestrator for macOS using CoreBluetooth
+
+## macOS Range Test Orchestrator (DONE)
+
+The macOS range test node is implemented and working:
+- **File**: `examples/range_test_node_macos.rs`
+- **Build**: `cargo build --features macos --example range_test_node_macos`
+- **Run**: `cargo run --features macos --example range_test_node_macos`
+
+### What Works (macOS)
+- CoreBluetooth adapter initialization
+- GATT service registration with 5 characteristics
+- Advertising as `HIVE-BA5E0001` with HIVE service UUID
+- Scanning filtered by HIVE service UUID
+- Discovery callback for found devices
+- Periodic status updates
+- **Full GATT Client (NEW)**:
+  - Connect to discovered HIVE watches via `connect_by_identifier()`
+  - Discover services and characteristics
+  - Read sync_data from watches (F47A0003)
+  - Decrypt documents via `mesh.on_ble_data_received_anonymous()`
+  - Extract: node_id, callsign, lat/lon, battery%, heart rate, emergency
+  - Write our sync document back for bidirectional sync
+
+### Usage
+```bash
+# Basic run
+cargo run --features macos --example range_test_node_macos
+
+# With custom callsign and output file
+cargo run --features macos --example range_test_node_macos -- --callsign RANGER --output test.log
+```
 
 ### MTU Implementation (2026-02-05)
 Implemented proper MTU handling to match Android behavior:
@@ -192,11 +250,20 @@ if let Some(result) = handler.on_device_discovered(&name, &address) {
 
 ## Next Steps
 
-### macOS Range Test Orchestrator (Priority)
-Move the range test orchestrator to macOS where CoreBluetooth has better BLE support:
-1. Create `examples/range_test_node_macos.rs` or adapt existing for cross-platform
-2. Use the Apple adapter implementation (`src/platform/apple/`)
-3. Test both active (connect to watches) and passive (accept connections) modes
+### macOS - COMPLETE
+The macOS GATT client is fully operational:
+- Discovers watches advertising HIVE service UUID
+- Connects, discovers services/characteristics, reads sync_data
+- Decrypts via HiveMesh, extracts all CRDT data
+- Writes back for bidirectional sync
+
+**Note**: WearTAK watches expose sync_data (F47A0003) but NOT node_info (F47A0001). Node ID is extracted from the decrypted document header instead.
+
+### Production Enhancements (Optional)
+1. **Auto-reconnection**: Handle disconnections gracefully with exponential backoff
+2. **Multiple simultaneous connections**: Connect to several watches in parallel
+3. **RSSI tracking per connection**: Monitor signal strength over time
+4. **Notification subscription**: Subscribe to sync_data notifications for push updates
 
 ### Linux BLE Investigation (Background)
 Continue debugging BlueZ issues:

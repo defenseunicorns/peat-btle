@@ -92,6 +92,9 @@ mod peripheral;
 pub use adapter::CoreBluetoothAdapter;
 pub use connection::CoreBluetoothConnection;
 
+// Export peripheral events for handling GATT client operations
+pub use delegates::PeripheralEvent;
+
 // These are used internally by adapter.rs
 #[allow(unused_imports)]
 pub(crate) use central::CentralManager;

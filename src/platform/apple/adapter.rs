@@ -144,6 +144,80 @@ impl CoreBluetoothAdapter {
         state.identifier_to_node.get(identifier).cloned()
     }
 
+    /// Start scanning without any service UUID filter (debug mode)
+    ///
+    /// This discovers ALL BLE devices, not just HIVE nodes.
+    /// Useful for debugging when devices aren't being discovered.
+    pub async fn start_scan_unfiltered(&self) -> Result<()> {
+        let config = self.config.read().await;
+        let config = config
+            .as_ref()
+            .ok_or_else(|| BleError::InvalidState("Adapter not initialized".to_string()))?;
+
+        self.central.start_scan(&config.discovery, None).await
+    }
+
+    /// Connect to a peripheral by its CoreBluetooth identifier
+    ///
+    /// Use this for devices discovered with F47A service but without HIVE-style name.
+    /// After connecting, you can read the node_info characteristic to get the actual node ID.
+    ///
+    /// Returns `Ok(())` if connection initiated. Watch for connection events via callback.
+    pub async fn connect_by_identifier(&self, identifier: &str) -> Result<()> {
+        self.central.connect(identifier).await
+    }
+
+    /// Get the peripheral info by identifier
+    pub async fn get_peripheral_info(&self, identifier: &str) -> Option<super::central::PeripheralInfo> {
+        self.central.get_peripheral(identifier).await
+    }
+
+    /// Discover GATT services on a connected peripheral
+    ///
+    /// Call this after connecting to discover the HIVE service and its characteristics.
+    pub async fn discover_services(&self, identifier: &str) -> Result<()> {
+        // Discover only the HIVE service
+        let hive_service_uuid = crate::HIVE_SERVICE_UUID.to_string();
+        self.central
+            .discover_services(identifier, Some(&[&hive_service_uuid]))
+            .await
+    }
+
+    /// Discover characteristics for the HIVE service on a connected peripheral
+    pub async fn discover_characteristics(&self, identifier: &str) -> Result<()> {
+        let hive_service_uuid = crate::HIVE_SERVICE_UUID.to_string();
+        self.central
+            .discover_characteristics(identifier, &hive_service_uuid)
+            .await
+    }
+
+    /// Read a HIVE characteristic from a connected peripheral
+    pub async fn read_characteristic(&self, identifier: &str, characteristic_uuid: &str) -> Result<()> {
+        let hive_service_uuid = crate::HIVE_SERVICE_UUID.to_string();
+        self.central
+            .read_characteristic(identifier, &hive_service_uuid, characteristic_uuid)
+            .await
+    }
+
+    /// Write to a HIVE characteristic on a connected peripheral
+    pub async fn write_characteristic(
+        &self,
+        identifier: &str,
+        characteristic_uuid: &str,
+        data: &[u8],
+        with_response: bool,
+    ) -> Result<()> {
+        let hive_service_uuid = crate::HIVE_SERVICE_UUID.to_string();
+        self.central
+            .write_characteristic(identifier, &hive_service_uuid, characteristic_uuid, data, with_response)
+            .await
+    }
+
+    /// Get the next peripheral event (service discovery, characteristic updates, etc.)
+    pub async fn try_recv_peripheral_event(&self) -> Option<super::delegates::PeripheralEvent> {
+        self.central.try_recv_peripheral_event().await
+    }
+
     /// Process events from central and peripheral managers
     ///
     /// Call this periodically in your event loop to process CoreBluetooth callbacks
@@ -185,8 +259,54 @@ impl BleAdapter for CoreBluetoothAdapter {
         // Store config
         *self.config.write().await = Some(config.clone());
 
-        // Wait for both managers to be ready
-        // Note: In actual implementation, this would poll until state is PoweredOn
+        // Wait for both managers to become ready (PoweredOn state)
+        // CoreBluetooth requires the managers to be in PoweredOn state before
+        // any BLE operations can be performed.
+        log::info!("Waiting for Bluetooth to be ready...");
+
+        // Poll until central manager is ready (up to 5 seconds)
+        let mut attempts = 0;
+        loop {
+            self.central.process_events().await?;
+            self.peripheral.process_events().await?;
+
+            let central_state = self.central.state().await;
+            let peripheral_state = self.peripheral.state().await;
+
+            log::debug!(
+                "BLE states: central={:?}, peripheral={:?}",
+                central_state,
+                peripheral_state
+            );
+
+            match central_state {
+                super::delegates::CentralState::PoweredOn => break,
+                super::delegates::CentralState::Unsupported => {
+                    return Err(BleError::NotSupported("Bluetooth not supported".to_string()))
+                }
+                super::delegates::CentralState::Unauthorized => {
+                    return Err(BleError::PlatformError(
+                        "Bluetooth not authorized - check System Preferences".to_string(),
+                    ))
+                }
+                super::delegates::CentralState::PoweredOff => {
+                    return Err(BleError::PlatformError(
+                        "Bluetooth is powered off - please enable it".to_string(),
+                    ))
+                }
+                _ => {
+                    attempts += 1;
+                    if attempts > 50 {
+                        // 5 seconds timeout
+                        return Err(BleError::PlatformError(
+                            "Bluetooth failed to initialize (timeout)".to_string(),
+                        ));
+                    }
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
+            }
+        }
+
         let central_state = self.central.state().await;
         let peripheral_state = self.peripheral.state().await;
 
@@ -224,8 +344,17 @@ impl BleAdapter for CoreBluetoothAdapter {
             log::warn!("Failed to start advertising: {}", e);
         }
 
-        // Start scanning
-        if let Err(e) = self.central.start_scan(&config.discovery, None).await {
+        // Start scanning WITHOUT UUID filter - matches Android HiveBtle behavior
+        // Android scans all devices and filters by name pattern (HIVE_* or HIVE-*)
+        // This is more reliable because:
+        // 1. Some devices may advertise 16-bit UUID differently
+        // 2. Legacy devices may not include UUID in advertisement
+        // 3. Name-based filtering catches all HIVE devices
+        if let Err(e) = self
+            .central
+            .start_scan(&config.discovery, None)
+            .await
+        {
             log::warn!("Failed to start scanning: {}", e);
         }
 
@@ -260,9 +389,9 @@ impl BleAdapter for CoreBluetoothAdapter {
     }
 
     async fn start_scan(&self, config: &DiscoveryConfig) -> Result<()> {
-        // Scan for HIVE service UUID
-        let service_uuids = Some(vec![crate::HIVE_SERVICE_UUID.to_string()]);
-        self.central.start_scan(config, service_uuids).await
+        // Scan WITHOUT UUID filter - matches Android HiveBtle behavior
+        // Filter by name pattern in the discovery callback instead
+        self.central.start_scan(config, None).await
     }
 
     async fn stop_scan(&self) -> Result<()> {

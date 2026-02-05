@@ -31,7 +31,7 @@ use crate::config::DiscoveryConfig;
 use crate::error::{BleError, Result};
 use crate::NodeId;
 
-use super::delegates::{CentralEvent, CentralState, RustCentralManagerDelegate};
+use super::delegates::{CentralEvent, CentralState, PeripheralEvent, RustCentralManagerDelegate, RustPeripheralDelegate};
 
 /// Wrapper around CBCentralManager for BLE scanning and connecting
 ///
@@ -60,6 +60,12 @@ pub struct CentralManager {
     peripherals: Arc<RwLock<HashMap<String, PeripheralInfo>>>,
     /// Whether scanning is active
     scanning: Arc<RwLock<bool>>,
+    /// Peripheral delegates by identifier (one per connected peripheral)
+    peripheral_delegates: Arc<RwLock<HashMap<String, Retained<RustPeripheralDelegate>>>>,
+    /// Channel for peripheral events from all connected peripherals
+    peripheral_event_tx: mpsc::Sender<PeripheralEvent>,
+    /// Channel receiver for peripheral events
+    peripheral_event_rx: Arc<RwLock<mpsc::Receiver<PeripheralEvent>>>,
 }
 
 /// Information about a discovered peripheral
@@ -93,6 +99,7 @@ impl CentralManager {
     /// The manager won't be ready until `state` becomes `PoweredOn`.
     pub fn new() -> Result<Self> {
         let (event_tx, event_rx) = mpsc::channel(100);
+        let (peripheral_event_tx, peripheral_event_rx) = mpsc::channel(100);
 
         // Create delegate
         let delegate = RustCentralManagerDelegate::new(event_tx);
@@ -113,6 +120,9 @@ impl CentralManager {
             event_rx: Arc::new(RwLock::new(event_rx)),
             peripherals: Arc::new(RwLock::new(HashMap::new())),
             scanning: Arc::new(RwLock::new(false)),
+            peripheral_delegates: Arc::new(RwLock::new(HashMap::new())),
+            peripheral_event_tx,
+            peripheral_event_rx: Arc::new(RwLock::new(peripheral_event_rx)),
         })
     }
 
@@ -265,6 +275,198 @@ impl CentralManager {
         self.delegate.get_peripheral(identifier)
     }
 
+    /// Discover services on a connected peripheral
+    ///
+    /// # Arguments
+    /// * `identifier` - The peripheral's UUID identifier
+    /// * `service_uuids` - Optional list of service UUIDs to discover (None = all)
+    pub(super) async fn discover_services(
+        &self,
+        identifier: &str,
+        service_uuids: Option<&[&str]>,
+    ) -> Result<()> {
+        let peripheral = self.delegate.get_peripheral(identifier).ok_or_else(|| {
+            BleError::ConnectionFailed(format!("Unknown peripheral: {}", identifier))
+        })?;
+
+        unsafe {
+            // Create UUID array if specific UUIDs requested
+            let uuids: Option<Retained<NSArray<CBUUID>>> = service_uuids.map(|uuids| {
+                let uuid_objects: Vec<_> = uuids
+                    .iter()
+                    .map(|uuid_str| CBUUID::UUIDWithString(&NSString::from_str(uuid_str)))
+                    .collect();
+                NSArray::from_vec(uuid_objects)
+            });
+
+            // Call discoverServices
+            peripheral.discoverServices(uuids.as_deref());
+        }
+
+        log::info!("Discovering services on peripheral: {}", identifier);
+        Ok(())
+    }
+
+    /// Discover characteristics for a service on a connected peripheral
+    pub(super) async fn discover_characteristics(
+        &self,
+        identifier: &str,
+        service_uuid: &str,
+    ) -> Result<()> {
+        let peripheral = self.delegate.get_peripheral(identifier).ok_or_else(|| {
+            BleError::ConnectionFailed(format!("Unknown peripheral: {}", identifier))
+        })?;
+
+        let target_uuid_upper = service_uuid.to_uppercase();
+
+        unsafe {
+            let services = peripheral.services();
+
+            if let Some(services) = services {
+                for i in 0..services.len() {
+                    let service = &services[i];
+                    let service_uuid_str = service.UUID().UUIDString().to_string().to_uppercase();
+                    if service_uuid_str == target_uuid_upper {
+                        // Found the service, discover all characteristics
+                        peripheral.discoverCharacteristics_forService(None, service);
+                        log::info!("Discovering characteristics for service {} on {}", service_uuid, identifier);
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        Err(BleError::ConnectionFailed(format!("Service {} not found on {}", service_uuid, identifier)))
+    }
+
+    /// Read a characteristic value from a connected peripheral
+    pub(super) async fn read_characteristic(
+        &self,
+        identifier: &str,
+        service_uuid: &str,
+        characteristic_uuid: &str,
+    ) -> Result<()> {
+        let peripheral = self.delegate.get_peripheral(identifier).ok_or_else(|| {
+            BleError::ConnectionFailed(format!("Unknown peripheral: {}", identifier))
+        })?;
+
+        let target_service_upper = service_uuid.to_uppercase();
+        let target_char_upper = characteristic_uuid.to_uppercase();
+
+        unsafe {
+            if let Some(services) = peripheral.services() {
+                for i in 0..services.len() {
+                    let service = &services[i];
+                    let svc_uuid = service.UUID().UUIDString().to_string().to_uppercase();
+                    if svc_uuid == target_service_upper || svc_uuid.contains(&target_service_upper) {
+                        if let Some(characteristics) = service.characteristics() {
+                            // Log available characteristics
+                            let char_list: Vec<String> = (0..characteristics.len())
+                                .map(|j| characteristics[j].UUID().UUIDString().to_string())
+                                .collect();
+                            log::debug!("Available characteristics on {}: {:?}", identifier, char_list);
+
+                            for j in 0..characteristics.len() {
+                                let characteristic = &characteristics[j];
+                                let char_uuid = characteristic.UUID().UUIDString().to_string().to_uppercase();
+                                // Match by exact UUID or if the characteristic UUID contains our target
+                                if char_uuid == target_char_upper || char_uuid.contains(&target_char_upper) {
+                                    peripheral.readValueForCharacteristic(characteristic);
+                                    log::debug!("Reading characteristic {} (matched {}) from {}", char_uuid, characteristic_uuid, identifier);
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(BleError::ConnectionFailed(format!("Characteristic {} not found", characteristic_uuid)))
+    }
+
+    /// Write a value to a characteristic on a connected peripheral
+    pub(super) async fn write_characteristic(
+        &self,
+        identifier: &str,
+        service_uuid: &str,
+        characteristic_uuid: &str,
+        data: &[u8],
+        with_response: bool,
+    ) -> Result<()> {
+        use objc2_foundation::NSData;
+
+        let peripheral = self.delegate.get_peripheral(identifier).ok_or_else(|| {
+            BleError::ConnectionFailed(format!("Unknown peripheral: {}", identifier))
+        })?;
+
+        let target_service_upper = service_uuid.to_uppercase();
+        let target_char_upper = characteristic_uuid.to_uppercase();
+
+        unsafe {
+            if let Some(services) = peripheral.services() {
+                for i in 0..services.len() {
+                    let service = &services[i];
+                    let svc_uuid = service.UUID().UUIDString().to_string().to_uppercase();
+                    if svc_uuid == target_service_upper {
+                        if let Some(characteristics) = service.characteristics() {
+                            for j in 0..characteristics.len() {
+                                let characteristic = &characteristics[j];
+                                let char_uuid = characteristic.UUID().UUIDString().to_string().to_uppercase();
+                                if char_uuid == target_char_upper {
+                                    let ns_data = NSData::with_bytes(data);
+                                    // CBCharacteristicWriteType: 0 = WithResponse, 1 = WithoutResponse
+                                    let write_type: isize = if with_response { 0 } else { 1 };
+                                    let _: () = msg_send![&*peripheral, writeValue: &*ns_data forCharacteristic: &**characteristic type: write_type];
+                                    log::debug!("Writing {} bytes to characteristic {} on {}", data.len(), characteristic_uuid, identifier);
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(BleError::ConnectionFailed(format!("Characteristic {} not found", characteristic_uuid)))
+    }
+
+    /// Get the next peripheral event if available
+    pub(super) async fn try_recv_peripheral_event(&self) -> Option<PeripheralEvent> {
+        let mut rx = self.peripheral_event_rx.write().await;
+        rx.try_recv().ok()
+    }
+
+    /// Set up a peripheral delegate for a connected peripheral
+    ///
+    /// Note: This uses try_write to avoid holding the delegate across await points
+    /// (RustPeripheralDelegate is not Send)
+    pub(super) fn setup_peripheral_delegate(&self, identifier: &str) -> Result<()> {
+        let peripheral = self.delegate.get_peripheral(identifier).ok_or_else(|| {
+            BleError::ConnectionFailed(format!("Unknown peripheral: {}", identifier))
+        })?;
+
+        // Create a new delegate for this peripheral
+        let delegate = RustPeripheralDelegate::new(self.peripheral_event_tx.clone());
+
+        // Set the delegate on the peripheral
+        unsafe {
+            peripheral.setDelegate(Some(delegate.as_protocol()));
+        }
+
+        // Store the delegate to keep it alive (use try_write to avoid blocking)
+        if let Ok(mut delegates) = self.peripheral_delegates.try_write() {
+            delegates.insert(identifier.to_string(), delegate);
+            log::debug!("Set up peripheral delegate for {}", identifier);
+            Ok(())
+        } else {
+            // If we can't get the lock, the delegate won't be stored but
+            // it's still set on the peripheral - this is a minor issue
+            log::warn!("Could not store peripheral delegate for {} (lock contention)", identifier);
+            Ok(())
+        }
+    }
+
     /// Get information about a discovered peripheral
     #[allow(dead_code)] // Useful for debugging discovery
     pub(super) async fn get_peripheral(&self, identifier: &str) -> Option<PeripheralInfo> {
@@ -292,7 +494,22 @@ impl CentralManager {
     /// Process pending delegate events
     ///
     /// Call this periodically to update internal state from delegate callbacks.
+    /// This also pumps the Objective-C run loop to ensure CoreBluetooth callbacks
+    /// are delivered.
     pub(super) async fn process_events(&self) -> Result<()> {
+        // Pump the Objective-C run loop to deliver pending CoreBluetooth callbacks
+        // CoreBluetooth callbacks are dispatched on the main queue, which requires
+        // the run loop to be running for delivery.
+        unsafe {
+            use objc2_foundation::NSRunLoop;
+            let run_loop = NSRunLoop::mainRunLoop();
+            // Run for a brief moment to process pending events
+            // NSDefaultRunLoopMode is the standard mode
+            let mode = objc2_foundation::NSDefaultRunLoopMode;
+            let date = objc2_foundation::NSDate::dateWithTimeIntervalSinceNow(0.001);
+            run_loop.runMode_beforeDate(mode, &date);
+        }
+
         let mut event_rx = self.event_rx.write().await;
 
         while let Ok(event) = event_rx.try_recv() {
@@ -324,6 +541,12 @@ impl CentralManager {
                 }
                 CentralEvent::Connected { identifier } => {
                     log::info!("Connected to peripheral: {}", identifier);
+
+                    // Set up peripheral delegate for GATT operations
+                    if let Err(e) = self.setup_peripheral_delegate(&identifier) {
+                        log::warn!("Failed to set up peripheral delegate: {}", e);
+                    }
+
                     let mut peripherals = self.peripherals.write().await;
                     if let Some(peripheral) = peripherals.get_mut(&identifier) {
                         peripheral.connected = true;
