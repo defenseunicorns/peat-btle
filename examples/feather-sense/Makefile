@@ -45,7 +45,7 @@ MOUNT_POINT := $(shell \
 	elif [ -d "/mnt/FTHRSNSBOOT" ]; then echo "/mnt/FTHRSNSBOOT"; \
 	fi)
 
-.PHONY: build build-sd probe run flash-sd uf2 uf2-sd clean info help
+.PHONY: build build-sd build-ble probe run ble flash-sd uf2 uf2-sd clean info help
 
 # =============================================================================
 # Pure Rust Targets (recommended)
@@ -62,6 +62,21 @@ probe: build
 # Flash and attach to RTT for debug output
 run: build
 	probe-rs run --chip $(CHIP) $(RELEASE_DIR)/$(BIN)
+
+# =============================================================================
+# BLE Targets (nrf-sdc - pure Rust BLE)
+# =============================================================================
+
+# Environment for nrf-sdc bindgen (requires arm-none-eabi-gcc)
+export BINDGEN_EXTRA_CLANG_ARGS = --sysroot=/usr/arm-none-eabi -I/usr/arm-none-eabi/include -I/usr/lib/gcc/arm-none-eabi/14.2.0/include
+
+# Build BLE advertiser
+build-ble:
+	cargo build --release --no-default-features --features trouble --bin ble_advertiser
+
+# Flash BLE advertiser
+ble: build-ble
+	probe-rs run --chip $(CHIP) $(RELEASE_DIR)/ble_advertiser
 
 # Just attach to RTT (board already running)
 attach:
@@ -119,6 +134,9 @@ info:
 	@echo "  raw_blinky   - Minimal GPIO blinky, no embassy/async"
 	@echo "  pure_blinky  - Embassy async blinky, no SoftDevice"
 	@echo ""
+	@echo "=== BLE Binaries (use with: make ble) ==="
+	@echo "  ble_advertiser - BLE advertising as HIVE-xxxx (nrf-sdc)"
+	@echo ""
 	@echo "=== SoftDevice Binaries (use with: make flash-sd BIN=xxx) ==="
 	@echo "  sd_minimal   - Minimal SoftDevice + embassy blinky"
 	@echo "  blinky       - SoftDevice blinky test"
@@ -135,6 +153,9 @@ help:
 	@echo "  make probe BIN=raw_blinky  - Flash minimal blinky"
 	@echo "  make run BIN=raw_blinky    - Flash + RTT debug output"
 	@echo "  make erase                 - Erase chip (removes SoftDevice)"
+	@echo ""
+	@echo "BLE (requires arm-none-eabi-gcc for nrf-sdc):"
+	@echo "  make ble                   - Flash BLE advertiser (HIVE-xxxx)"
 	@echo ""
 	@echo "SOFTDEVICE (UF2 bootloader - currently broken):"
 	@echo "  make flash-sd BIN=sd_minimal"
