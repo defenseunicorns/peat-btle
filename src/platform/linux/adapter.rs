@@ -73,6 +73,9 @@ struct GattState {
     sync_data_callback: Mutex<Option<SyncCallback>>,
     /// Received command callback
     command_callback: Mutex<Option<SyncCallback>>,
+    /// Per-peer MTU from GATT operations (address -> mtu)
+    /// Updated when peers perform GATT read/write operations
+    peer_mtu: Mutex<HashMap<Address, u16>>,
 }
 
 impl GattState {
@@ -84,6 +87,7 @@ impl GattState {
             status: Mutex::new(Vec::new()),
             sync_data_callback: Mutex::new(None),
             command_callback: Mutex::new(None),
+            peer_mtu: Mutex::new(HashMap::new()),
         }
     }
 
@@ -96,6 +100,20 @@ impl GattState {
         *self.sync_state.lock().await = vec![0x00];
         // Initialize status as empty
         *self.status.lock().await = vec![0x00];
+    }
+
+    /// Update the MTU for a peer based on GATT request
+    async fn update_peer_mtu(&self, address: Address, mtu: u16) {
+        let mut peer_mtu = self.peer_mtu.lock().await;
+        let old_mtu = peer_mtu.insert(address, mtu);
+        if old_mtu != Some(mtu) {
+            log::debug!("Peer {} MTU: {} (was {:?})", address, mtu, old_mtu);
+        }
+    }
+
+    /// Get the MTU for a peer
+    async fn get_peer_mtu(&self, address: &Address) -> Option<u16> {
+        self.peer_mtu.lock().await.get(address).copied()
     }
 }
 
@@ -157,6 +175,11 @@ impl BluerAdapter {
             })?;
         }
 
+        // Disable pairing to prevent pairing prompts on remote devices
+        if let Err(e) = adapter.set_pairable(false).await {
+            log::warn!("Failed to disable pairing: {}", e);
+        }
+
         // Cache the adapter address
         let cached_address = adapter.address().await.ok().map(|a| a.to_string());
 
@@ -198,6 +221,11 @@ impl BluerAdapter {
             })?;
         }
 
+        // Disable pairing to prevent pairing prompts on remote devices
+        if let Err(e) = adapter.set_pairable(false).await {
+            log::warn!("Failed to disable pairing: {}", e);
+        }
+
         // Cache the adapter address
         let cached_address = adapter.address().await.ok().map(|a| a.to_string());
 
@@ -225,19 +253,71 @@ impl BluerAdapter {
     }
 
     /// Build HIVE advertisement
+    ///
+    /// Matches Android's advertisement format for maximum compatibility:
+    /// - 16-bit HIVE service UUID alias (0xF47A)
+    /// - Service data with [nodeId:4 bytes BE][meshId:4 bytes BE]
+    /// - Device name goes in scan response (handled by BlueZ via adapter alias)
+    ///
+    /// This keeps the advertisement packet under 31 bytes:
+    /// - Flags: 3 bytes
+    /// - Service UUID (16-bit): 4 bytes
+    /// - Service data: 2 (header) + 2 (UUID) + 4 (nodeId) + 4 (meshId) = 12 bytes
+    /// - Total: 19 bytes (name in scan response)
     fn build_advertisement(&self, config: &BleConfig) -> Advertisement {
-        let mut adv = Advertisement {
+        use std::collections::BTreeMap;
+
+        // The 16-bit UUID 0xF47A in its 128-bit Bluetooth SIG form
+        let service_uuid_16bit =
+            uuid::Uuid::parse_str("0000F47A-0000-1000-8000-00805F9B34FB").unwrap();
+
+        // Build service data: [nodeId:4 bytes BE][meshId:4 bytes BE]
+        // meshId is an 8-char hex string like "29C916FA" -> 4 bytes
+        let mut service_data_bytes = config.node_id.as_u32().to_be_bytes().to_vec();
+
+        // Parse mesh_id as hex and append (4 bytes)
+        if let Ok(mesh_id_int) = u32::from_str_radix(&config.mesh.mesh_id, 16) {
+            service_data_bytes.extend_from_slice(&mesh_id_int.to_be_bytes());
+            log::debug!(
+                "Advertisement includes mesh_id: {} (0x{:08X})",
+                config.mesh.mesh_id,
+                mesh_id_int
+            );
+        } else {
+            // Fallback: use first 4 bytes of mesh_id string as ASCII
+            let mesh_bytes: Vec<u8> = config.mesh.mesh_id.bytes().take(4).collect();
+            service_data_bytes.extend_from_slice(&mesh_bytes);
+            log::debug!(
+                "Advertisement includes mesh_id as ASCII: {}",
+                config.mesh.mesh_id
+            );
+        }
+
+        let mut service_data = BTreeMap::new();
+        service_data.insert(service_uuid_16bit, service_data_bytes);
+
+        // Device name - include in advertisement for maximum compatibility
+        // (some scanners need the name in the main advertisement)
+        let device_name = format!("HIVE-{:08X}", config.node_id.as_u32());
+
+        Advertisement {
             advertisement_type: bluer::adv::Type::Peripheral,
-            service_uuids: vec![HIVE_SERVICE_UUID].into_iter().collect(),
-            local_name: Some(format!("HIVE-{:08X}", config.node_id.as_u32())),
+            service_uuids: vec![service_uuid_16bit].into_iter().collect(),
+            // Include local_name - BlueZ will put it in scan response if needed
+            local_name: Some(device_name),
+            service_data,
+            // Set discoverable to allow other devices to find us
             discoverable: Some(true),
             ..Default::default()
-        };
+        }
+    }
 
-        // Set TX power if supported
-        adv.tx_power = Some(config.discovery.tx_power_dbm as i16);
-
-        adv
+    /// Set the adapter's alias (used for scan response device name)
+    pub async fn set_adapter_alias(&self, alias: &str) -> Result<()> {
+        self.adapter
+            .set_alias(alias.to_string())
+            .await
+            .map_err(|e| BleError::PlatformError(format!("Failed to set adapter alias: {}", e)))
     }
 
     /// Parse HIVE beacon from advertising data
@@ -310,6 +390,99 @@ impl BluerAdapter {
     /// Get current sync state data
     pub async fn get_sync_state(&self) -> Vec<u8> {
         self.gatt_state.sync_state.lock().await.clone()
+    }
+
+    /// Get the negotiated MTU for a connected peer (by BLE address)
+    ///
+    /// Returns the MTU captured from the peer's last GATT operation.
+    /// This is populated when the peer performs read/write operations on our GATT server.
+    pub async fn get_peer_mtu(&self, address: &Address) -> Option<u16> {
+        self.gatt_state.get_peer_mtu(address).await
+    }
+
+    /// Get all known peer MTUs (for debugging/monitoring)
+    pub async fn get_all_peer_mtus(&self) -> HashMap<Address, u16> {
+        self.gatt_state.peer_mtu.lock().await.clone()
+    }
+
+    /// Get a device handle by address for direct GATT operations
+    ///
+    /// This is useful when you need to connect to a device directly.
+    pub fn get_device(&self, address: Address) -> std::result::Result<bluer::Device, bluer::Error> {
+        self.adapter.device(address)
+    }
+
+    /// Connect to a device with explicit address type
+    ///
+    /// This is needed for devices using random BLE addresses (common in BLE peripherals
+    /// like WearOS watches). The address type can be determined from the address itself:
+    /// - If first byte MSBs are 11 (0xC0+ range), it's typically a random static address
+    /// - Use `AddressType::LeRandom` for random addresses
+    /// - Use `AddressType::LePublic` for public addresses
+    pub async fn connect_device(
+        &self,
+        address: Address,
+        address_type: bluer::AddressType,
+    ) -> std::result::Result<bluer::Device, bluer::Error> {
+        self.adapter.connect_device(address, address_type).await
+    }
+
+    /// Determine if a BLE address is a random address based on its structure
+    ///
+    /// In BLE, random addresses have specific patterns in the two MSBs of the first byte:
+    /// - 11: Random static address
+    /// - 01: Resolvable private address (RPA)
+    /// - 00: Non-resolvable private address
+    ///
+    /// Public addresses don't follow this pattern and are manufacturer-assigned.
+    pub fn is_random_address(address: &Address) -> bool {
+        let bytes = address.0;
+        // The first byte of the address string (e.g., "D8" in "D8:3A:DD:F5:FD:53") is bytes[0]
+        let first_byte = bytes[0];
+        // Random static: top 2 bits = 11 (0xC0+)
+        // RPA: top 2 bits = 01 (0x40-0x7F)
+        // Non-resolvable: top 2 bits = 00 (0x00-0x3F)
+        // A simple heuristic: if MSB bits are 11, it's almost certainly random static
+        (first_byte & 0xC0) == 0xC0
+    }
+
+    /// Stop BLE discovery temporarily
+    ///
+    /// This is useful before connecting to avoid the "le-connection-abort-by-local" error
+    /// that can happen when BlueZ tries to scan and connect simultaneously.
+    pub async fn stop_discovery(&self) -> Result<()> {
+        // Note: This doesn't stop our discovery stream task, just tells the adapter to pause
+        self.adapter
+            .set_discovery_filter(bluer::DiscoveryFilter::default())
+            .await
+            .ok();
+        Ok(())
+    }
+
+    /// Resume BLE discovery
+    pub async fn resume_discovery(&self) -> Result<()> {
+        use bluer::DiscoveryFilter;
+        use bluer::DiscoveryTransport;
+
+        let filter = DiscoveryFilter {
+            transport: DiscoveryTransport::Le,
+            ..Default::default()
+        };
+        self.adapter.set_discovery_filter(filter).await.ok();
+        Ok(())
+    }
+
+    /// Remove a device from BlueZ's cache
+    ///
+    /// This can help clear stale state that causes connection failures.
+    /// Use this when repeated connection attempts fail.
+    pub async fn remove_device(&self, address: Address) -> Result<()> {
+        self.adapter
+            .remove_device(address)
+            .await
+            .map_err(|e| BleError::ConnectionFailed(format!("Failed to remove device: {}", e)))?;
+        log::debug!("Removed device {} from BlueZ cache", address);
+        Ok(())
     }
 }
 
@@ -414,8 +587,14 @@ impl BleAdapter for BluerAdapter {
                                     // Get service data from advertisement (no connection needed)
                                     let service_data = device.service_data().await.ok().flatten().unwrap_or_default();
 
+                                    // The 16-bit UUID 0xF47A expands to this 128-bit form
+                                    let service_uuid_16bit =
+                                        uuid::Uuid::parse_str("0000F47A-0000-1000-8000-00805F9B34FB").unwrap();
+
                                     // Check if HIVE service UUID is present in advertisement
-                                    let has_hive_service = service_data.contains_key(&HIVE_SERVICE_UUID);
+                                    // Check both the full UUID and the 16-bit alias
+                                    let has_hive_service = service_data.contains_key(&HIVE_SERVICE_UUID)
+                                        || service_data.contains_key(&service_uuid_16bit);
 
                                     // Check if name indicates HIVE node (fallback)
                                     // Supports both formats:
@@ -429,10 +608,23 @@ impl BleAdapter for BluerAdapter {
                                     let is_hive_node = has_hive_service || name_indicates_hive;
 
                                     // Parse node ID from name (supports both formats)
-                                    let node_id = name.as_ref().and_then(|n| {
+                                    let mut node_id = name.as_ref().and_then(|n| {
                                         crate::config::MeshConfig::parse_device_name(n)
                                             .map(|(_, node_id)| node_id)
                                     });
+
+                                    // If not found in name, try to extract from service data
+                                    // Service data format: [nodeId:4 bytes BE][meshId:UTF-8]
+                                    if node_id.is_none() {
+                                        if let Some(data) = service_data.get(&service_uuid_16bit)
+                                            .or_else(|| service_data.get(&HIVE_SERVICE_UUID))
+                                        {
+                                            if data.len() >= 4 {
+                                                let id = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+                                                node_id = Some(NodeId::new(id));
+                                            }
+                                        }
+                                    }
 
                                     let discovered = DiscoveredDevice {
                                         address: addr.to_string(),
@@ -523,6 +715,12 @@ impl BleAdapter for BluerAdapter {
             .adapter
             .device(address)
             .map_err(|e| BleError::ConnectionFailed(format!("Failed to get device: {}", e)))?;
+
+        // Trust the device to prevent pairing prompts on the remote side
+        // This tells BlueZ we accept this device without requiring user confirmation
+        if let Err(e) = device.set_trusted(true).await {
+            log::warn!("Failed to set device as trusted: {}", e);
+        }
 
         // Connect to the device
         device
@@ -646,11 +844,14 @@ impl BleAdapter for BluerAdapter {
                             fun: Box::new(move |req| {
                                 let state = state_read_node.clone();
                                 Box::pin(async move {
+                                    // Track peer MTU from GATT request
+                                    state.update_peer_mtu(req.device_address, req.mtu).await;
                                     let data = state.node_info.lock().await;
                                     log::debug!(
-                                        "GATT read node_info from {:?}: {} bytes",
+                                        "GATT read node_info from {:?}: {} bytes (MTU={})",
                                         req.device_address,
-                                        data.len()
+                                        data.len(),
+                                        req.mtu
                                     );
                                     Ok(data.clone())
                                 })
@@ -667,11 +868,14 @@ impl BleAdapter for BluerAdapter {
                             fun: Box::new(move |req| {
                                 let state = state_read_sync.clone();
                                 Box::pin(async move {
+                                    // Track peer MTU from GATT request
+                                    state.update_peer_mtu(req.device_address, req.mtu).await;
                                     let data = state.sync_state.lock().await;
                                     log::debug!(
-                                        "GATT read sync_state from {:?}: {} bytes",
+                                        "GATT read sync_state from {:?}: {} bytes (MTU={})",
                                         req.device_address,
-                                        data.len()
+                                        data.len(),
+                                        req.mtu
                                     );
                                     Ok(data.clone())
                                 })
@@ -693,10 +897,13 @@ impl BleAdapter for BluerAdapter {
                             method: CharacteristicWriteMethod::Fun(Box::new(move |data, req| {
                                 let state = state_write_sync.clone();
                                 Box::pin(async move {
+                                    // Track peer MTU from GATT request
+                                    state.update_peer_mtu(req.device_address, req.mtu).await;
                                     log::debug!(
-                                        "GATT write sync_data from {:?}: {} bytes",
+                                        "GATT write sync_data from {:?}: {} bytes (MTU={})",
                                         req.device_address,
-                                        data.len()
+                                        data.len(),
+                                        req.mtu
                                     );
                                     // Invoke callback if set
                                     if let Some(ref cb) = *state.sync_data_callback.lock().await {
@@ -723,10 +930,13 @@ impl BleAdapter for BluerAdapter {
                             method: CharacteristicWriteMethod::Fun(Box::new(move |data, req| {
                                 let state = state_write_cmd.clone();
                                 Box::pin(async move {
+                                    // Track peer MTU from GATT request
+                                    state.update_peer_mtu(req.device_address, req.mtu).await;
                                     log::debug!(
-                                        "GATT write command from {:?}: {} bytes",
+                                        "GATT write command from {:?}: {} bytes (MTU={})",
                                         req.device_address,
-                                        data.len()
+                                        data.len(),
+                                        req.mtu
                                     );
                                     // Invoke callback if set
                                     if let Some(ref cb) = *state.command_callback.lock().await {
@@ -747,11 +957,14 @@ impl BleAdapter for BluerAdapter {
                             fun: Box::new(move |req| {
                                 let state = state_read_status.clone();
                                 Box::pin(async move {
+                                    // Track peer MTU from GATT request
+                                    state.update_peer_mtu(req.device_address, req.mtu).await;
                                     let data = state.status.lock().await;
                                     log::debug!(
-                                        "GATT read status from {:?}: {} bytes",
+                                        "GATT read status from {:?}: {} bytes (MTU={})",
                                         req.device_address,
-                                        data.len()
+                                        data.len(),
+                                        req.mtu
                                     );
                                     Ok(data.clone())
                                 })

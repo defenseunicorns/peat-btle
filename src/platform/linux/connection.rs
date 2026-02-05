@@ -14,16 +14,32 @@
 // limitations under the License.
 
 //! BlueZ connection wrapper
+//!
+//! Provides a write queue to serialize BLE GATT writes, since BLE only allows
+//! one pending write operation per connection at a time.
 
 use bluer::Device;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::config::BlePhy;
 use crate::error::{BleError, Result};
 use crate::transport::BleConnection;
 use crate::NodeId;
+
+/// A queued write operation
+struct QueuedWrite {
+    /// Service UUID
+    service_uuid: uuid::Uuid,
+    /// Characteristic UUID
+    char_uuid: uuid::Uuid,
+    /// Data to write
+    data: Vec<u8>,
+    /// Completion notification
+    complete_tx: tokio::sync::oneshot::Sender<Result<()>>,
+}
 
 /// Internal connection state
 struct ConnectionState {
@@ -37,9 +53,19 @@ struct ConnectionState {
     rssi: Option<i8>,
 }
 
+/// Write queue state (separate from connection state for finer-grained locking)
+struct WriteQueueState {
+    /// Queue of pending writes
+    queue: VecDeque<QueuedWrite>,
+    /// Whether a write is currently in progress
+    write_in_progress: bool,
+}
+
 /// BlueZ connection wrapper
 ///
-/// Wraps a `bluer::Device` with connection state tracking.
+/// Wraps a `bluer::Device` with connection state tracking and write queue.
+/// BLE only allows one pending write per connection, so all writes are
+/// serialized through the write queue.
 #[derive(Clone)]
 pub struct BluerConnection {
     /// Remote peer ID
@@ -48,16 +74,28 @@ pub struct BluerConnection {
     device: Device,
     /// Connection state
     state: Arc<RwLock<ConnectionState>>,
+    /// Write queue state (uses Mutex for write serialization)
+    write_queue: Arc<Mutex<WriteQueueState>>,
     /// When the connection was established
     connected_at: Instant,
 }
 
+/// Default MTU for BLE 4.2+ devices with data length extension
+/// BlueZ typically negotiates 247-517 bytes depending on the remote device
+/// We use 185 as a conservative default (matches WearTAK's request)
+const DEFAULT_BLE_MTU: u16 = 185;
+
+/// Minimum BLE MTU (ATT_MTU_MIN per Bluetooth spec)
+#[allow(dead_code)]
+const MIN_BLE_MTU: u16 = 23;
+
 impl BluerConnection {
     /// Create a new connection wrapper
     pub(crate) async fn new(peer_id: NodeId, device: Device) -> Result<Self> {
-        // Get initial MTU
-        // BlueZ doesn't expose MTU directly, use default
-        let mtu = 23; // Will be updated after MTU exchange
+        // BlueZ negotiates MTU automatically on first ATT operation
+        // Use a reasonable default that most modern devices support
+        // The actual MTU will be confirmed on the first characteristic access
+        let mtu = DEFAULT_BLE_MTU;
 
         let state = ConnectionState {
             alive: true,
@@ -66,10 +104,16 @@ impl BluerConnection {
             rssi: None,
         };
 
+        let write_queue = WriteQueueState {
+            queue: VecDeque::new(),
+            write_in_progress: false,
+        };
+
         let conn = Self {
             peer_id,
             device,
             state: Arc::new(RwLock::new(state)),
+            write_queue: Arc::new(Mutex::new(write_queue)),
             connected_at: Instant::now(),
         };
 
@@ -77,6 +121,61 @@ impl BluerConnection {
         conn.update_rssi().await;
 
         Ok(conn)
+    }
+
+    /// Discover the actual negotiated MTU via a characteristic
+    ///
+    /// BlueZ negotiates MTU during the first GATT operation.
+    /// Call this after connecting to get the actual negotiated value.
+    /// Uses AcquireWrite which returns the negotiated MTU.
+    pub async fn discover_mtu(
+        &self,
+        service_uuid: uuid::Uuid,
+        char_uuid: uuid::Uuid,
+    ) -> Result<u16> {
+        let service = self
+            .find_service(service_uuid)
+            .await?
+            .ok_or_else(|| BleError::ServiceNotFound(service_uuid.to_string()))?;
+
+        let characteristics = service
+            .characteristics()
+            .await
+            .map_err(|e| BleError::GattError(format!("Failed to get characteristics: {}", e)))?;
+
+        for char in characteristics {
+            if char.uuid().await.ok() == Some(char_uuid) {
+                // Try to acquire write IO which returns the negotiated MTU
+                match char.write_io().await {
+                    Ok(writer) => {
+                        let mtu = writer.mtu();
+                        self.set_mtu(mtu as u16).await;
+                        log::info!("Discovered MTU: {} bytes via {}", mtu, char_uuid);
+                        return Ok(mtu as u16);
+                    }
+                    Err(e) => {
+                        log::debug!("Could not acquire write IO for MTU discovery: {}", e);
+                        // Fall through to try read/notify
+                    }
+                }
+
+                // Try notify_io as fallback
+                match char.notify_io().await {
+                    Ok(reader) => {
+                        let mtu = reader.mtu();
+                        self.set_mtu(mtu as u16).await;
+                        log::info!("Discovered MTU: {} bytes via notify {}", mtu, char_uuid);
+                        return Ok(mtu as u16);
+                    }
+                    Err(e) => {
+                        log::debug!("Could not acquire notify IO for MTU discovery: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Return current MTU if we couldn't discover it
+        Ok(self.mtu())
     }
 
     /// Get the underlying BlueZ device
@@ -111,7 +210,12 @@ impl BluerConnection {
     }
 
     /// Disconnect from the device
+    ///
+    /// Clears any pending writes and disconnects the BLE connection.
     pub async fn disconnect(&self) -> Result<()> {
+        // Clear any pending writes first
+        self.clear_write_queue().await;
+
         self.device
             .disconnect()
             .await
@@ -178,7 +282,11 @@ impl BluerConnection {
         Err(BleError::CharacteristicNotFound(char_uuid.to_string()))
     }
 
-    /// Write a characteristic value
+    /// Write a characteristic value (direct, non-queued)
+    ///
+    /// **Warning**: BLE only allows one pending write per connection. Calling this
+    /// method concurrently may cause write failures. Use `write_characteristic_queued`
+    /// for safe concurrent writes.
     pub async fn write_characteristic(
         &self,
         service_uuid: uuid::Uuid,
@@ -204,6 +312,127 @@ impl BluerConnection {
         }
 
         Err(BleError::CharacteristicNotFound(char_uuid.to_string()))
+    }
+
+    /// Write a characteristic value with queuing
+    ///
+    /// BLE only allows one pending write per connection. This method queues writes
+    /// and processes them serially, preventing write conflicts. Safe to call
+    /// concurrently from multiple tasks.
+    ///
+    /// Returns when the write completes (or fails).
+    pub async fn write_characteristic_queued(
+        &self,
+        service_uuid: uuid::Uuid,
+        char_uuid: uuid::Uuid,
+        value: &[u8],
+    ) -> Result<()> {
+        // Create a oneshot channel for completion notification
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        // Add to queue
+        {
+            let mut queue_state = self.write_queue.lock().await;
+            queue_state.queue.push_back(QueuedWrite {
+                service_uuid,
+                char_uuid,
+                data: value.to_vec(),
+                complete_tx: tx,
+            });
+            log::debug!(
+                "Queued write to {} ({} bytes, queue depth: {})",
+                char_uuid,
+                value.len(),
+                queue_state.queue.len()
+            );
+        }
+
+        // Try to process the queue (will only proceed if no write in progress)
+        self.process_write_queue().await;
+
+        // Wait for completion
+        rx.await.map_err(|_| {
+            BleError::GattError("Write was cancelled (connection closed?)".to_string())
+        })?
+    }
+
+    /// Process the write queue
+    ///
+    /// Processes queued writes one at a time. Only one write can be in progress
+    /// per connection (BLE limitation).
+    async fn process_write_queue(&self) {
+        loop {
+            // Get the next write from the queue
+            let queued_write = {
+                let mut queue_state = self.write_queue.lock().await;
+
+                // If a write is already in progress, exit
+                if queue_state.write_in_progress {
+                    return;
+                }
+
+                // Get next write from queue
+                match queue_state.queue.pop_front() {
+                    Some(write) => {
+                        queue_state.write_in_progress = true;
+                        write
+                    }
+                    None => return, // Queue empty
+                }
+            };
+
+            // Perform the write (outside the lock)
+            let result = self
+                .write_characteristic(
+                    queued_write.service_uuid,
+                    queued_write.char_uuid,
+                    &queued_write.data,
+                )
+                .await;
+
+            // Mark write as complete
+            {
+                let mut queue_state = self.write_queue.lock().await;
+                queue_state.write_in_progress = false;
+            }
+
+            // Notify the waiter
+            let _ = queued_write.complete_tx.send(result);
+
+            // Continue processing queue (loop will check for more items)
+        }
+    }
+
+    /// Get the current write queue depth
+    ///
+    /// Useful for monitoring backpressure. If the queue grows too large,
+    /// consider slowing down write requests.
+    pub async fn write_queue_depth(&self) -> usize {
+        self.write_queue.lock().await.queue.len()
+    }
+
+    /// Check if a write is currently in progress
+    pub async fn write_in_progress(&self) -> bool {
+        self.write_queue.lock().await.write_in_progress
+    }
+
+    /// Clear the write queue (e.g., on disconnect)
+    ///
+    /// All pending writes will receive an error.
+    pub async fn clear_write_queue(&self) {
+        let mut queue_state = self.write_queue.lock().await;
+        let queue_len = queue_state.queue.len();
+
+        // Drain and notify all waiters of cancellation
+        while let Some(write) = queue_state.queue.pop_front() {
+            let _ = write.complete_tx.send(Err(BleError::GattError(
+                "Write queue cleared (disconnected?)".to_string(),
+            )));
+        }
+
+        if queue_len > 0 {
+            log::debug!("Cleared {} pending writes from queue", queue_len);
+        }
     }
 
     /// Subscribe to characteristic notifications

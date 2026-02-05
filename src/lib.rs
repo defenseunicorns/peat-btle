@@ -147,6 +147,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
+pub mod address_rotation;
 pub mod config;
 pub mod discovery;
 pub mod document;
@@ -159,12 +160,14 @@ pub mod hive_mesh;
 pub mod mesh;
 pub mod observer;
 pub mod peer;
+pub mod peer_lifetime;
 pub mod peer_manager;
 #[cfg(feature = "std")]
 pub mod persistence;
 pub mod phy;
 pub mod platform;
 pub mod power;
+pub mod reconnect;
 pub mod registry;
 pub mod relay;
 
