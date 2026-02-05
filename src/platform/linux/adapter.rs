@@ -157,6 +157,11 @@ impl BluerAdapter {
             })?;
         }
 
+        // Disable pairing to prevent pairing prompts on remote devices
+        if let Err(e) = adapter.set_pairable(false).await {
+            log::warn!("Failed to disable pairing: {}", e);
+        }
+
         // Cache the adapter address
         let cached_address = adapter.address().await.ok().map(|a| a.to_string());
 
@@ -198,6 +203,11 @@ impl BluerAdapter {
             })?;
         }
 
+        // Disable pairing to prevent pairing prompts on remote devices
+        if let Err(e) = adapter.set_pairable(false).await {
+            log::warn!("Failed to disable pairing: {}", e);
+        }
+
         // Cache the adapter address
         let cached_address = adapter.address().await.ok().map(|a| a.to_string());
 
@@ -225,19 +235,56 @@ impl BluerAdapter {
     }
 
     /// Build HIVE advertisement
+    ///
+    /// Matches Android's advertisement format for maximum compatibility:
+    /// - 16-bit HIVE service UUID alias (0xF47A)
+    /// - Service data with [nodeId:4 bytes BE][meshId:UTF-8]
+    /// - Device name goes in scan response (handled by BlueZ via adapter alias)
+    ///
+    /// This keeps the advertisement packet under 31 bytes:
+    /// - Flags: 3 bytes
+    /// - Service UUID (16-bit): 4 bytes
+    /// - Service data: 2 (UUID) + 4 (nodeId) + 8 (meshId) + 2 (header) = 16 bytes
+    /// - Total: 23 bytes (well under 31)
     fn build_advertisement(&self, config: &BleConfig) -> Advertisement {
-        let mut adv = Advertisement {
+        use std::collections::BTreeMap;
+
+        // The 16-bit UUID 0xF47A in its 128-bit Bluetooth SIG form
+        let service_uuid_16bit =
+            uuid::Uuid::parse_str("0000F47A-0000-1000-8000-00805F9B34FB").unwrap();
+
+        // Build service data: [nodeId:4 bytes BE]
+        // Note: We omit mesh_id to fit within 31-byte legacy advertisement limit
+        // Size calculation:
+        //   Flags: 3, UUID: 4, Service data: 8 (2+4+2), Name: 15 = 30 bytes (OK!)
+        let service_data_bytes = config.node_id.as_u32().to_be_bytes().to_vec();
+
+        let mut service_data = BTreeMap::new();
+        service_data.insert(service_uuid_16bit, service_data_bytes);
+
+        // Device name - include in advertisement for maximum compatibility
+        // (some scanners need the name in the main advertisement)
+        let device_name = format!("HIVE-{:08X}", config.node_id.as_u32());
+
+        let adv = Advertisement {
             advertisement_type: bluer::adv::Type::Peripheral,
-            service_uuids: vec![HIVE_SERVICE_UUID].into_iter().collect(),
-            local_name: Some(format!("HIVE-{:08X}", config.node_id.as_u32())),
+            service_uuids: vec![service_uuid_16bit].into_iter().collect(),
+            // Include local_name - BlueZ will put it in scan response if needed
+            local_name: Some(device_name),
+            service_data,
+            // Set discoverable to allow other devices to find us
             discoverable: Some(true),
             ..Default::default()
         };
 
-        // Set TX power if supported
-        adv.tx_power = Some(config.discovery.tx_power_dbm as i16);
-
         adv
+    }
+
+    /// Set the adapter's alias (used for scan response device name)
+    pub async fn set_adapter_alias(&self, alias: &str) -> Result<()> {
+        self.adapter.set_alias(alias.to_string()).await.map_err(|e| {
+            BleError::PlatformError(format!("Failed to set adapter alias: {}", e))
+        })
     }
 
     /// Parse HIVE beacon from advertising data
@@ -310,6 +357,70 @@ impl BluerAdapter {
     /// Get current sync state data
     pub async fn get_sync_state(&self) -> Vec<u8> {
         self.gatt_state.sync_state.lock().await.clone()
+    }
+
+    /// Get a device handle by address for direct GATT operations
+    ///
+    /// This is useful when you need to connect to a device directly.
+    pub fn get_device(&self, address: Address) -> std::result::Result<bluer::Device, bluer::Error> {
+        self.adapter.device(address)
+    }
+
+    /// Connect to a device with explicit address type
+    ///
+    /// This is needed for devices using random BLE addresses (common in BLE peripherals
+    /// like WearOS watches). The address type can be determined from the address itself:
+    /// - If first byte MSBs are 11 (0xC0+ range), it's typically a random static address
+    /// - Use `AddressType::LeRandom` for random addresses
+    /// - Use `AddressType::LePublic` for public addresses
+    pub async fn connect_device(
+        &self,
+        address: Address,
+        address_type: bluer::AddressType,
+    ) -> std::result::Result<bluer::Device, bluer::Error> {
+        self.adapter.connect_device(address, address_type).await
+    }
+
+    /// Determine if a BLE address is a random address based on its structure
+    ///
+    /// In BLE, random addresses have specific patterns in the two MSBs of the first byte:
+    /// - 11: Random static address
+    /// - 01: Resolvable private address (RPA)
+    /// - 00: Non-resolvable private address
+    ///
+    /// Public addresses don't follow this pattern and are manufacturer-assigned.
+    pub fn is_random_address(address: &Address) -> bool {
+        let bytes = address.0;
+        // The first byte of the address string (e.g., "D8" in "D8:3A:DD:F5:FD:53") is bytes[0]
+        let first_byte = bytes[0];
+        // Random static: top 2 bits = 11 (0xC0+)
+        // RPA: top 2 bits = 01 (0x40-0x7F)
+        // Non-resolvable: top 2 bits = 00 (0x00-0x3F)
+        // A simple heuristic: if MSB bits are 11, it's almost certainly random static
+        (first_byte & 0xC0) == 0xC0
+    }
+
+    /// Stop BLE discovery temporarily
+    ///
+    /// This is useful before connecting to avoid the "le-connection-abort-by-local" error
+    /// that can happen when BlueZ tries to scan and connect simultaneously.
+    pub async fn stop_discovery(&self) -> Result<()> {
+        // Note: This doesn't stop our discovery stream task, just tells the adapter to pause
+        self.adapter.set_discovery_filter(bluer::DiscoveryFilter::default()).await.ok();
+        Ok(())
+    }
+
+    /// Resume BLE discovery
+    pub async fn resume_discovery(&self) -> Result<()> {
+        use bluer::DiscoveryFilter;
+        use bluer::DiscoveryTransport;
+
+        let filter = DiscoveryFilter {
+            transport: DiscoveryTransport::Le,
+            ..Default::default()
+        };
+        self.adapter.set_discovery_filter(filter).await.ok();
+        Ok(())
     }
 }
 
@@ -414,8 +525,14 @@ impl BleAdapter for BluerAdapter {
                                     // Get service data from advertisement (no connection needed)
                                     let service_data = device.service_data().await.ok().flatten().unwrap_or_default();
 
+                                    // The 16-bit UUID 0xF47A expands to this 128-bit form
+                                    let service_uuid_16bit =
+                                        uuid::Uuid::parse_str("0000F47A-0000-1000-8000-00805F9B34FB").unwrap();
+
                                     // Check if HIVE service UUID is present in advertisement
-                                    let has_hive_service = service_data.contains_key(&HIVE_SERVICE_UUID);
+                                    // Check both the full UUID and the 16-bit alias
+                                    let has_hive_service = service_data.contains_key(&HIVE_SERVICE_UUID)
+                                        || service_data.contains_key(&service_uuid_16bit);
 
                                     // Check if name indicates HIVE node (fallback)
                                     // Supports both formats:
@@ -429,10 +546,23 @@ impl BleAdapter for BluerAdapter {
                                     let is_hive_node = has_hive_service || name_indicates_hive;
 
                                     // Parse node ID from name (supports both formats)
-                                    let node_id = name.as_ref().and_then(|n| {
+                                    let mut node_id = name.as_ref().and_then(|n| {
                                         crate::config::MeshConfig::parse_device_name(n)
                                             .map(|(_, node_id)| node_id)
                                     });
+
+                                    // If not found in name, try to extract from service data
+                                    // Service data format: [nodeId:4 bytes BE][meshId:UTF-8]
+                                    if node_id.is_none() {
+                                        if let Some(data) = service_data.get(&service_uuid_16bit)
+                                            .or_else(|| service_data.get(&HIVE_SERVICE_UUID))
+                                        {
+                                            if data.len() >= 4 {
+                                                let id = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+                                                node_id = Some(NodeId::new(id));
+                                            }
+                                        }
+                                    }
 
                                     let discovered = DiscoveredDevice {
                                         address: addr.to_string(),
@@ -523,6 +653,12 @@ impl BleAdapter for BluerAdapter {
             .adapter
             .device(address)
             .map_err(|e| BleError::ConnectionFailed(format!("Failed to get device: {}", e)))?;
+
+        // Trust the device to prevent pairing prompts on the remote side
+        // This tells BlueZ we accept this device without requiring user confirmation
+        if let Err(e) = device.set_trusted(true).await {
+            log::warn!("Failed to set device as trusted: {}", e);
+        }
 
         // Connect to the device
         device
