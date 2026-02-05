@@ -73,6 +73,9 @@ struct GattState {
     sync_data_callback: Mutex<Option<SyncCallback>>,
     /// Received command callback
     command_callback: Mutex<Option<SyncCallback>>,
+    /// Per-peer MTU from GATT operations (address -> mtu)
+    /// Updated when peers perform GATT read/write operations
+    peer_mtu: Mutex<HashMap<Address, u16>>,
 }
 
 impl GattState {
@@ -84,6 +87,7 @@ impl GattState {
             status: Mutex::new(Vec::new()),
             sync_data_callback: Mutex::new(None),
             command_callback: Mutex::new(None),
+            peer_mtu: Mutex::new(HashMap::new()),
         }
     }
 
@@ -96,6 +100,20 @@ impl GattState {
         *self.sync_state.lock().await = vec![0x00];
         // Initialize status as empty
         *self.status.lock().await = vec![0x00];
+    }
+
+    /// Update the MTU for a peer based on GATT request
+    async fn update_peer_mtu(&self, address: Address, mtu: u16) {
+        let mut peer_mtu = self.peer_mtu.lock().await;
+        let old_mtu = peer_mtu.insert(address, mtu);
+        if old_mtu != Some(mtu) {
+            log::debug!("Peer {} MTU: {} (was {:?})", address, mtu, old_mtu);
+        }
+    }
+
+    /// Get the MTU for a peer
+    async fn get_peer_mtu(&self, address: &Address) -> Option<u16> {
+        self.peer_mtu.lock().await.get(address).copied()
     }
 }
 
@@ -266,7 +284,7 @@ impl BluerAdapter {
         // (some scanners need the name in the main advertisement)
         let device_name = format!("HIVE-{:08X}", config.node_id.as_u32());
 
-        let adv = Advertisement {
+        Advertisement {
             advertisement_type: bluer::adv::Type::Peripheral,
             service_uuids: vec![service_uuid_16bit].into_iter().collect(),
             // Include local_name - BlueZ will put it in scan response if needed
@@ -275,9 +293,7 @@ impl BluerAdapter {
             // Set discoverable to allow other devices to find us
             discoverable: Some(true),
             ..Default::default()
-        };
-
-        adv
+        }
     }
 
     /// Set the adapter's alias (used for scan response device name)
@@ -357,6 +373,19 @@ impl BluerAdapter {
     /// Get current sync state data
     pub async fn get_sync_state(&self) -> Vec<u8> {
         self.gatt_state.sync_state.lock().await.clone()
+    }
+
+    /// Get the negotiated MTU for a connected peer (by BLE address)
+    ///
+    /// Returns the MTU captured from the peer's last GATT operation.
+    /// This is populated when the peer performs read/write operations on our GATT server.
+    pub async fn get_peer_mtu(&self, address: &Address) -> Option<u16> {
+        self.gatt_state.get_peer_mtu(address).await
+    }
+
+    /// Get all known peer MTUs (for debugging/monitoring)
+    pub async fn get_all_peer_mtus(&self) -> HashMap<Address, u16> {
+        self.gatt_state.peer_mtu.lock().await.clone()
     }
 
     /// Get a device handle by address for direct GATT operations
@@ -782,11 +811,14 @@ impl BleAdapter for BluerAdapter {
                             fun: Box::new(move |req| {
                                 let state = state_read_node.clone();
                                 Box::pin(async move {
+                                    // Track peer MTU from GATT request
+                                    state.update_peer_mtu(req.device_address, req.mtu).await;
                                     let data = state.node_info.lock().await;
                                     log::debug!(
-                                        "GATT read node_info from {:?}: {} bytes",
+                                        "GATT read node_info from {:?}: {} bytes (MTU={})",
                                         req.device_address,
-                                        data.len()
+                                        data.len(),
+                                        req.mtu
                                     );
                                     Ok(data.clone())
                                 })
@@ -803,11 +835,14 @@ impl BleAdapter for BluerAdapter {
                             fun: Box::new(move |req| {
                                 let state = state_read_sync.clone();
                                 Box::pin(async move {
+                                    // Track peer MTU from GATT request
+                                    state.update_peer_mtu(req.device_address, req.mtu).await;
                                     let data = state.sync_state.lock().await;
                                     log::debug!(
-                                        "GATT read sync_state from {:?}: {} bytes",
+                                        "GATT read sync_state from {:?}: {} bytes (MTU={})",
                                         req.device_address,
-                                        data.len()
+                                        data.len(),
+                                        req.mtu
                                     );
                                     Ok(data.clone())
                                 })
@@ -829,10 +864,13 @@ impl BleAdapter for BluerAdapter {
                             method: CharacteristicWriteMethod::Fun(Box::new(move |data, req| {
                                 let state = state_write_sync.clone();
                                 Box::pin(async move {
+                                    // Track peer MTU from GATT request
+                                    state.update_peer_mtu(req.device_address, req.mtu).await;
                                     log::debug!(
-                                        "GATT write sync_data from {:?}: {} bytes",
+                                        "GATT write sync_data from {:?}: {} bytes (MTU={})",
                                         req.device_address,
-                                        data.len()
+                                        data.len(),
+                                        req.mtu
                                     );
                                     // Invoke callback if set
                                     if let Some(ref cb) = *state.sync_data_callback.lock().await {
@@ -859,10 +897,13 @@ impl BleAdapter for BluerAdapter {
                             method: CharacteristicWriteMethod::Fun(Box::new(move |data, req| {
                                 let state = state_write_cmd.clone();
                                 Box::pin(async move {
+                                    // Track peer MTU from GATT request
+                                    state.update_peer_mtu(req.device_address, req.mtu).await;
                                     log::debug!(
-                                        "GATT write command from {:?}: {} bytes",
+                                        "GATT write command from {:?}: {} bytes (MTU={})",
                                         req.device_address,
-                                        data.len()
+                                        data.len(),
+                                        req.mtu
                                     );
                                     // Invoke callback if set
                                     if let Some(ref cb) = *state.command_callback.lock().await {
@@ -883,11 +924,14 @@ impl BleAdapter for BluerAdapter {
                             fun: Box::new(move |req| {
                                 let state = state_read_status.clone();
                                 Box::pin(async move {
+                                    // Track peer MTU from GATT request
+                                    state.update_peer_mtu(req.device_address, req.mtu).await;
                                     let data = state.status.lock().await;
                                     log::debug!(
-                                        "GATT read status from {:?}: {} bytes",
+                                        "GATT read status from {:?}: {} bytes (MTU={})",
                                         req.device_address,
-                                        data.len()
+                                        data.len(),
+                                        req.mtu
                                     );
                                     Ok(data.clone())
                                 })

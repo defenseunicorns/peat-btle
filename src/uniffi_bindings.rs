@@ -1230,3 +1230,653 @@ fn escape_json_string(s: &str) -> String {
         .replace('\r', "\\r")
         .replace('\t', "\\t")
 }
+
+// ============================================================================
+// Reconnection Manager (auto-reconnect with exponential backoff)
+// ============================================================================
+
+use crate::reconnect::{
+    PeerReconnectionStats as InternalPeerReconnectionStats,
+    ReconnectionConfig as InternalReconnectionConfig,
+    ReconnectionManager as InternalReconnectionManager,
+    ReconnectionStatus as InternalReconnectionStatus,
+};
+
+/// Configuration for reconnection behavior
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ReconnectionConfig {
+    /// Base delay between reconnection attempts in milliseconds
+    pub base_delay_ms: u64,
+    /// Maximum delay between attempts in milliseconds
+    pub max_delay_ms: u64,
+    /// Maximum number of reconnection attempts before giving up
+    pub max_attempts: u32,
+    /// Interval for checking which peers need reconnection in milliseconds
+    pub check_interval_ms: u64,
+}
+
+impl Default for ReconnectionConfig {
+    fn default() -> Self {
+        Self {
+            base_delay_ms: 2000,
+            max_delay_ms: 60000,
+            max_attempts: 10,
+            check_interval_ms: 5000,
+        }
+    }
+}
+
+impl From<ReconnectionConfig> for InternalReconnectionConfig {
+    fn from(c: ReconnectionConfig) -> Self {
+        InternalReconnectionConfig::new(
+            std::time::Duration::from_millis(c.base_delay_ms),
+            std::time::Duration::from_millis(c.max_delay_ms),
+            c.max_attempts,
+            std::time::Duration::from_millis(c.check_interval_ms),
+        )
+    }
+}
+
+/// Result of checking if a peer should be reconnected
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum ReconnectionStatus {
+    /// Ready to attempt reconnection
+    Ready,
+    /// Waiting for backoff delay to expire
+    Waiting {
+        /// Time remaining until next attempt is allowed in milliseconds
+        remaining_ms: u64,
+    },
+    /// Maximum attempts exceeded, peer is abandoned
+    Exhausted {
+        /// Number of attempts that were made
+        attempts: u32,
+    },
+    /// Peer is not being tracked for reconnection
+    NotTracked,
+}
+
+impl From<InternalReconnectionStatus> for ReconnectionStatus {
+    fn from(s: InternalReconnectionStatus) -> Self {
+        match s {
+            InternalReconnectionStatus::Ready => ReconnectionStatus::Ready,
+            InternalReconnectionStatus::Waiting { remaining } => ReconnectionStatus::Waiting {
+                remaining_ms: remaining.as_millis() as u64,
+            },
+            InternalReconnectionStatus::Exhausted { attempts } => {
+                ReconnectionStatus::Exhausted { attempts }
+            }
+            InternalReconnectionStatus::NotTracked => ReconnectionStatus::NotTracked,
+        }
+    }
+}
+
+/// Statistics for a peer's reconnection state
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PeerReconnectionStats {
+    /// Number of attempts made
+    pub attempts: u32,
+    /// Maximum allowed attempts
+    pub max_attempts: u32,
+    /// How long since the peer disconnected in milliseconds
+    pub disconnected_duration_ms: u64,
+    /// Time until next reconnection attempt in milliseconds (0 if ready, u64::MAX if exhausted)
+    pub next_attempt_delay_ms: u64,
+}
+
+impl From<InternalPeerReconnectionStats> for PeerReconnectionStats {
+    fn from(s: InternalPeerReconnectionStats) -> Self {
+        PeerReconnectionStats {
+            attempts: s.attempts,
+            max_attempts: s.max_attempts,
+            disconnected_duration_ms: s.disconnected_duration.as_millis() as u64,
+            next_attempt_delay_ms: s.next_attempt_delay.as_millis() as u64,
+        }
+    }
+}
+
+/// Manager for auto-reconnection with exponential backoff
+#[derive(uniffi::Object)]
+pub struct ReconnectionManager {
+    inner: std::sync::Mutex<InternalReconnectionManager>,
+}
+
+#[uniffi::export]
+impl ReconnectionManager {
+    /// Create a new reconnection manager with the given configuration
+    #[uniffi::constructor]
+    pub fn new(config: ReconnectionConfig) -> Arc<Self> {
+        Arc::new(Self {
+            inner: std::sync::Mutex::new(InternalReconnectionManager::new(config.into())),
+        })
+    }
+
+    /// Create a manager with default configuration
+    #[uniffi::constructor]
+    pub fn with_defaults() -> Arc<Self> {
+        Arc::new(Self {
+            inner: std::sync::Mutex::new(InternalReconnectionManager::with_defaults()),
+        })
+    }
+
+    /// Track a peer for reconnection after disconnection
+    pub fn track_disconnection(&self, address: String) {
+        self.inner.lock().unwrap().track_disconnection(address);
+    }
+
+    /// Check if a peer is being tracked for reconnection
+    pub fn is_tracked(&self, address: &str) -> bool {
+        self.inner.lock().unwrap().is_tracked(address)
+    }
+
+    /// Get the reconnection status for a peer
+    pub fn get_status(&self, address: &str) -> ReconnectionStatus {
+        self.inner.lock().unwrap().get_status(address).into()
+    }
+
+    /// Get all peers that are ready for a reconnection attempt
+    pub fn get_peers_to_reconnect(&self) -> Vec<String> {
+        self.inner.lock().unwrap().get_peers_to_reconnect()
+    }
+
+    /// Record a reconnection attempt for a peer
+    pub fn record_attempt(&self, address: &str) {
+        self.inner.lock().unwrap().record_attempt(address);
+    }
+
+    /// Called when a connection succeeds
+    pub fn on_connection_success(&self, address: &str) {
+        self.inner.lock().unwrap().on_connection_success(address);
+    }
+
+    /// Stop tracking a peer
+    pub fn stop_tracking(&self, address: &str) {
+        self.inner.lock().unwrap().stop_tracking(address);
+    }
+
+    /// Clear all reconnection tracking
+    pub fn clear(&self) {
+        self.inner.lock().unwrap().clear();
+    }
+
+    /// Get the number of peers being tracked
+    pub fn tracked_count(&self) -> u32 {
+        self.inner.lock().unwrap().tracked_count() as u32
+    }
+
+    /// Get statistics for a peer
+    pub fn get_peer_stats(&self, address: &str) -> Option<PeerReconnectionStats> {
+        self.inner
+            .lock()
+            .unwrap()
+            .get_peer_stats(address)
+            .map(|s| s.into())
+    }
+
+    /// Get the check interval from configuration in milliseconds
+    pub fn check_interval_ms(&self) -> u64 {
+        self.inner.lock().unwrap().check_interval().as_millis() as u64
+    }
+}
+
+// ============================================================================
+// Peer Lifetime Manager (stale peer cleanup)
+// ============================================================================
+
+use crate::peer_lifetime::{
+    PeerInfo as InternalPeerInfo, PeerLifetimeConfig as InternalPeerLifetimeConfig,
+    PeerLifetimeManager as InternalPeerLifetimeManager,
+    PeerLifetimeStats as InternalPeerLifetimeStats, StalePeerInfo as InternalStalePeerInfo,
+    StaleReason as InternalStaleReason,
+};
+
+/// Configuration for peer lifetime management
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PeerLifetimeConfig {
+    /// Timeout for disconnected peers in milliseconds
+    pub disconnected_timeout_ms: u64,
+    /// Timeout for connected peers in milliseconds
+    pub connected_timeout_ms: u64,
+    /// Interval for cleanup checks in milliseconds
+    pub cleanup_interval_ms: u64,
+}
+
+impl Default for PeerLifetimeConfig {
+    fn default() -> Self {
+        Self {
+            disconnected_timeout_ms: 30000,
+            connected_timeout_ms: 60000,
+            cleanup_interval_ms: 10000,
+        }
+    }
+}
+
+impl From<PeerLifetimeConfig> for InternalPeerLifetimeConfig {
+    fn from(c: PeerLifetimeConfig) -> Self {
+        InternalPeerLifetimeConfig::new(
+            std::time::Duration::from_millis(c.disconnected_timeout_ms),
+            std::time::Duration::from_millis(c.connected_timeout_ms),
+            std::time::Duration::from_millis(c.cleanup_interval_ms),
+        )
+    }
+}
+
+/// Reason a peer is considered stale
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum StaleReason {
+    /// Disconnected peer hasn't been seen in a while
+    DisconnectedTimeout,
+    /// Connected peer hasn't had activity (possible ghost connection)
+    ConnectedTimeout,
+}
+
+impl From<InternalStaleReason> for StaleReason {
+    fn from(r: InternalStaleReason) -> Self {
+        match r {
+            InternalStaleReason::DisconnectedTimeout => StaleReason::DisconnectedTimeout,
+            InternalStaleReason::ConnectedTimeout => StaleReason::ConnectedTimeout,
+        }
+    }
+}
+
+/// Information about a stale peer
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct StalePeerInfo {
+    /// Peer address
+    pub address: String,
+    /// Why the peer is considered stale
+    pub reason: StaleReason,
+    /// How long since the peer was last seen in milliseconds
+    pub time_since_last_seen_ms: u64,
+    /// Whether the peer was connected when it went stale
+    pub was_connected: bool,
+}
+
+impl From<InternalStalePeerInfo> for StalePeerInfo {
+    fn from(p: InternalStalePeerInfo) -> Self {
+        StalePeerInfo {
+            address: p.address,
+            reason: p.reason.into(),
+            time_since_last_seen_ms: p.time_since_last_seen.as_millis() as u64,
+            was_connected: p.was_connected,
+        }
+    }
+}
+
+/// Statistics about tracked peers
+#[derive(Debug, Clone, Copy, uniffi::Record)]
+pub struct PeerLifetimeStats {
+    /// Total number of tracked peers
+    pub total_tracked: u32,
+    /// Number of connected peers
+    pub connected: u32,
+    /// Number of disconnected peers
+    pub disconnected: u32,
+}
+
+impl From<InternalPeerLifetimeStats> for PeerLifetimeStats {
+    fn from(s: InternalPeerLifetimeStats) -> Self {
+        PeerLifetimeStats {
+            total_tracked: s.total_tracked as u32,
+            connected: s.connected as u32,
+            disconnected: s.disconnected as u32,
+        }
+    }
+}
+
+/// Detailed information about a peer
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PeerInfo {
+    /// Whether the peer is currently connected
+    pub connected: bool,
+    /// Time since last activity in milliseconds
+    pub time_since_last_seen_ms: u64,
+    /// Time since first discovery in milliseconds
+    pub time_since_first_seen_ms: u64,
+    /// Time since disconnect in milliseconds (if disconnected)
+    pub time_since_disconnect_ms: Option<u64>,
+}
+
+impl From<InternalPeerInfo> for PeerInfo {
+    fn from(p: InternalPeerInfo) -> Self {
+        PeerInfo {
+            connected: p.connected,
+            time_since_last_seen_ms: p.time_since_last_seen.as_millis() as u64,
+            time_since_first_seen_ms: p.time_since_first_seen.as_millis() as u64,
+            time_since_disconnect_ms: p.time_since_disconnect.map(|d| d.as_millis() as u64),
+        }
+    }
+}
+
+/// Manager for peer lifetime and stale peer cleanup
+#[derive(uniffi::Object)]
+pub struct PeerLifetimeManager {
+    inner: std::sync::Mutex<InternalPeerLifetimeManager>,
+}
+
+#[uniffi::export]
+impl PeerLifetimeManager {
+    /// Create a new peer lifetime manager with the given configuration
+    #[uniffi::constructor]
+    pub fn new(config: PeerLifetimeConfig) -> Arc<Self> {
+        Arc::new(Self {
+            inner: std::sync::Mutex::new(InternalPeerLifetimeManager::new(config.into())),
+        })
+    }
+
+    /// Create a manager with default configuration
+    #[uniffi::constructor]
+    pub fn with_defaults() -> Arc<Self> {
+        Arc::new(Self {
+            inner: std::sync::Mutex::new(InternalPeerLifetimeManager::with_defaults()),
+        })
+    }
+
+    /// Record activity for a peer
+    pub fn on_peer_activity(&self, address: &str, connected: bool) {
+        self.inner
+            .lock()
+            .unwrap()
+            .on_peer_activity(address, connected);
+    }
+
+    /// Record that a peer has disconnected
+    pub fn on_peer_disconnected(&self, address: &str) {
+        self.inner.lock().unwrap().on_peer_disconnected(address);
+    }
+
+    /// Check if a peer is being tracked
+    pub fn is_tracked(&self, address: &str) -> bool {
+        self.inner.lock().unwrap().is_tracked(address)
+    }
+
+    /// Check if a peer is connected
+    pub fn is_connected(&self, address: &str) -> bool {
+        self.inner.lock().unwrap().is_connected(address)
+    }
+
+    /// Get the list of stale peers that should be removed
+    pub fn get_stale_peers(&self) -> Vec<StalePeerInfo> {
+        self.inner
+            .lock()
+            .unwrap()
+            .get_stale_peers()
+            .into_iter()
+            .map(|p| p.into())
+            .collect()
+    }
+
+    /// Get just the addresses of stale peers
+    pub fn get_stale_peer_addresses(&self) -> Vec<String> {
+        self.inner.lock().unwrap().get_stale_peer_addresses()
+    }
+
+    /// Remove a peer from tracking
+    pub fn remove_peer(&self, address: &str) -> bool {
+        self.inner.lock().unwrap().remove_peer(address)
+    }
+
+    /// Remove all stale peers and return their info
+    pub fn cleanup_stale_peers(&self) -> Vec<StalePeerInfo> {
+        self.inner
+            .lock()
+            .unwrap()
+            .cleanup_stale_peers()
+            .into_iter()
+            .map(|p| p.into())
+            .collect()
+    }
+
+    /// Get statistics about tracked peers
+    pub fn stats(&self) -> PeerLifetimeStats {
+        self.inner.lock().unwrap().stats().into()
+    }
+
+    /// Get detailed info about a specific peer
+    pub fn get_peer_info(&self, address: &str) -> Option<PeerInfo> {
+        self.inner
+            .lock()
+            .unwrap()
+            .get_peer_info(address)
+            .map(|p| p.into())
+    }
+
+    /// Clear all tracked peers
+    pub fn clear(&self) {
+        self.inner.lock().unwrap().clear();
+    }
+
+    /// Get the number of tracked peers
+    pub fn tracked_count(&self) -> u32 {
+        self.inner.lock().unwrap().tracked_count() as u32
+    }
+
+    /// Get the cleanup interval from configuration in milliseconds
+    pub fn cleanup_interval_ms(&self) -> u64 {
+        self.inner.lock().unwrap().cleanup_interval().as_millis() as u64
+    }
+}
+
+// ============================================================================
+// Address Rotation Handler (BLE address rotation for WearOS)
+// ============================================================================
+
+use crate::address_rotation::{
+    AddressRotationHandler as InternalAddressRotationHandler,
+    AddressRotationStats as InternalAddressRotationStats,
+    DeviceLookupResult as InternalDeviceLookupResult,
+    DevicePattern as InternalDevicePattern,
+};
+
+/// Patterns that indicate a device may rotate its BLE address
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DevicePattern {
+    /// WearTAK on WearOS (WT-WEAROS-XXXX)
+    WearTak,
+    /// Generic WearOS device (WEAROS-XXXX)
+    WearOs,
+    /// HIVE mesh device (HIVE_MESH-XXXX or HIVE-XXXX)
+    Hive,
+    /// Unknown pattern (may still rotate addresses)
+    Unknown,
+}
+
+impl From<InternalDevicePattern> for DevicePattern {
+    fn from(p: InternalDevicePattern) -> Self {
+        match p {
+            InternalDevicePattern::WearTak => DevicePattern::WearTak,
+            InternalDevicePattern::WearOs => DevicePattern::WearOs,
+            InternalDevicePattern::Hive => DevicePattern::Hive,
+            InternalDevicePattern::Unknown => DevicePattern::Unknown,
+        }
+    }
+}
+
+impl DevicePattern {
+    /// Check if this device type is known to rotate addresses
+    pub fn rotates_addresses(&self) -> bool {
+        matches!(self, DevicePattern::WearTak | DevicePattern::WearOs)
+    }
+}
+
+/// Result of looking up a device by name
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DeviceLookupResult {
+    /// The node ID for this device
+    pub node_id: u32,
+    /// The current known address
+    pub current_address: String,
+    /// Whether the address has changed
+    pub address_changed: bool,
+    /// The previous address (if changed)
+    pub previous_address: Option<String>,
+}
+
+impl From<InternalDeviceLookupResult> for DeviceLookupResult {
+    fn from(r: InternalDeviceLookupResult) -> Self {
+        DeviceLookupResult {
+            node_id: r.node_id.as_u32(),
+            current_address: r.current_address,
+            address_changed: r.address_changed,
+            previous_address: r.previous_address,
+        }
+    }
+}
+
+/// Statistics about address rotation handling
+#[derive(Debug, Clone, Copy, uniffi::Record)]
+pub struct AddressRotationStats {
+    /// Number of devices tracked by name
+    pub devices_with_names: u32,
+    /// Total number of devices tracked
+    pub total_devices: u32,
+    /// Number of address mappings
+    pub address_mappings: u32,
+}
+
+impl From<InternalAddressRotationStats> for AddressRotationStats {
+    fn from(s: InternalAddressRotationStats) -> Self {
+        AddressRotationStats {
+            devices_with_names: s.devices_with_names as u32,
+            total_devices: s.total_devices as u32,
+            address_mappings: s.address_mappings as u32,
+        }
+    }
+}
+
+/// Handler for BLE address rotation
+#[derive(uniffi::Object)]
+pub struct AddressRotationHandler {
+    inner: std::sync::Mutex<InternalAddressRotationHandler>,
+}
+
+#[uniffi::export]
+impl AddressRotationHandler {
+    /// Create a new address rotation handler
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            inner: std::sync::Mutex::new(InternalAddressRotationHandler::new()),
+        })
+    }
+
+    /// Register a new device
+    pub fn register_device(&self, name: &str, address: &str, node_id: u32) {
+        self.inner
+            .lock()
+            .unwrap()
+            .register_device(name, address, NodeId::new(node_id));
+    }
+
+    /// Look up a device by name
+    pub fn lookup_by_name(&self, name: &str) -> Option<u32> {
+        self.inner
+            .lock()
+            .unwrap()
+            .lookup_by_name(name)
+            .map(|n| n.as_u32())
+    }
+
+    /// Look up a device by address
+    pub fn lookup_by_address(&self, address: &str) -> Option<u32> {
+        self.inner
+            .lock()
+            .unwrap()
+            .lookup_by_address(address)
+            .map(|n| n.as_u32())
+    }
+
+    /// Get the current address for a node
+    pub fn get_address(&self, node_id: u32) -> Option<String> {
+        self.inner
+            .lock()
+            .unwrap()
+            .get_address(&NodeId::new(node_id))
+            .cloned()
+    }
+
+    /// Get the name for a node
+    pub fn get_name(&self, node_id: u32) -> Option<String> {
+        self.inner
+            .lock()
+            .unwrap()
+            .get_name(&NodeId::new(node_id))
+            .cloned()
+    }
+
+    /// Handle a device discovery, detecting address rotation
+    pub fn on_device_discovered(&self, name: &str, address: &str) -> Option<DeviceLookupResult> {
+        self.inner
+            .lock()
+            .unwrap()
+            .on_device_discovered(name, address)
+            .map(|r| r.into())
+    }
+
+    /// Update the address for a device (used when address rotation is detected)
+    pub fn update_address(&self, name: &str, new_address: &str) -> bool {
+        self.inner
+            .lock()
+            .unwrap()
+            .update_address(name, new_address)
+    }
+
+    /// Update the name for a device
+    pub fn update_name(&self, node_id: u32, new_name: &str) {
+        self.inner
+            .lock()
+            .unwrap()
+            .update_name(NodeId::new(node_id), new_name);
+    }
+
+    /// Remove a device from all mappings
+    pub fn remove_device(&self, node_id: u32) {
+        self.inner
+            .lock()
+            .unwrap()
+            .remove_device(&NodeId::new(node_id));
+    }
+
+    /// Clear all mappings
+    pub fn clear(&self) {
+        self.inner.lock().unwrap().clear();
+    }
+
+    /// Get the number of tracked devices
+    pub fn device_count(&self) -> u32 {
+        self.inner.lock().unwrap().device_count() as u32
+    }
+
+    /// Get statistics about tracked mappings
+    pub fn stats(&self) -> AddressRotationStats {
+        self.inner.lock().unwrap().stats().into()
+    }
+}
+
+// ============================================================================
+// Address Rotation Helper Functions
+// ============================================================================
+
+/// Detect the device pattern from a BLE device name
+#[uniffi::export]
+pub fn detect_device_pattern(name: &str) -> DevicePattern {
+    crate::address_rotation::detect_device_pattern(name).into()
+}
+
+/// Check if a device name matches a WearTAK/WearOS pattern
+#[uniffi::export]
+pub fn is_weartak_device(name: &str) -> bool {
+    crate::address_rotation::is_weartak_device(name)
+}
+
+/// Normalize a WearTAK device name (removes "WT-" prefix if present)
+#[uniffi::export]
+pub fn normalize_weartak_name(name: &str) -> String {
+    crate::address_rotation::normalize_weartak_name(name).to_string()
+}
+
+/// Check if a device pattern is known to rotate addresses
+#[uniffi::export]
+pub fn device_pattern_rotates_addresses(pattern: DevicePattern) -> bool {
+    pattern.rotates_addresses()
+}
