@@ -144,3 +144,7 @@ path = "src/raw_blinky.rs"
 [[bin]]
 name = "ble_advertiser"
 path = "src/ble_advertiser.rs"
+
+[[bin]]
+name = "hive_node"
+path = "src/hive_node.rs"

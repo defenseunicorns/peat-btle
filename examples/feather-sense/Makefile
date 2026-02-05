@@ -45,7 +45,7 @@ MOUNT_POINT := $(shell \
 	elif [ -d "/mnt/FTHRSNSBOOT" ]; then echo "/mnt/FTHRSNSBOOT"; \
 	fi)
 
-.PHONY: build build-sd build-ble probe run ble flash-sd uf2 uf2-sd clean info help
+.PHONY: build build-sd build-ble build-hive probe run ble hive flash-sd uf2 uf2-sd clean info help
 
 # =============================================================================
 # Pure Rust Targets (recommended)
@@ -77,6 +77,14 @@ build-ble:
 # Flash BLE advertiser
 ble: build-ble
 	probe-rs run --chip $(CHIP) $(RELEASE_DIR)/ble_advertiser
+
+# Build HIVE mesh node (full GATT server for WearTAK)
+build-hive:
+	cargo build --release --no-default-features --features trouble --bin hive_node
+
+# Flash HIVE mesh node
+hive: build-hive
+	probe-rs run --chip $(CHIP) $(RELEASE_DIR)/hive_node
 
 # Just attach to RTT (board already running)
 attach:
@@ -134,8 +142,9 @@ info:
 	@echo "  raw_blinky   - Minimal GPIO blinky, no embassy/async"
 	@echo "  pure_blinky  - Embassy async blinky, no SoftDevice"
 	@echo ""
-	@echo "=== BLE Binaries (use with: make ble) ==="
-	@echo "  ble_advertiser - BLE advertising as HIVE-xxxx (nrf-sdc)"
+	@echo "=== BLE Binaries (nrf-sdc, requires arm-none-eabi-gcc) ==="
+	@echo "  make ble   - BLE advertising as HIVE-xxxx"
+	@echo "  make hive  - HIVE GATT server for WearTAK (recommended)"
 	@echo ""
 	@echo "=== SoftDevice Binaries (use with: make flash-sd BIN=xxx) ==="
 	@echo "  sd_minimal   - Minimal SoftDevice + embassy blinky"
@@ -155,7 +164,8 @@ help:
 	@echo "  make erase                 - Erase chip (removes SoftDevice)"
 	@echo ""
 	@echo "BLE (requires arm-none-eabi-gcc for nrf-sdc):"
-	@echo "  make ble                   - Flash BLE advertiser (HIVE-xxxx)"
+	@echo "  make hive                  - Flash HIVE GATT server (WearTAK)"
+	@echo "  make ble                   - Flash BLE advertiser only"
 	@echo ""
 	@echo "SOFTDEVICE (UF2 bootloader - currently broken):"
 	@echo "  make flash-sd BIN=sd_minimal"
