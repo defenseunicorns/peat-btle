@@ -81,7 +81,7 @@ enum ConnectionState {
     DiscoveringServices,
     DiscoveringCharacteristics,
     ReadingNodeInfo,
-    Ready,  // Fully connected with node ID known
+    Ready, // Fully connected with node ID known
     Failed,
 }
 
@@ -204,11 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mut state = test_state.write().await;
         state.log("=== Range Test Started (macOS) ===");
-        state.log(&format!(
-            "Node: {:08X} ({})",
-            node_id.as_u32(),
-            callsign
-        ));
+        state.log(&format!("Node: {:08X} ({})", node_id.as_u32(), callsign));
         state.log(&format!("Mesh: {} ({})", mesh_id, genesis.mesh_name));
     }
 
@@ -251,26 +247,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // CoreBluetooth truncates names, so "HIVE-BA5E0001" becomes "HIVE-BA5E0"
                 // Check by name pattern (hex prefix match) or exact node ID
                 let our_hex = format!("{:08X}", our_node_id.as_u32());
-                let is_self = device_clone.name.as_ref().map(|n| {
-                    // Check if name contains our node ID (or truncated prefix)
-                    // Our ID: BA5E0001 -> name might be HIVE-BA5E0 (truncated)
-                    if let Some(suffix) = n.strip_prefix("HIVE-") {
-                        // Check if our hex starts with the advertised suffix
-                        our_hex.starts_with(&suffix.to_uppercase())
-                    } else {
-                        false
-                    }
-                }).unwrap_or(false) || node_id_opt.map(|nid| nid == our_node_id).unwrap_or(false);
+                let is_self = device_clone
+                    .name
+                    .as_ref()
+                    .map(|n| {
+                        // Check if name contains our node ID (or truncated prefix)
+                        // Our ID: BA5E0001 -> name might be HIVE-BA5E0 (truncated)
+                        if let Some(suffix) = n.strip_prefix("HIVE-") {
+                            // Check if our hex starts with the advertised suffix
+                            our_hex.starts_with(&suffix.to_uppercase())
+                        } else {
+                            false
+                        }
+                    })
+                    .unwrap_or(false)
+                    || node_id_opt.map(|nid| nid == our_node_id).unwrap_or(false);
 
                 if is_self {
-                    log::trace!("Ignoring self-discovery: {}", device_clone.name.as_deref().unwrap_or("?"));
+                    log::trace!(
+                        "Ignoring self-discovery: {}",
+                        device_clone.name.as_deref().unwrap_or("?")
+                    );
                     return;
                 }
 
                 // Log discovery
                 {
                     let mut state = state.write().await;
-                    let hive_marker = if device_clone.is_hive_node { "[HIVE]" } else { "[other]" };
+                    let hive_marker = if device_clone.is_hive_node {
+                        "[HIVE]"
+                    } else {
+                        "[other]"
+                    };
                     state.log(&format!(
                         "DISCOVERED {}: {} ({}) RSSI={} NodeID={:?}",
                         hive_marker,
@@ -317,14 +325,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Also track by CoreBluetooth identifier for HIVE devices
                     // This is important for devices advertising F47A but without HIVE-style name
                     if device_clone.is_hive_node {
-                        let peripheral = state.hive_peripherals.entry(address.clone()).or_insert(HivePeripheral {
-                            identifier: address.clone(),
-                            name: device_clone.name.clone(),
-                            last_seen: 0,
-                            last_rssi: -999,
-                            connection_state: ConnectionState::Discovered,
-                            node_id: node_id_opt.map(|n| n.as_u32()),
-                        });
+                        let peripheral = state.hive_peripherals.entry(address.clone()).or_insert(
+                            HivePeripheral {
+                                identifier: address.clone(),
+                                name: device_clone.name.clone(),
+                                last_seen: 0,
+                                last_rssi: -999,
+                                connection_state: ConnectionState::Discovered,
+                                node_id: node_id_opt.map(|n| n.as_u32()),
+                            },
+                        );
                         peripheral.last_seen = now_ms();
                         peripheral.last_rssi = device_clone.rssi as i16;
                         if peripheral.name.is_none() {
