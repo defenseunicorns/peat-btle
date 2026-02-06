@@ -6,22 +6,31 @@ authors = ["(r)evolve - Revolve Team LLC"]
 license = "Apache-2.0"
 description = "HIVE SOS beacon on Adafruit Feather nRF52840 Sense"
 
+[features]
+default = ["pure"]
+# Pure Rust mode (no SoftDevice) - uses cortex-m critical section
+pure = ["cortex-m/critical-section-single-core"]
+# Use Nordic SoftDevice BLE stack (proprietary binary blob)
+softdevice = ["dep:nrf-softdevice", "dep:nrf-softdevice-s140"]
+# TrouBLE BLE stack (pure Rust host + nrf-sdc controller)
+trouble = ["dep:trouble-host", "dep:nrf-sdc", "dep:nrf-mpsl", "dep:bt-hci", "dep:static_cell"]
+
 [dependencies]
-# Embassy async runtime
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", features = ["arch-cortex-m", "executor-thread", "defmt"] }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", features = ["defmt", "defmt-timestamp-uptime"] }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", features = ["defmt"] }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy" }
+# Embassy async runtime (versions matching TrouBLE requirements)
+embassy-executor = { version = "0.9", default-features = false, features = ["arch-cortex-m", "executor-thread", "defmt"] }
+embassy-time = { version = "0.5", default-features = false, features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-sync = { version = "0.7", default-features = false, features = ["defmt"] }
+embassy-futures = { version = "0.1" }
 
 # Embassy nRF HAL
-embassy-nrf = { git = "https://github.com/embassy-rs/embassy", features = [
+embassy-nrf = { version = "0.9", default-features = false, features = [
     "defmt",
     "nrf52840",
     "gpiote",
     "time-driver-rtc1",
 ] }
 
-# nRF SoftDevice BLE stack
+# nRF SoftDevice BLE stack (optional - use --features softdevice)
 nrf-softdevice = { git = "https://github.com/embassy-rs/nrf-softdevice", features = [
     "defmt",
     "nrf52840",
@@ -29,11 +38,14 @@ nrf-softdevice = { git = "https://github.com/embassy-rs/nrf-softdevice", feature
     "ble-peripheral",
     "ble-gatt-server",
     "critical-section-impl",
-] }
-nrf-softdevice-s140 = { git = "https://github.com/embassy-rs/nrf-softdevice" }
+], optional = true }
+nrf-softdevice-s140 = { git = "https://github.com/embassy-rs/nrf-softdevice", optional = true }
+
+# Critical section for non-SoftDevice builds
+critical-section = "1.2"
 
 # Cortex-M support
-cortex-m = { version = "0.7" }
+cortex-m = "0.7"
 cortex-m-rt = "0.7"
 
 # Portable atomics (AtomicU64 not available on thumbv7)
@@ -47,7 +59,25 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 # Async utilities
 futures = { version = "0.3", default-features = false }
 
-# Note: Don't use nrf52840-pac directly - embassy-nrf provides its own PAC
+# TrouBLE BLE stack (optional - use --features trouble)
+trouble-host = { git = "https://github.com/embassy-rs/trouble", features = ["defmt"], optional = true }
+nrf-sdc = { version = "0.4", default-features = false, features = ["defmt", "nrf52840", "peripheral"], optional = true }
+nrf-mpsl = { version = "0.3", default-features = false, features = ["defmt", "nrf52840", "critical-section-impl"], optional = true }
+bt-hci = { version = "0.7", default-features = false, features = ["defmt"], optional = true }
+static_cell = { version = "2", optional = true }
+
+# Patch crates.io versions with specific git commits for compatibility
+[patch.crates-io]
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "729f96b9521d6705c1d664f4e9c636155d440519" }
+embassy-nrf = { git = "https://github.com/embassy-rs/embassy", rev = "729f96b9521d6705c1d664f4e9c636155d440519" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "729f96b9521d6705c1d664f4e9c636155d440519" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "729f96b9521d6705c1d664f4e9c636155d440519" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "729f96b9521d6705c1d664f4e9c636155d440519" }
+embassy-time-driver = { git = "https://github.com/embassy-rs/embassy", rev = "729f96b9521d6705c1d664f4e9c636155d440519" }
+embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "729f96b9521d6705c1d664f4e9c636155d440519" }
+embassy-hal-internal = { git = "https://github.com/embassy-rs/embassy", rev = "729f96b9521d6705c1d664f4e9c636155d440519" }
+nrf-sdc = { git = "https://github.com/alexmoon/nrf-sdc", rev = "36816b8ca6a30776886fad289921adf49ca54fee" }
+nrf-mpsl = { git = "https://github.com/alexmoon/nrf-sdc", rev = "36816b8ca6a30776886fad289921adf49ca54fee" }
 
 [profile.release]
 debug = 2
@@ -93,3 +123,28 @@ path = "src/minimal_adv.rs"
 [[bin]]
 name = "sd_blink"
 path = "src/sd_blink.rs"
+
+# Pure Rust binaries (no SoftDevice)
+[[bin]]
+name = "pure_blinky"
+path = "src/pure_blinky.rs"
+
+[[bin]]
+name = "bare_blinky"
+path = "src/bare_blinky.rs"
+
+[[bin]]
+name = "sd_minimal"
+path = "src/sd_minimal.rs"
+
+[[bin]]
+name = "raw_blinky"
+path = "src/raw_blinky.rs"
+
+[[bin]]
+name = "ble_advertiser"
+path = "src/ble_advertiser.rs"
+
+[[bin]]
+name = "hive_node"
+path = "src/hive_node.rs"

@@ -31,7 +31,9 @@ use crate::config::DiscoveryConfig;
 use crate::error::{BleError, Result};
 use crate::NodeId;
 
-use super::delegates::{CentralEvent, CentralState, PeripheralEvent, RustCentralManagerDelegate, RustPeripheralDelegate};
+use super::delegates::{
+    CentralEvent, CentralState, PeripheralEvent, RustCentralManagerDelegate, RustPeripheralDelegate,
+};
 
 /// Wrapper around CBCentralManager for BLE scanning and connecting
 ///
@@ -329,14 +331,21 @@ impl CentralManager {
                     if service_uuid_str == target_uuid_upper {
                         // Found the service, discover all characteristics
                         peripheral.discoverCharacteristics_forService(None, service);
-                        log::info!("Discovering characteristics for service {} on {}", service_uuid, identifier);
+                        log::info!(
+                            "Discovering characteristics for service {} on {}",
+                            service_uuid,
+                            identifier
+                        );
                         return Ok(());
                     }
                 }
             }
         }
 
-        Err(BleError::ConnectionFailed(format!("Service {} not found on {}", service_uuid, identifier)))
+        Err(BleError::ConnectionFailed(format!(
+            "Service {} not found on {}",
+            service_uuid, identifier
+        )))
     }
 
     /// Read a characteristic value from a connected peripheral
@@ -358,21 +367,37 @@ impl CentralManager {
                 for i in 0..services.len() {
                     let service = &services[i];
                     let svc_uuid = service.UUID().UUIDString().to_string().to_uppercase();
-                    if svc_uuid == target_service_upper || svc_uuid.contains(&target_service_upper) {
+                    if svc_uuid == target_service_upper || svc_uuid.contains(&target_service_upper)
+                    {
                         if let Some(characteristics) = service.characteristics() {
                             // Log available characteristics
                             let char_list: Vec<String> = (0..characteristics.len())
                                 .map(|j| characteristics[j].UUID().UUIDString().to_string())
                                 .collect();
-                            log::debug!("Available characteristics on {}: {:?}", identifier, char_list);
+                            log::debug!(
+                                "Available characteristics on {}: {:?}",
+                                identifier,
+                                char_list
+                            );
 
                             for j in 0..characteristics.len() {
                                 let characteristic = &characteristics[j];
-                                let char_uuid = characteristic.UUID().UUIDString().to_string().to_uppercase();
+                                let char_uuid = characteristic
+                                    .UUID()
+                                    .UUIDString()
+                                    .to_string()
+                                    .to_uppercase();
                                 // Match by exact UUID or if the characteristic UUID contains our target
-                                if char_uuid == target_char_upper || char_uuid.contains(&target_char_upper) {
+                                if char_uuid == target_char_upper
+                                    || char_uuid.contains(&target_char_upper)
+                                {
                                     peripheral.readValueForCharacteristic(characteristic);
-                                    log::debug!("Reading characteristic {} (matched {}) from {}", char_uuid, characteristic_uuid, identifier);
+                                    log::debug!(
+                                        "Reading characteristic {} (matched {}) from {}",
+                                        char_uuid,
+                                        characteristic_uuid,
+                                        identifier
+                                    );
                                     return Ok(());
                                 }
                             }
@@ -382,7 +407,10 @@ impl CentralManager {
             }
         }
 
-        Err(BleError::ConnectionFailed(format!("Characteristic {} not found", characteristic_uuid)))
+        Err(BleError::ConnectionFailed(format!(
+            "Characteristic {} not found",
+            characteristic_uuid
+        )))
     }
 
     /// Write a value to a characteristic on a connected peripheral
@@ -412,13 +440,22 @@ impl CentralManager {
                         if let Some(characteristics) = service.characteristics() {
                             for j in 0..characteristics.len() {
                                 let characteristic = &characteristics[j];
-                                let char_uuid = characteristic.UUID().UUIDString().to_string().to_uppercase();
+                                let char_uuid = characteristic
+                                    .UUID()
+                                    .UUIDString()
+                                    .to_string()
+                                    .to_uppercase();
                                 if char_uuid == target_char_upper {
                                     let ns_data = NSData::with_bytes(data);
                                     // CBCharacteristicWriteType: 0 = WithResponse, 1 = WithoutResponse
                                     let write_type: isize = if with_response { 0 } else { 1 };
                                     let _: () = msg_send![&*peripheral, writeValue: &*ns_data forCharacteristic: &**characteristic type: write_type];
-                                    log::debug!("Writing {} bytes to characteristic {} on {}", data.len(), characteristic_uuid, identifier);
+                                    log::debug!(
+                                        "Writing {} bytes to characteristic {} on {}",
+                                        data.len(),
+                                        characteristic_uuid,
+                                        identifier
+                                    );
                                     return Ok(());
                                 }
                             }
@@ -428,7 +465,10 @@ impl CentralManager {
             }
         }
 
-        Err(BleError::ConnectionFailed(format!("Characteristic {} not found", characteristic_uuid)))
+        Err(BleError::ConnectionFailed(format!(
+            "Characteristic {} not found",
+            characteristic_uuid
+        )))
     }
 
     /// Get the next peripheral event if available
@@ -462,7 +502,10 @@ impl CentralManager {
         } else {
             // If we can't get the lock, the delegate won't be stored but
             // it's still set on the peripheral - this is a minor issue
-            log::warn!("Could not store peripheral delegate for {} (lock contention)", identifier);
+            log::warn!(
+                "Could not store peripheral delegate for {} (lock contention)",
+                identifier
+            );
             Ok(())
         }
     }

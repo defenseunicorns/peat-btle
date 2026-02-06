@@ -48,7 +48,7 @@ use rand_core::{OsRng, RngCore};
 use super::identity::DeviceIdentity;
 
 /// Membership policy controlling how nodes can join the mesh
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MembershipPolicy {
     /// Anyone with mesh_id can attempt to discover and join
     /// Least secure, useful for demos and open networks
@@ -56,17 +56,12 @@ pub enum MembershipPolicy {
 
     /// Explicit enrollment by an authority is required
     /// Balanced security for most deployments
+    #[default]
     Controlled,
 
     /// Only pre-provisioned devices can join
     /// Highest security for sensitive operations
     Strict,
-}
-
-impl Default for MembershipPolicy {
-    fn default() -> Self {
-        Self::Controlled
-    }
 }
 
 /// Genesis event for creating a new mesh

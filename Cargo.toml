@@ -119,5 +119,10 @@ tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "signal"] }
 [build-dependencies]
 uniffi = { version = "0.31", features = ["build"] }
 
+# Examples with platform-specific features
+[[example]]
+name = "range_test_node_macos"
+required-features = ["macos"]
+
 [package.metadata.docs.rs]
 features = ["linux"]

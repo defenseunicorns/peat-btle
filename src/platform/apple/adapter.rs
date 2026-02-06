@@ -168,7 +168,10 @@ impl CoreBluetoothAdapter {
     }
 
     /// Get the peripheral info by identifier
-    pub async fn get_peripheral_info(&self, identifier: &str) -> Option<super::central::PeripheralInfo> {
+    pub async fn get_peripheral_info(
+        &self,
+        identifier: &str,
+    ) -> Option<super::central::PeripheralInfo> {
         self.central.get_peripheral(identifier).await
     }
 
@@ -192,7 +195,11 @@ impl CoreBluetoothAdapter {
     }
 
     /// Read a HIVE characteristic from a connected peripheral
-    pub async fn read_characteristic(&self, identifier: &str, characteristic_uuid: &str) -> Result<()> {
+    pub async fn read_characteristic(
+        &self,
+        identifier: &str,
+        characteristic_uuid: &str,
+    ) -> Result<()> {
         let hive_service_uuid = crate::HIVE_SERVICE_UUID.to_string();
         self.central
             .read_characteristic(identifier, &hive_service_uuid, characteristic_uuid)
@@ -209,7 +216,13 @@ impl CoreBluetoothAdapter {
     ) -> Result<()> {
         let hive_service_uuid = crate::HIVE_SERVICE_UUID.to_string();
         self.central
-            .write_characteristic(identifier, &hive_service_uuid, characteristic_uuid, data, with_response)
+            .write_characteristic(
+                identifier,
+                &hive_service_uuid,
+                characteristic_uuid,
+                data,
+                with_response,
+            )
             .await
     }
 
@@ -282,7 +295,9 @@ impl BleAdapter for CoreBluetoothAdapter {
             match central_state {
                 super::delegates::CentralState::PoweredOn => break,
                 super::delegates::CentralState::Unsupported => {
-                    return Err(BleError::NotSupported("Bluetooth not supported".to_string()))
+                    return Err(BleError::NotSupported(
+                        "Bluetooth not supported".to_string(),
+                    ))
                 }
                 super::delegates::CentralState::Unauthorized => {
                     return Err(BleError::PlatformError(
@@ -350,11 +365,7 @@ impl BleAdapter for CoreBluetoothAdapter {
         // 1. Some devices may advertise 16-bit UUID differently
         // 2. Legacy devices may not include UUID in advertisement
         // 3. Name-based filtering catches all HIVE devices
-        if let Err(e) = self
-            .central
-            .start_scan(&config.discovery, None)
-            .await
-        {
+        if let Err(e) = self.central.start_scan(&config.discovery, None).await {
             log::warn!("Failed to start scanning: {}", e);
         }
 
