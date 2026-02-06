@@ -67,8 +67,28 @@ if [ -n "${GOA_PATCH_ID:-}" ]; then
     fi
 fi
 
-# Pull latest changes for the patch/branch being tested
+# Pull latest changes and checkout the commit under test
 git fetch rad
+
+ORIGINAL_REF=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD)
+COMMIT="${GOA_COMMIT_OID:-}"
+
+if [ -n "$COMMIT" ]; then
+    echo "Checking out commit: $COMMIT"
+    git checkout --quiet "$COMMIT" || {
+        echo "ERROR: Failed to checkout $COMMIT"
+        exit 1
+    }
+fi
+
+# Ensure we restore the original branch/commit on exit
+cleanup() {
+    if [ -n "${ORIGINAL_REF:-}" ]; then
+        echo "Restoring working tree to $ORIGINAL_REF"
+        git checkout --quiet "$ORIGINAL_REF" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
 
 # Track CI results
 FMT_STATUS="skip"
