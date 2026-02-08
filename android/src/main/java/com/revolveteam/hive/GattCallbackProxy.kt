@@ -47,6 +47,12 @@ interface HiveDocumentListener {
      * Used for write queue management.
      */
     fun onWriteComplete(success: Boolean) {}
+
+    /**
+     * Called when RSSI is read from a connected peer.
+     * Used for realtime signal strength updates.
+     */
+    fun onRssiRead(rssi: Int) {}
 }
 
 /**
@@ -326,5 +332,8 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
      */
     override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
         Log.d(TAG, "[$connectionId] RSSI read: $rssi dBm (status=$status)")
+        if (status == GATT_SUCCESS) {
+            documentListener?.onRssiRead(rssi)
+        }
     }
 }

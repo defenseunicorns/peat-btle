@@ -67,6 +67,30 @@ import uniffi.hive_btle.CannedMessageInfo
 import uniffi.hive_btle.deriveNodeIdFromMac
 
 /**
+ * Configuration for high-priority sync mode.
+ *
+ * High-priority mode trades battery life for communication reliability,
+ * useful for tactical/emergency scenarios where mesh connectivity is critical.
+ *
+ * @param enabled Whether high-priority mode is active
+ * @param autoDisableAfterMs Auto-disable timeout in ms (null = never auto-disable)
+ * @param autoEnableOnEmergency Automatically enable when any peer enters emergency state
+ */
+data class HighPriorityConfig(
+    val enabled: Boolean = false,
+    val autoDisableAfterMs: Long? = 3600000L,  // 1 hour default
+    val autoEnableOnEmergency: Boolean = true
+) {
+    companion object {
+        /** Auto-disable options */
+        val AUTO_DISABLE_OFF: Long? = null
+        val AUTO_DISABLE_30_MIN: Long = 1800000L
+        val AUTO_DISABLE_1_HOUR: Long = 3600000L
+        val AUTO_DISABLE_2_HOURS: Long = 7200000L
+    }
+}
+
+/**
  * Main entry point for HIVE BLE operations on Android.
  *
  * This class provides a high-level API for BLE scanning, advertising, and
@@ -544,19 +568,58 @@ class HiveBtle(
     private var localPeripheral: HivePeripheral? = null  // Persistent peripheral state (location, health, etc.)
     private var localCounter = mutableListOf<GCounterEntry>()
 
-    // Mesh configuration
-    private val PEER_TIMEOUT_MS = 30000L // Remove disconnected peers after 30s without advertisement
-    private val CONNECTED_PEER_TIMEOUT_MS = 60000L // Remove "connected" peers after 60s without any activity (handles stale connections)
-    private val CLEANUP_INTERVAL_MS = 10000L // Cleanup check interval
-    private val SYNC_INTERVAL_MS = 3000L // Sync documents every 3s
-    private val RECONNECT_INTERVAL_MS = 5000L // Check for lost peers every 5s
-    private val RECONNECT_BASE_DELAY_MS = 2000L // Base delay for exponential backoff
-    private val RECONNECT_MAX_DELAY_MS = 60000L // Max 60s between reconnection attempts
-    private val RECONNECT_MAX_ATTEMPTS = 10 // Give up after 10 attempts
+    // High-priority sync mode configuration
+    private var _highPriorityConfig = HighPriorityConfig()
+    private var highPriorityEnabledAt: Long? = null
+    private var highPriorityListener: HighPriorityModeListener? = null
+
+    /**
+     * Listener for high-priority mode changes.
+     */
+    interface HighPriorityModeListener {
+        fun onHighPriorityModeChanged(enabled: Boolean, reason: String)
+    }
+
+    // Dynamic timing based on high-priority mode
+    private val PEER_TIMEOUT_MS: Long get() = 120000L
+    private val CONNECTED_PEER_TIMEOUT_MS: Long get() = 300000L
+    private val CLEANUP_INTERVAL_MS: Long get() = 10000L
+    private val SYNC_INTERVAL_MS: Long get() = if (_highPriorityConfig.enabled) 1000L else 3000L
+    private val RECONNECT_INTERVAL_MS: Long get() = if (_highPriorityConfig.enabled) 1000L else 3000L
+    private val RECONNECT_BASE_DELAY_MS: Long get() = if (_highPriorityConfig.enabled) 500L else 1000L
+    private val RECONNECT_MAX_DELAY_MS: Long get() = if (_highPriorityConfig.enabled) 5000L else 15000L
+    private val RECONNECT_MAX_ATTEMPTS: Int get() = if (_highPriorityConfig.enabled) 50 else 20
+    private val SCAN_RESTART_INTERVAL_MS: Long get() = if (_highPriorityConfig.enabled) 30000L else 120000L
+    private val KEEP_ALIVE_INTERVAL_MS: Long get() = if (_highPriorityConfig.enabled) 3000L else 10000L
+
+    // RSSI polling configuration (0 = disabled in normal mode)
+    // When enabled, periodically reads RSSI from connected peers for realtime signal strength updates
+    // In high-priority mode, RSSI polling is automatically enabled at 3 second intervals
+    private var _rssiPollingIntervalMs: Long = 0L  // Manual override (0 = use automatic behavior)
+    private val RSSI_POLLING_INTERVAL_MS: Long get() = when {
+        _highPriorityConfig.enabled -> 3000L  // Always poll every 3s in high-priority mode
+        _rssiPollingIntervalMs > 0 -> _rssiPollingIntervalMs  // Use manually configured interval
+        else -> 0L  // Disabled in normal mode
+    }
 
     // Track reconnection attempts per peer for exponential backoff
     private val reconnectAttempts = ConcurrentHashMap<String, Int>() // address -> attempt count
     private val lastReconnectAttempt = ConcurrentHashMap<String, Long>() // address -> timestamp
+
+    // Grace period: peer stays visible as "reconnecting" for a few seconds after disconnect
+    private val RECONNECT_GRACE_MS = 5000L
+    private val reconnectGraceRunnables = mutableMapOf<String, Runnable>()
+
+    // Store discovery callback for scan restart
+    private var discoveryCallback: ((DiscoveredDevice) -> Unit)? = null
+
+    // Auto-disable runnable for high-priority mode
+    private val highPriorityAutoDisableRunnable = Runnable {
+        if (_highPriorityConfig.enabled && _highPriorityConfig.autoDisableAfterMs != null) {
+            Log.i(TAG, "[HIGH-PRIORITY] Auto-disabling after timeout")
+            setHighPriorityMode(false, "auto-disable timeout")
+        }
+    }
 
     private val cleanupRunnable = object : Runnable {
         override fun run() {
@@ -582,6 +645,57 @@ class HiveBtle(
             syncWithPeers()
             if (isMeshRunning) {
                 handler.postDelayed(this, SYNC_INTERVAL_MS)
+            }
+        }
+    }
+
+    // WearOS workaround: Periodically restart BLE scan
+    // WearOS silently kills scans after ~5 minutes without any error callback
+    private val scanRestartRunnable = object : Runnable {
+        override fun run() {
+            if (isMeshRunning && isScanning) {
+                Log.i(TAG, "[SCAN-RESTART] Restarting BLE scan (WearOS workaround)")
+                stopScan()
+                val scanRestartDelay = if (_highPriorityConfig.enabled) 100L else 500L
+                handler.postDelayed({
+                    if (isMeshRunning) {
+                        discoveryCallback?.let { startScan(it) }
+                    }
+                }, scanRestartDelay)
+            }
+            if (isMeshRunning) {
+                handler.postDelayed(this, SCAN_RESTART_INTERVAL_MS)
+            }
+        }
+    }
+
+    // RSSI polling runnable - reads RSSI from connected peers for realtime signal strength
+    private val rssiPollingRunnable = object : Runnable {
+        override fun run() {
+            if (isMeshRunning && RSSI_POLLING_INTERVAL_MS > 0) {
+                pollConnectedPeersRssi()
+                handler.postDelayed(this, RSSI_POLLING_INTERVAL_MS)
+            }
+        }
+    }
+
+    /**
+     * Poll RSSI for all connected peers.
+     * Results come back asynchronously via onReadRemoteRssi callback.
+     */
+    private fun pollConnectedPeersRssi() {
+        val connectedPeers = peers.values.filter { it.isConnected }
+        if (connectedPeers.isEmpty()) return
+
+        Log.v(TAG, "[RSSI-POLL] Polling ${connectedPeers.size} connected peers")
+        for (peer in connectedPeers) {
+            val gatt = connections[peer.address]
+            if (gatt != null) {
+                try {
+                    gatt.readRemoteRssi()
+                } catch (e: Exception) {
+                    Log.w(TAG, "[RSSI-POLL] Failed to read RSSI for ${peer.displayName()}: ${e.message}")
+                }
             }
         }
     }
@@ -747,6 +861,9 @@ class HiveBtle(
             .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
             .setReportDelay(0)
             .build()
+
+        // Store callback for scan restart workaround
+        discoveryCallback = onDeviceFound
 
         // Create callback proxy with the onDeviceFound callback
         scanCallback = ScanCallbackProxy(onDeviceFound)
@@ -1019,7 +1136,9 @@ class HiveBtle(
                         val peer = nodeId?.let { peers[it] }
                         if (peer != null) {
                             peer.isConnected = true
+                            cancelReconnectGrace(peer)
                             peer.lastSeen = System.currentTimeMillis()
+                            deduplicateConnectedCentrals(address, nodeId)
                             notifyPeerConnected(peer)
                         }
                         // Update HiveMesh ConnectionStateGraph
@@ -1035,6 +1154,7 @@ class HiveBtle(
                         val peer = nodeId?.let { peers[it] }
                         if (peer != null) {
                             peer.isConnected = false
+                            startReconnectGrace(peer)
                             notifyPeerDisconnected(peer)
                         }
                         // Update HiveMesh ConnectionStateGraph
@@ -1168,8 +1288,13 @@ class HiveBtle(
                     }
 
                     if (HiveDeltaDocument.isDeltaDocument(value)) {
-                        // Delta document (0xB2) - find peer by address and handle
-                        val peer = peers.values.find { it.address == address }
+                        // Delta document (0xB2) - find peer by address, fall back to nodeId mapping
+                        var peer = peers.values.find { it.address == address }
+                        if (peer == null) {
+                            val knownNodeId = addressToNodeId[address]
+                            peer = knownNodeId?.let { peers[it] }
+                            peer?.also { it.address = address }
+                        }
                         if (peer != null) {
                             handlePeerDeltaDocument(peer, value)
                         } else {
@@ -1292,6 +1417,7 @@ class HiveBtle(
                             val sourceNodeId = result.sourceNode.toLong()
                             if (sourceNodeId != 0L && sourceNodeId != nodeId) {
                                 addressToNodeId[address] = sourceNodeId
+                                deduplicateConnectedCentrals(address, sourceNodeId)
                                 var peer = peers[sourceNodeId]
                                 if (peer == null) {
                                     // New peer discovered through encrypted document
@@ -1321,6 +1447,7 @@ class HiveBtle(
                                     // Existing peer - update last seen and ensure listener is notified
                                     peer.lastSeen = now
                                     peer.isConnected = true
+                                    resetReconnectTracking(address)
                                 }
 
                                 // Check for relayData containing app-layer message (0xAF marker)
@@ -1343,6 +1470,7 @@ class HiveBtle(
                                     Log.i(TAG, "[ENCRYPTED-SERVER] EMERGENCY from ${peer.displayName()} (isEmergency=${result.isEmergency}, eventType=${result.eventType})")
                                     handler.post {
                                         meshListener?.onPeerEvent(peer, HiveEventType.EMERGENCY)
+                                        onPeerEmergencyDetected(peer)
                                     }
                                 }
 
@@ -1616,6 +1744,13 @@ class HiveBtle(
         handler.post(cleanupRunnable)
         handler.postDelayed(syncRunnable, SYNC_INTERVAL_MS)
         handler.postDelayed(reconnectRunnable, RECONNECT_INTERVAL_MS)
+        handler.postDelayed(scanRestartRunnable, SCAN_RESTART_INTERVAL_MS)
+
+        // Start RSSI polling if enabled
+        if (RSSI_POLLING_INTERVAL_MS > 0) {
+            handler.postDelayed(rssiPollingRunnable, RSSI_POLLING_INTERVAL_MS)
+            Log.i(TAG, "RSSI polling enabled: interval=${RSSI_POLLING_INTERVAL_MS}ms")
+        }
 
         Log.i(TAG, "Mesh started for HIVE-${String.format("%08X", nodeId)} with GATT server")
     }
@@ -1630,8 +1765,19 @@ class HiveBtle(
         handler.removeCallbacks(cleanupRunnable)
         handler.removeCallbacks(syncRunnable)
         handler.removeCallbacks(reconnectRunnable)
+        handler.removeCallbacks(scanRestartRunnable)
+        handler.removeCallbacks(highPriorityAutoDisableRunnable)
+        handler.removeCallbacks(rssiPollingRunnable)
         reconnectAttempts.clear()
         lastReconnectAttempt.clear()
+        reconnectGraceRunnables.values.forEach { handler.removeCallbacks(it) }
+        reconnectGraceRunnables.clear()
+        discoveryCallback = null
+
+        // Reset high-priority mode on mesh stop
+        if (_highPriorityConfig.enabled) {
+            setHighPriorityMode(false, "mesh stopped")
+        }
 
         stopScan()
         stopAdvertising()
@@ -1649,6 +1795,203 @@ class HiveBtle(
 
         Log.i(TAG, "Mesh stopped")
     }
+
+    // ==================== High-Priority Sync Mode API ====================
+
+    /**
+     * Get the current high-priority mode configuration.
+     */
+    fun getHighPriorityConfig(): HighPriorityConfig = _highPriorityConfig
+
+    /**
+     * Check if high-priority mode is currently enabled.
+     */
+    fun isHighPriorityMode(): Boolean = _highPriorityConfig.enabled
+
+    /**
+     * Set the high-priority mode listener.
+     */
+    fun setHighPriorityModeListener(listener: HighPriorityModeListener?) {
+        highPriorityListener = listener
+    }
+
+    /**
+     * Enable or disable high-priority sync mode.
+     *
+     * High-priority mode trades battery life for communication reliability:
+     * - Faster sync intervals (1s vs 3s)
+     * - Faster reconnection (1s polling vs 3s)
+     * - More frequent scan restarts (30s vs 2min)
+     * - Shorter reconnection delays
+     *
+     * @param enabled Whether to enable high-priority mode
+     * @param reason Reason for the change (for logging/UI)
+     */
+    fun setHighPriorityMode(enabled: Boolean, reason: String = "user") {
+        if (_highPriorityConfig.enabled == enabled) return
+
+        Log.i(TAG, "[HIGH-PRIORITY] ${if (enabled) "ENABLED" else "DISABLED"} - reason: $reason")
+
+        _highPriorityConfig = _highPriorityConfig.copy(enabled = enabled)
+
+        if (enabled) {
+            highPriorityEnabledAt = System.currentTimeMillis()
+
+            // Schedule auto-disable if configured
+            _highPriorityConfig.autoDisableAfterMs?.let { timeout ->
+                handler.removeCallbacks(highPriorityAutoDisableRunnable)
+                handler.postDelayed(highPriorityAutoDisableRunnable, timeout)
+                Log.d(TAG, "[HIGH-PRIORITY] Auto-disable scheduled in ${timeout / 60000} minutes")
+            }
+
+            // Request high connection priority for all connected peers
+            requestHighConnectionPriority()
+        } else {
+            highPriorityEnabledAt = null
+            handler.removeCallbacks(highPriorityAutoDisableRunnable)
+
+            // Restore balanced connection priority
+            requestBalancedConnectionPriority()
+        }
+
+        // Notify listener
+        highPriorityListener?.onHighPriorityModeChanged(enabled, reason)
+
+        // Reschedule periodic tasks with new intervals
+        if (isMeshRunning) {
+            reschedulePeriodicTasks()
+        }
+    }
+
+    /**
+     * Update high-priority mode configuration.
+     *
+     * @param config New configuration
+     */
+    fun updateHighPriorityConfig(config: HighPriorityConfig) {
+        val wasEnabled = _highPriorityConfig.enabled
+        _highPriorityConfig = config
+
+        // Handle enable state change
+        if (config.enabled != wasEnabled) {
+            setHighPriorityMode(config.enabled, "config update")
+        } else if (config.enabled && config.autoDisableAfterMs != null) {
+            // Reschedule auto-disable with new timeout
+            handler.removeCallbacks(highPriorityAutoDisableRunnable)
+            val elapsed = System.currentTimeMillis() - (highPriorityEnabledAt ?: System.currentTimeMillis())
+            val remaining = config.autoDisableAfterMs - elapsed
+            if (remaining > 0) {
+                handler.postDelayed(highPriorityAutoDisableRunnable, remaining)
+            }
+        }
+    }
+
+    /**
+     * Called when a peer enters emergency state.
+     * Auto-enables high-priority mode if configured.
+     */
+    internal fun onPeerEmergencyDetected(peer: HivePeer) {
+        if (_highPriorityConfig.autoEnableOnEmergency && !_highPriorityConfig.enabled) {
+            Log.w(TAG, "[HIGH-PRIORITY] Auto-enabling due to peer emergency: ${peer.displayName()}")
+            setHighPriorityMode(true, "peer emergency: ${peer.displayName()}")
+        }
+    }
+
+    /**
+     * Request high connection priority for all connected GATT connections.
+     */
+    private fun requestHighConnectionPriority() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            connections.values.forEach { gatt ->
+                try {
+                    gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "Failed to request high connection priority: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Request balanced connection priority for all connected GATT connections.
+     */
+    private fun requestBalancedConnectionPriority() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            connections.values.forEach { gatt ->
+                try {
+                    gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "Failed to request balanced connection priority: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Reschedule periodic tasks with current interval settings.
+     */
+    private fun reschedulePeriodicTasks() {
+        // Remove existing callbacks
+        handler.removeCallbacks(syncRunnable)
+        handler.removeCallbacks(reconnectRunnable)
+        handler.removeCallbacks(scanRestartRunnable)
+
+        // Reschedule with new intervals
+        handler.postDelayed(syncRunnable, SYNC_INTERVAL_MS)
+        handler.postDelayed(reconnectRunnable, RECONNECT_INTERVAL_MS)
+        handler.postDelayed(scanRestartRunnable, SCAN_RESTART_INTERVAL_MS)
+
+        Log.d(TAG, "[HIGH-PRIORITY] Rescheduled tasks - sync=${SYNC_INTERVAL_MS}ms, reconnect=${RECONNECT_INTERVAL_MS}ms, scanRestart=${SCAN_RESTART_INTERVAL_MS}ms")
+
+        // Also reschedule RSSI polling if enabled
+        handler.removeCallbacks(rssiPollingRunnable)
+        if (RSSI_POLLING_INTERVAL_MS > 0) {
+            handler.postDelayed(rssiPollingRunnable, RSSI_POLLING_INTERVAL_MS)
+            Log.d(TAG, "[HIGH-PRIORITY] RSSI polling interval: ${RSSI_POLLING_INTERVAL_MS}ms")
+        }
+    }
+
+    // ==================== RSSI Polling API ====================
+
+    /**
+     * Set the RSSI polling interval for connected peers.
+     *
+     * When enabled (interval > 0), periodically reads RSSI from all connected
+     * GATT connections. Useful for field testing and debugging range issues.
+     *
+     * Note: In high-priority mode, the interval is capped at 2 seconds.
+     *
+     * @param intervalMs Polling interval in milliseconds (0 = disabled)
+     */
+    fun setRssiPollingInterval(intervalMs: Long) {
+        val wasEnabled = _rssiPollingIntervalMs > 0
+        _rssiPollingIntervalMs = maxOf(0, intervalMs)
+        val isEnabled = _rssiPollingIntervalMs > 0
+
+        Log.i(TAG, "[RSSI-POLL] Interval set to ${_rssiPollingIntervalMs}ms (effective: ${RSSI_POLLING_INTERVAL_MS}ms)")
+
+        // Update runnable if mesh is running
+        if (isMeshRunning) {
+            handler.removeCallbacks(rssiPollingRunnable)
+            if (isEnabled) {
+                handler.postDelayed(rssiPollingRunnable, RSSI_POLLING_INTERVAL_MS)
+            }
+        }
+    }
+
+    /**
+     * Get the current RSSI polling interval.
+     *
+     * @return Polling interval in milliseconds (0 = disabled)
+     */
+    fun getRssiPollingInterval(): Long = _rssiPollingIntervalMs
+
+    /**
+     * Check if RSSI polling is enabled.
+     */
+    fun isRssiPollingEnabled(): Boolean = _rssiPollingIntervalMs > 0
+
+    // ==================== Peripheral State API ====================
 
     /**
      * Update local peripheral state for document sync.
@@ -2136,11 +2479,17 @@ class HiveBtle(
         // Check if we already know this address (peer might have been renamed by document)
         val knownNodeId = addressToNodeId[device.address]
         if (knownNodeId != null) {
-            // Update existing peer by address
             peers[knownNodeId]?.let { peer ->
                 peer.rssi = device.rssi
                 peer.lastSeen = System.currentTimeMillis()
                 notifyMeshUpdated()
+
+                // If peer is disconnected and re-discovered via scan, reconnect
+                if (!peer.isConnected && !connections.containsKey(peer.address)) {
+                    Log.i(TAG, "[SCAN-RECONNECT] Re-discovered disconnected peer ${peer.displayName()}, reconnecting")
+                    resetReconnectTracking(peer.address)
+                    connectToPeer(peer)
+                }
             }
             return
         }
@@ -2171,6 +2520,14 @@ class HiveBtle(
 
                     Log.d(TAG, "Device ${device.name} seen from new address ${device.address}, mapped to existing nodeId ${String.format("%08X", existingNodeId)}")
                     notifyMeshUpdated()
+
+                    // If peer is disconnected and re-discovered via scan, reconnect
+                    if (!existingPeer.isConnected && !connections.containsKey(existingPeer.address)) {
+                        Log.i(TAG, "[SCAN-RECONNECT] Re-discovered disconnected peer ${existingPeer.displayName()} (address rotated), reconnecting")
+                        resetReconnectTracking(existingPeer.address)
+                        connectToPeer(existingPeer)
+                    }
+
                     return
                 }
             }
@@ -2308,7 +2665,10 @@ class HiveBtle(
                         // Only update lastSeen on successful connection, not disconnection.
                         // This allows stale peer cleanup to work after disconnect + failed reconnects.
                         if (connected) {
+                            cancelReconnectGrace(currentPeer)
                             currentPeer.lastSeen = System.currentTimeMillis()
+                        } else {
+                            startReconnectGrace(currentPeer)
                         }
                     }
                     if (connected) {
@@ -2330,6 +2690,20 @@ class HiveBtle(
                         writeInProgress.remove(peer.address)
                         // Note: reconnection is handled by reconnectLostPeers() with exponential backoff
                         Log.d(TAG, "Peer ${peer.displayName()} disconnected, will retry via reconnectLostPeers()")
+                        // Immediate reconnect attempt for fast range-testing feedback
+                        if (isMeshRunning) {
+                            val reconnectPeer = currentPeer ?: peer
+                            handler.postDelayed({
+                                if (isMeshRunning && !reconnectPeer.isConnected &&
+                                    !connections.containsKey(reconnectPeer.address)) {
+                                    Log.i(TAG, "[RECONNECT-FAST] Immediate reconnect for ${reconnectPeer.displayName()}")
+                                    resetReconnectTracking(reconnectPeer.address)
+                                    try { connectToPeer(reconnectPeer) } catch (e: Exception) {
+                                        Log.e(TAG, "[RECONNECT-FAST] Failed: ${e.message}")
+                                    }
+                                }
+                            }, 200)
+                        }
                     }
                     notifyMeshUpdated()
                 }
@@ -2337,6 +2711,18 @@ class HiveBtle(
                 override fun onWriteComplete(success: Boolean) {
                     // Process next item in write queue
                     onWriteCompleteForConnection(peer.address)
+                }
+
+                override fun onRssiRead(rssi: Int) {
+                    // Update peer RSSI from live polling
+                    val currentPeer = peers.values.find { it.address == peer.address }
+                    if (currentPeer != null && currentPeer.rssi != rssi) {
+                        Log.v(TAG, "[RSSI] ${currentPeer.displayName()}: ${currentPeer.rssi} -> $rssi dBm")
+                        currentPeer.rssi = rssi
+                        currentPeer.lastSeen = System.currentTimeMillis()
+                        resetReconnectTracking(peer.address)
+                        notifyMeshUpdated()
+                    }
                 }
             }
 
@@ -2930,6 +3316,7 @@ class HiveBtle(
                 } else {
                     sourcePeer.lastSeen = now
                     sourcePeer.isConnected = true
+                    resetReconnectTracking(address)
                 }
 
                 // Check for ACK/emergency events
@@ -2944,6 +3331,7 @@ class HiveBtle(
                     Log.i(TAG, "[ENCRYPTED-NOTIFY] EMERGENCY from ${sourcePeer.displayName()} (isEmergency=${result.isEmergency}, eventType=${result.eventType})")
                     handler.post {
                         meshListener?.onPeerEvent(sourcePeer, HiveEventType.EMERGENCY)
+                        onPeerEmergencyDetected(sourcePeer)
                     }
                 }
 
@@ -3116,6 +3504,7 @@ class HiveBtle(
                     peers[op.sourceNode]?.let { emergencyPeer ->
                         handler.post {
                             meshListener?.onPeerEvent(emergencyPeer, HiveEventType.EMERGENCY)
+                            onPeerEmergencyDetected(emergencyPeer)
                         }
                     }
                 }
@@ -3540,14 +3929,25 @@ class HiveBtle(
             val attempts = reconnectAttempts[peer.address] ?: 0
             val lastAttempt = lastReconnectAttempt[peer.address] ?: 0L
 
-            // Skip if we've exceeded max attempts
+            // Skip if we've exceeded max attempts (unless high-priority mode)
             if (attempts >= RECONNECT_MAX_ATTEMPTS) {
-                Log.d(TAG, "[RECONNECT] Skipping ${peer.displayName()} - max attempts ($attempts) reached")
-                continue
+                if (_highPriorityConfig.enabled) {
+                    // In high-priority mode, reset and keep trying
+                    Log.d(TAG, "[RECONNECT] ${peer.displayName()} hit max attempts, resetting (high-priority mode)")
+                    reconnectAttempts[peer.address] = 0
+                } else {
+                    Log.d(TAG, "[RECONNECT] Skipping ${peer.displayName()} - max attempts ($attempts) reached")
+                    continue
+                }
             }
 
-            // Calculate delay with exponential backoff: 2s, 4s, 8s, 16s, 32s, 60s (capped)
-            val delay = minOf(RECONNECT_BASE_DELAY_MS * (1L shl attempts), RECONNECT_MAX_DELAY_MS)
+            // In high-priority mode, use flat delay for consistent aggressive retries.
+            // Otherwise, exponential backoff: 2s, 4s, 8s, 16s, 32s, 60s (capped)
+            val delay = if (_highPriorityConfig.enabled) {
+                RECONNECT_BASE_DELAY_MS
+            } else {
+                minOf(RECONNECT_BASE_DELAY_MS * (1L shl attempts), RECONNECT_MAX_DELAY_MS)
+            }
 
             // Check if enough time has passed
             if (now - lastAttempt < delay) {
@@ -3574,6 +3974,39 @@ class HiveBtle(
     private fun resetReconnectTracking(address: String) {
         reconnectAttempts.remove(address)
         lastReconnectAttempt.remove(address)
+    }
+
+    private fun startReconnectGrace(peer: HivePeer) {
+        reconnectGraceRunnables.remove(peer.address)?.let { handler.removeCallbacks(it) }
+        peer.isReconnecting = true
+        val address = peer.address
+        val runnable = Runnable {
+            peer.isReconnecting = false
+            reconnectGraceRunnables.remove(address)
+            notifyMeshUpdated()
+        }
+        reconnectGraceRunnables[address] = runnable
+        handler.postDelayed(runnable, RECONNECT_GRACE_MS)
+    }
+
+    private fun cancelReconnectGrace(peer: HivePeer) {
+        peer.isReconnecting = false
+        reconnectGraceRunnables.remove(peer.address)?.let { handler.removeCallbacks(it) }
+    }
+
+    /**
+     * Remove stale connectedCentrals entries for the same nodeId but different BLE address.
+     * BLE address rotation causes the same peer to appear as multiple centrals.
+     */
+    private fun deduplicateConnectedCentrals(currentAddress: String, nodeId: Long) {
+        val staleAddresses = connectedCentrals.keys.filter { addr ->
+            addr != currentAddress && addressToNodeId[addr] == nodeId
+        }
+        for (staleAddr in staleAddresses) {
+            Log.i(TAG, "[CENTRAL-DEDUP] Removing stale central $staleAddr (same nodeId ${String.format("%08X", nodeId)}, current: $currentAddress)")
+            connectedCentrals.remove(staleAddr)
+            addressToNodeId.remove(staleAddr)
+        }
     }
 
     private fun notifyMeshUpdated() {
@@ -3978,6 +4411,7 @@ data class HivePeer(
     val meshId: String?,
     var rssi: Int,
     var isConnected: Boolean,
+    var isReconnecting: Boolean = false,
     var lastDocument: HiveDocument?,
     var lastSeen: Long
 ) {
