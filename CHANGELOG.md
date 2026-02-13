@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-02-12
+
+### Added
+- **Android**: High-priority sync mode for time-critical state updates
+- **Android**: WearOS reliability improvements (reconnect on re-discovery, stale peer cleanup, address rotation handling, auto-reconnect with exponential backoff)
+- **feather-sense**: HIVE GATT server for WearTAK connectivity on nRF52840
+- **feather-sense**: Pure Rust BLE advertising with nrf-sdc
+- **feather-sense**: probe-rs build support and BLE target in Makefile
+- **macOS**: GATT client with bidirectional sync
+- BLE connection management infrastructure with UniFFI exports
+- Range test node for WearTAK field testing
+- Adafruit Feather Sense (nRF52840) example support
+- CannedMessage CRDT document sync via delta mechanism
+- Extensible document registry for CRDT sync
+- nRF52840 sensor beacon example
+
+### Fixed
+- **Android**: Reconnect to peers when re-discovered after disconnect
+- **Android**: Clean up stale connected peers and improve display names
+- **Android**: Peer tracking with name-based deduplication
+- **Android**: Handle WearOS BLE address rotation for stable mesh state
+- **Android**: Prevent GATT server registration leaks
+- **Android**: Prevent unwanted BLE pairing requests on Samsung devices
+- **Apple**: CoreBluetooth memory management segfault
+- **Linux**: BLE connection handling and advertisement improvements
+- Relay deduplication and callsign cache
+- CI checkout and format/clippy/macOS example gating fixes
+
+### Changed
+- **feather-sense**: Corrected GPIO P1 base address for raw_blinky
+
 ## [0.1.0-rc.30] - 2026-01-29
 
 ### Added

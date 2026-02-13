@@ -168,13 +168,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::select! {
             _ = interval.tick() => {
                 tick_count += 1;
-                let now = now_ms();
 
-                // Run mesh tick and update sync state
+                // Build document and update sync state
+                // Use build_document() instead of tick() so sync_state is always
+                // populated for peers to read, regardless of connected_count.
                 let mesh_guard = mesh.read().await;
-                if let Some(doc) = mesh_guard.tick(now) {
-                    // Update GATT sync_state so peers can read our current state
-                    adapter.update_sync_state(&doc).await;
+                let doc = mesh_guard.build_document();
+                adapter.update_sync_state(&doc).await;
+                if tick_count % 10 == 0 {
                     log::debug!("Tick {} - updated sync_state ({} bytes)", tick_count, doc.len());
                 }
 

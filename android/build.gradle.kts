@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.revolveteam"
-version = "0.1.0-rc30"  // RC30: MembershipToken + SignedPayload for tactical trust
+version = "0.1.0"
 
 android {
     namespace = "com.revolveteam.hive"

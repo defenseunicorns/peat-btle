@@ -134,7 +134,7 @@ pub struct BluerAdapter {
     /// Configuration
     config: RwLock<Option<BleConfig>>,
     /// Internal state
-    state: RwLock<AdapterState>,
+    state: Arc<RwLock<AdapterState>>,
     /// Advertisement handle (keeps advertisement alive)
     adv_handle: RwLock<Option<AdvertisementHandle>>,
     /// GATT application handle (keeps service registered)
@@ -191,7 +191,7 @@ impl BluerAdapter {
             cached_address,
             cached_powered: std::sync::atomic::AtomicBool::new(true), // We ensured it's powered above
             config: RwLock::new(None),
-            state: RwLock::new(AdapterState::default()),
+            state: Arc::new(RwLock::new(AdapterState::default())),
             adv_handle: RwLock::new(None),
             gatt_handle: RwLock::new(None),
             gatt_state: Arc::new(GattState::new()),
@@ -237,7 +237,7 @@ impl BluerAdapter {
             cached_address,
             cached_powered: std::sync::atomic::AtomicBool::new(true),
             config: RwLock::new(None),
-            state: RwLock::new(AdapterState::default()),
+            state: Arc::new(RwLock::new(AdapterState::default())),
             adv_handle: RwLock::new(None),
             gatt_handle: RwLock::new(None),
             gatt_state: Arc::new(GattState::new()),
@@ -361,6 +361,15 @@ impl BluerAdapter {
     pub async fn get_node_address(&self, node_id: &NodeId) -> Option<Address> {
         let state = self.state.read().await;
         state.node_to_address.get(node_id).copied()
+    }
+
+    /// Get a clone of a stored connection by node ID
+    ///
+    /// Returns the `BluerConnection` for a connected peer, allowing direct
+    /// GATT operations (read/write characteristics) on the remote device.
+    pub async fn get_connection(&self, node_id: &NodeId) -> Option<BluerConnection> {
+        let state = self.state.read().await;
+        state.connections.get(node_id).cloned()
     }
 
     /// Set callback for when sync data is received from a connected peer
@@ -562,6 +571,7 @@ impl BleAdapter for BluerAdapter {
         // Spawn task to handle discovered devices
         let callback = self.discovery_callback.read().await.clone();
         let adapter = self.adapter.clone();
+        let state = self.state.clone();
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
         tokio::spawn(async move {
@@ -634,6 +644,13 @@ impl BleAdapter for BluerAdapter {
                                         node_id,
                                         adv_data: Vec::new(),
                                     };
+
+                                    // Register node ID → address mapping so connect() can find the peer
+                                    if let Some(nid) = node_id {
+                                        let mut s = state.write().await;
+                                        s.address_to_node.insert(addr, nid);
+                                        s.node_to_address.insert(nid, addr);
+                                    }
 
                                     log::debug!(
                                         "Discovered device: {} (HIVE: {}, service_uuid: {}, name: {})",
@@ -722,10 +739,34 @@ impl BleAdapter for BluerAdapter {
             log::warn!("Failed to set device as trusted: {}", e);
         }
 
+        // Pause advertising during connection to avoid le-connection-abort-by-local.
+        // Single-radio BLE adapters often can't advertise and initiate connections
+        // simultaneously. We temporarily drop the advertisement handle then restart.
+        let had_advertising = self.adv_handle.read().await.is_some();
+        if had_advertising {
+            log::debug!("Pausing advertising for connection to {}", address);
+            *self.adv_handle.write().await = None;
+            // Small delay for the adapter to finish stopping
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+
         // Connect to the device
-        device
-            .connect()
-            .await
+        let connect_result = device.connect().await;
+
+        // Restart advertising if it was active
+        if had_advertising {
+            log::debug!("Resuming advertising after connection attempt");
+            let ble_config = self.config.read().await;
+            if let Some(ref cfg) = *ble_config {
+                let adv = self.build_advertisement(cfg);
+                match self.adapter.advertise(adv).await {
+                    Ok(handle) => *self.adv_handle.write().await = Some(handle),
+                    Err(e) => log::warn!("Failed to restart advertising: {}", e),
+                }
+            }
+        }
+
+        connect_result
             .map_err(|e| BleError::ConnectionFailed(format!("Failed to connect: {}", e)))?;
 
         // Create connection wrapper

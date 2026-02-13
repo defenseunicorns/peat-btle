@@ -18,8 +18,9 @@
 
 use hive_btle::{
     config::BleConfig,
+    gatt::HiveCharacteristicUuids,
     platform::{linux::BluerAdapter, BleAdapter, DiscoveredDevice},
-    HiveMesh, HiveMeshConfig, NodeId,
+    HiveMesh, HiveMeshConfig, NodeId, HIVE_SERVICE_UUID,
 };
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
@@ -96,16 +97,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let peer_callsign = Arc::new(RwLock::new(String::new()));
 
     // Set up discovery callback
+    // Filter by mesh ID prefix in device name (e.g., "HIVE_CITEST-...")
     let found_peer_cb = found_peer.clone();
     let peer_node_id_cb = peer_node_id.clone();
+    let mesh_id_prefix = format!("HIVE_{}-", mesh_id);
     adapter.set_discovery_callback(Some(Arc::new(move |device: DiscoveredDevice| {
         if device.is_hive_node {
+            let name = device.name.as_deref().unwrap_or("unknown");
             log::info!(
                 "Found HIVE node: {} ({}) RSSI={}",
-                device.name.as_deref().unwrap_or("unknown"),
+                name,
                 device.address,
                 device.rssi
             );
+            // Accept both new format (HIVE_CITEST-...) and legacy (HIVE-...)
+            let matches_mesh = name.starts_with(&mesh_id_prefix) || name.starts_with("HIVE-");
+            if !matches_mesh {
+                log::debug!("Skipping non-HIVE peer: {}", name);
+                return;
+            }
             if let Some(pid) = device.node_id {
                 peer_node_id_cb.store(pid.as_u32(), Ordering::SeqCst);
                 found_peer_cb.store(true, Ordering::SeqCst);
@@ -178,9 +188,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
+        let pid = NodeId::new(peer_node_id.load(Ordering::SeqCst));
+
         if !connected {
             // Try to connect
-            let pid = NodeId::new(peer_node_id.load(Ordering::SeqCst));
             log::info!("Connecting to peer 0x{:08X}...", pid.as_u32());
             match adapter.connect(&pid).await {
                 Ok(_conn) => {
@@ -198,19 +209,61 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // Connected - run tick and check for sync
+        // Connected - run tick and actively push/pull GATT data
         tick_count += 1;
-        let now = now_ms();
-
-        {
+        // Get the stored BluerConnection for GATT operations
+        if let Some(conn) = adapter.get_connection(&pid).await {
+            // Build document and write to peer's sync_data characteristic
+            // Use build_document() instead of tick() because tick() requires
+            // connected_count > 0 which needs full mesh lifecycle integration.
             let mesh_guard = mesh.read().await;
-            if let Some(doc) = mesh_guard.tick(now) {
-                adapter.update_sync_state(&doc).await;
-                log::debug!("Tick {} - sent {} bytes", tick_count, doc.len());
+            let doc = mesh_guard.build_document();
+            adapter.update_sync_state(&doc).await;
+            match conn
+                .write_characteristic(
+                    HIVE_SERVICE_UUID,
+                    HiveCharacteristicUuids::sync_data(),
+                    &doc,
+                )
+                .await
+            {
+                Ok(()) => {
+                    log::debug!("Tick {} - wrote {} bytes to peer", tick_count, doc.len())
+                }
+                Err(e) => log::warn!("Tick {} - failed to write sync_data: {}", tick_count, e),
+            }
+            drop(mesh_guard);
+
+            // Read peer's sync_state characteristic
+            match conn
+                .read_characteristic(HIVE_SERVICE_UUID, HiveCharacteristicUuids::sync_state())
+                .await
+            {
+                Ok(data) if !data.is_empty() => {
+                    log::debug!("Read {} bytes from peer sync_state", data.len());
+                    let mesh_guard = mesh.read().await;
+                    if let Some(result) =
+                        mesh_guard.on_ble_data_received_anonymous("gatt-peer", &data, now_ms())
+                    {
+                        log::info!(
+                            "SYNC from peer 0x{:08X}: counter_changed={}, total={}",
+                            result.source_node.as_u32(),
+                            result.counter_changed,
+                            result.total_count
+                        );
+                        if let Some(cs) = &result.callsign {
+                            log::info!("  Peer callsign: {}", cs);
+                            *peer_callsign.write().await = cs.clone();
+                        }
+                        sync_received.store(true, Ordering::SeqCst);
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => log::debug!("Failed to read peer sync_state: {}", e),
             }
         }
 
-        // Check if we received sync
+        // Check if we received sync (from GATT read above or write callback)
         if sync_received.load(Ordering::SeqCst) {
             let mesh_guard = mesh.read().await;
             let total = mesh_guard.total_count();
