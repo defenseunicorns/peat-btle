@@ -2479,23 +2479,12 @@ impl HiveMesh {
             data.first().copied().unwrap_or(0)
         );
 
-        // Only handle encrypted documents with this path
-        if data.len() < 10 || data[0] != ENCRYPTED_MARKER {
-            log::debug!(
-                "on_ble_data_received_anonymous: not encrypted (len={}, marker=0x{:02X})",
-                data.len(),
-                data.first().copied().unwrap_or(0)
-            );
-            return None;
-        }
-
-        // Try to decrypt using mesh key
-        log::debug!("on_ble_data_received_anonymous: attempting decryption...");
+        // Try to decrypt (handles both encrypted and unencrypted documents)
         let decrypted = match self.decrypt_document(data, Some(identifier)) {
             Some(d) => d,
             None => {
                 log::warn!(
-                    "on_ble_data_received_anonymous: decryption FAILED for {} byte doc from {}",
+                    "on_ble_data_received_anonymous: decrypt/parse FAILED for {} byte doc from {}",
                     data.len(),
                     identifier
                 );
@@ -2515,9 +2504,10 @@ impl HiveMesh {
         let source_node = NodeId::new(source_node_u32);
 
         log::info!(
-            "Anonymous document from {}: decrypted, source_node={:08X}",
+            "Anonymous document from {}: source_node={:08X}, len={}",
             identifier,
-            source_node_u32
+            source_node_u32,
+            decrypted.len()
         );
 
         // Register the peer with this identifier so future lookups work
