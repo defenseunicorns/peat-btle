@@ -1,0 +1,2664 @@
+// Copyright (c) 2025-2026 (r)evolve - Revolve Team LLC
+// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! CRDT (Conflict-free Replicated Data Types) for Eche-Lite
+//!
+//! Provides lightweight CRDT implementations optimized for BLE sync:
+//! - LWW-Register: Last-Writer-Wins for single values
+//! - G-Counter: Grow-only counter for metrics
+//!
+//! These are designed for minimal memory footprint and efficient
+//! serialization over constrained BLE connections.
+
+#[cfg(not(feature = "std"))]
+use alloc::{collections::BTreeMap, string::String, string::ToString, vec, vec::Vec};
+#[cfg(feature = "std")]
+use std::collections::BTreeMap;
+
+use crate::NodeId;
+
+// ============================================================================
+// Security Validation Constants
+// ============================================================================
+// These constants define bounds for validating decoded data to prevent
+// spoofing, injection attacks, and garbage data from corrupting state.
+
+/// Minimum valid timestamp: 2020-01-01 00:00:00 UTC (milliseconds)
+/// Any timestamp before this is rejected as invalid/spoofed.
+pub const MIN_VALID_TIMESTAMP: u64 = 1577836800000;
+
+/// Maximum valid battery percentage (100%)
+pub const MAX_BATTERY_PERCENT: u8 = 100;
+
+/// Minimum valid heart rate (BPM) - anything below is likely garbage
+pub const MIN_HEART_RATE: u8 = 20;
+
+/// Maximum valid heart rate (BPM) - anything above is likely garbage
+pub const MAX_HEART_RATE: u8 = 250;
+
+/// Maximum number of ACK entries in an emergency event (prevents DoS)
+pub const MAX_EMERGENCY_ACKS: usize = 256;
+
+/// Maximum number of counter entries (prevents DoS)
+pub const MAX_COUNTER_ENTRIES: usize = 256;
+
+/// Timestamp for CRDT operations (milliseconds since epoch or monotonic)
+pub type Timestamp = u64;
+
+/// A Last-Writer-Wins Register
+///
+/// Stores a single value where concurrent writes are resolved by timestamp.
+/// Higher timestamp wins. In case of tie, higher node ID wins.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LwwRegister<T: Clone> {
+    /// Current value
+    value: T,
+    /// Timestamp when value was set
+    timestamp: Timestamp,
+    /// Node that set the value
+    node_id: NodeId,
+}
+
+impl<T: Clone + Default> Default for LwwRegister<T> {
+    fn default() -> Self {
+        Self {
+            value: T::default(),
+            timestamp: 0,
+            node_id: NodeId::default(),
+        }
+    }
+}
+
+impl<T: Clone> LwwRegister<T> {
+    /// Create a new register with an initial value
+    pub fn new(value: T, timestamp: Timestamp, node_id: NodeId) -> Self {
+        Self {
+            value,
+            timestamp,
+            node_id,
+        }
+    }
+
+    /// Get the current value
+    pub fn get(&self) -> &T {
+        &self.value
+    }
+
+    /// Get the timestamp
+    pub fn timestamp(&self) -> Timestamp {
+        self.timestamp
+    }
+
+    /// Get the node that set the value
+    pub fn node_id(&self) -> &NodeId {
+        &self.node_id
+    }
+
+    /// Set a new value if it has a higher timestamp
+    ///
+    /// Returns true if the value was updated
+    pub fn set(&mut self, value: T, timestamp: Timestamp, node_id: NodeId) -> bool {
+        if self.should_update(timestamp, &node_id) {
+            self.value = value;
+            self.timestamp = timestamp;
+            self.node_id = node_id;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Merge with another register (LWW semantics)
+    ///
+    /// Returns true if our value was updated
+    pub fn merge(&mut self, other: &LwwRegister<T>) -> bool {
+        if self.should_update(other.timestamp, &other.node_id) {
+            self.value = other.value.clone();
+            self.timestamp = other.timestamp;
+            self.node_id = other.node_id;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if we should update based on timestamp/node_id
+    fn should_update(&self, timestamp: Timestamp, node_id: &NodeId) -> bool {
+        timestamp > self.timestamp
+            || (timestamp == self.timestamp && node_id.as_u32() > self.node_id.as_u32())
+    }
+}
+
+/// A Grow-only Counter (G-Counter)
+///
+/// Each node maintains its own count, total is the sum of all counts.
+/// Only supports increment operations.
+#[derive(Debug, Clone, Default)]
+pub struct GCounter {
+    /// Per-node counts
+    counts: BTreeMap<u32, u64>,
+}
+
+impl GCounter {
+    /// Create a new empty counter
+    pub fn new() -> Self {
+        Self {
+            counts: BTreeMap::new(),
+        }
+    }
+
+    /// Get the total count
+    pub fn value(&self) -> u64 {
+        self.counts.values().sum()
+    }
+
+    /// Increment the counter for a node
+    pub fn increment(&mut self, node_id: &NodeId, amount: u64) {
+        let count = self.counts.entry(node_id.as_u32()).or_insert(0);
+        *count = count.saturating_add(amount);
+    }
+
+    /// Get the count for a specific node
+    pub fn node_count(&self, node_id: &NodeId) -> u64 {
+        self.counts.get(&node_id.as_u32()).copied().unwrap_or(0)
+    }
+
+    /// Merge with another counter
+    ///
+    /// Takes the max of each node's count
+    pub fn merge(&mut self, other: &GCounter) {
+        for (&node_id, &count) in &other.counts {
+            let our_count = self.counts.entry(node_id).or_insert(0);
+            *our_count = (*our_count).max(count);
+        }
+    }
+
+    /// Get the number of nodes that have contributed
+    pub fn node_count_total(&self) -> usize {
+        self.counts.len()
+    }
+
+    /// Get all entries as (node_id, count) pairs
+    ///
+    /// Returns an iterator over all nodes and their counts.
+    /// Used for building delta documents.
+    pub fn entries(&self) -> impl Iterator<Item = (u32, u64)> + '_ {
+        self.counts.iter().map(|(&k, &v)| (k, v))
+    }
+
+    /// Encode to bytes for transmission
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(4 + self.counts.len() * 12);
+        // Number of entries
+        buf.extend_from_slice(&(self.counts.len() as u32).to_le_bytes());
+        // Each entry: node_id (4 bytes) + count (8 bytes)
+        for (&node_id, &count) in &self.counts {
+            buf.extend_from_slice(&node_id.to_le_bytes());
+            buf.extend_from_slice(&count.to_le_bytes());
+        }
+        buf
+    }
+
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Limits number of entries to prevent DoS via huge allocations.
+    /// Skips zero node IDs.
+    pub fn decode(data: &[u8]) -> Option<Self> {
+        if data.len() < 4 {
+            return None;
+        }
+        let num_entries = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+
+        // Security: Limit entries to prevent DoS via huge allocations
+        if num_entries > MAX_COUNTER_ENTRIES {
+            return None;
+        }
+
+        if data.len() < 4 + num_entries * 12 {
+            return None;
+        }
+
+        let mut counts = BTreeMap::new();
+        let mut offset = 4;
+        for _ in 0..num_entries {
+            let node_id = u32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]);
+            let count = u64::from_le_bytes([
+                data[offset + 4],
+                data[offset + 5],
+                data[offset + 6],
+                data[offset + 7],
+                data[offset + 8],
+                data[offset + 9],
+                data[offset + 10],
+                data[offset + 11],
+            ]);
+            // Security: Skip zero node IDs
+            if node_id != 0 {
+                counts.insert(node_id, count);
+            }
+            offset += 12;
+        }
+
+        Some(Self { counts })
+    }
+}
+
+/// Position data with LWW semantics
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Position {
+    /// Latitude in degrees
+    pub latitude: f32,
+    /// Longitude in degrees
+    pub longitude: f32,
+    /// Altitude in meters (optional)
+    pub altitude: Option<f32>,
+    /// Accuracy in meters (optional)
+    pub accuracy: Option<f32>,
+}
+
+impl Position {
+    /// Create a new position
+    pub fn new(latitude: f32, longitude: f32) -> Self {
+        Self {
+            latitude,
+            longitude,
+            altitude: None,
+            accuracy: None,
+        }
+    }
+
+    /// Create with altitude
+    pub fn with_altitude(mut self, altitude: f32) -> Self {
+        self.altitude = Some(altitude);
+        self
+    }
+
+    /// Create with accuracy
+    pub fn with_accuracy(mut self, accuracy: f32) -> Self {
+        self.accuracy = Some(accuracy);
+        self
+    }
+
+    /// Encode to bytes (12-20 bytes)
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(20);
+        buf.extend_from_slice(&self.latitude.to_le_bytes());
+        buf.extend_from_slice(&self.longitude.to_le_bytes());
+
+        // Flags byte: bit 0 = has altitude, bit 1 = has accuracy
+        let mut flags = 0u8;
+        if self.altitude.is_some() {
+            flags |= 0x01;
+        }
+        if self.accuracy.is_some() {
+            flags |= 0x02;
+        }
+        buf.push(flags);
+
+        if let Some(alt) = self.altitude {
+            buf.extend_from_slice(&alt.to_le_bytes());
+        }
+        if let Some(acc) = self.accuracy {
+            buf.extend_from_slice(&acc.to_le_bytes());
+        }
+        buf
+    }
+
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Validates that latitude/longitude are within valid ranges and not NaN/Inf.
+    /// Rejects garbage data that could indicate spoofing or corruption.
+    pub fn decode(data: &[u8]) -> Option<Self> {
+        if data.len() < 9 {
+            return None;
+        }
+
+        let latitude = f32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        let longitude = f32::from_le_bytes([data[4], data[5], data[6], data[7]]);
+        let flags = data[8];
+
+        // Security: Reject NaN, Inf, or out-of-range coordinates
+        if !latitude.is_finite() || !longitude.is_finite() {
+            return None;
+        }
+        if !(-90.0..=90.0).contains(&latitude) {
+            return None;
+        }
+        if !(-180.0..=180.0).contains(&longitude) {
+            return None;
+        }
+
+        let mut pos = Self::new(latitude, longitude);
+        let mut offset = 9;
+
+        if flags & 0x01 != 0 {
+            if data.len() < offset + 4 {
+                return None;
+            }
+            let alt = f32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]);
+            // Security: Reject NaN/Inf altitude, allow wide range for valid Earth elevations
+            if !alt.is_finite() || !(-1000.0..=100000.0).contains(&alt) {
+                return None;
+            }
+            pos.altitude = Some(alt);
+            offset += 4;
+        }
+
+        if flags & 0x02 != 0 {
+            if data.len() < offset + 4 {
+                return None;
+            }
+            let acc = f32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]);
+            // Security: Reject NaN/Inf/negative accuracy
+            if !acc.is_finite() || acc < 0.0 {
+                return None;
+            }
+            pos.accuracy = Some(acc);
+        }
+
+        Some(pos)
+    }
+}
+
+/// Health status data with LWW semantics
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HealthStatus {
+    /// Battery percentage (0-100)
+    pub battery_percent: u8,
+    /// Heart rate BPM (optional)
+    pub heart_rate: Option<u8>,
+    /// Activity level (0=still, 1=walking, 2=running, 3=vehicle)
+    pub activity: u8,
+    /// Alert status flags
+    pub alerts: u8,
+}
+
+impl HealthStatus {
+    /// Alert flag: Man down
+    pub const ALERT_MAN_DOWN: u8 = 0x01;
+    /// Alert flag: Low battery
+    pub const ALERT_LOW_BATTERY: u8 = 0x02;
+    /// Alert flag: Out of range
+    pub const ALERT_OUT_OF_RANGE: u8 = 0x04;
+    /// Alert flag: Custom alert 1
+    pub const ALERT_CUSTOM_1: u8 = 0x08;
+
+    /// Create a new health status
+    pub fn new(battery_percent: u8) -> Self {
+        Self {
+            battery_percent,
+            heart_rate: None,
+            activity: 0,
+            alerts: 0,
+        }
+    }
+
+    /// Set heart rate
+    pub fn with_heart_rate(mut self, hr: u8) -> Self {
+        self.heart_rate = Some(hr);
+        self
+    }
+
+    /// Set activity level
+    pub fn with_activity(mut self, activity: u8) -> Self {
+        self.activity = activity;
+        self
+    }
+
+    /// Set alert flag
+    pub fn set_alert(&mut self, flag: u8) {
+        self.alerts |= flag;
+    }
+
+    /// Clear alert flag
+    pub fn clear_alert(&mut self, flag: u8) {
+        self.alerts &= !flag;
+    }
+
+    /// Check if alert is set
+    pub fn has_alert(&self, flag: u8) -> bool {
+        self.alerts & flag != 0
+    }
+
+    /// Encode to bytes (3-4 bytes)
+    pub fn encode(&self) -> Vec<u8> {
+        vec![
+            self.battery_percent,
+            self.activity,
+            self.alerts,
+            // Heart rate: 0 means not present, otherwise value
+            self.heart_rate.unwrap_or(0),
+        ]
+    }
+
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Validates battery percentage and heart rate are within physiological bounds.
+    /// Rejects garbage data that could indicate spoofing or corruption.
+    pub fn decode(data: &[u8]) -> Option<Self> {
+        if data.len() < 4 {
+            return None;
+        }
+
+        let battery_percent = data[0];
+        let activity = data[1];
+        let alerts = data[2];
+        let heart_rate_raw = data[3];
+
+        // Security: Reject battery percentage > 100%
+        if battery_percent > MAX_BATTERY_PERCENT {
+            return None;
+        }
+
+        // Security: Validate activity is a known value (0-3)
+        if activity > 3 {
+            return None;
+        }
+
+        let mut status = Self::new(battery_percent);
+        status.activity = activity;
+        status.alerts = alerts;
+
+        // Security: Validate heart rate is in physiological range if present
+        if heart_rate_raw > 0 {
+            if !(MIN_HEART_RATE..=MAX_HEART_RATE).contains(&heart_rate_raw) {
+                return None;
+            }
+            status.heart_rate = Some(heart_rate_raw);
+        }
+
+        Some(status)
+    }
+}
+
+// ============================================================================
+// Peripheral (Sub-node) Types - for soldier-attached devices like M5Stack Core2
+// ============================================================================
+
+/// Type of peripheral device
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum PeripheralType {
+    /// Unknown/unspecified
+    #[default]
+    Unknown = 0,
+    /// Soldier-worn sensor (e.g., M5Stack Core2)
+    SoldierSensor = 1,
+    /// Fixed/stationary sensor
+    FixedSensor = 2,
+    /// Mesh relay only (no sensors)
+    Relay = 3,
+}
+
+impl PeripheralType {
+    /// Convert from u8 value
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Self::SoldierSensor,
+            2 => Self::FixedSensor,
+            3 => Self::Relay,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+/// Event types that a peripheral can emit (e.g., from tap input)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum EventType {
+    /// No event / cleared
+    #[default]
+    None = 0,
+    /// "I'm OK" ping
+    Ping = 1,
+    /// Request assistance
+    NeedAssist = 2,
+    /// Emergency / SOS
+    Emergency = 3,
+    /// Moving / in transit
+    Moving = 4,
+    /// In position / stationary
+    InPosition = 5,
+    /// Acknowledged / copy
+    Ack = 6,
+}
+
+impl EventType {
+    /// Convert from u8 value
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Self::Ping,
+            2 => Self::NeedAssist,
+            3 => Self::Emergency,
+            4 => Self::Moving,
+            5 => Self::InPosition,
+            6 => Self::Ack,
+            _ => Self::None,
+        }
+    }
+
+    /// Human-readable label for display
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::None => "",
+            Self::Ping => "PING",
+            Self::NeedAssist => "NEED ASSIST",
+            Self::Emergency => "EMERGENCY",
+            Self::Moving => "MOVING",
+            Self::InPosition => "IN POSITION",
+            Self::Ack => "ACK",
+        }
+    }
+}
+
+/// An event emitted by a peripheral (e.g., tap on Core2)
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PeripheralEvent {
+    /// Type of event
+    pub event_type: EventType,
+    /// Timestamp when event occurred (ms since epoch or boot)
+    pub timestamp: u64,
+}
+
+impl PeripheralEvent {
+    /// Create a new peripheral event
+    pub fn new(event_type: EventType, timestamp: u64) -> Self {
+        Self {
+            event_type,
+            timestamp,
+        }
+    }
+
+    /// Encode to bytes (9 bytes)
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(9);
+        buf.push(self.event_type as u8);
+        buf.extend_from_slice(&self.timestamp.to_le_bytes());
+        buf
+    }
+
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Validates timestamp is within reasonable bounds.
+    /// Rejects garbage data that could indicate spoofing or corruption.
+    pub fn decode(data: &[u8]) -> Option<Self> {
+        if data.len() < 9 {
+            return None;
+        }
+
+        let event_type = EventType::from_u8(data[0]);
+        let timestamp = u64::from_le_bytes([
+            data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8],
+        ]);
+
+        // Security: Reject events with timestamps before 2020
+        // Note: timestamp could be 0 for "no event" scenarios, so we allow that
+        if timestamp != 0 && timestamp < MIN_VALID_TIMESTAMP {
+            return None;
+        }
+
+        Some(Self {
+            event_type,
+            timestamp,
+        })
+    }
+}
+
+/// An emergency event with acknowledgment tracking (CRDT)
+///
+/// Represents a single emergency incident with distributed ACK tracking.
+/// Each node in the mesh can acknowledge the emergency, and this state
+/// is replicated across all nodes using CRDT semantics.
+///
+/// ## CRDT Semantics
+///
+/// - **Identity**: Events are uniquely identified by (source_node, timestamp)
+/// - **Merge for same event**: ACK maps merge with OR (once acked, stays acked)
+/// - **Merge for different events**: Higher timestamp wins (newer emergency replaces older)
+/// - **Monotonic**: ACK state only moves from false → true, never back
+///
+/// ## Wire Format
+///
+/// ```text
+/// source_node: 4 bytes (LE)
+/// timestamp:   8 bytes (LE)
+/// num_acks:    4 bytes (LE)
+/// acks[N]:
+///   node_id:   4 bytes (LE)
+///   acked:     1 byte (0 or 1)
+/// ```
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct EmergencyEvent {
+    /// Node that triggered the emergency
+    source_node: u32,
+    /// Timestamp when emergency was triggered (for uniqueness)
+    timestamp: u64,
+    /// ACK status for each known peer: node_id -> has_acked
+    acks: BTreeMap<u32, bool>,
+}
+
+impl EmergencyEvent {
+    /// Create a new emergency event
+    ///
+    /// # Arguments
+    /// * `source_node` - Node ID that triggered the emergency
+    /// * `timestamp` - When the emergency was triggered
+    /// * `known_peers` - List of peer node IDs to track for ACKs
+    ///
+    /// The source node is automatically marked as acknowledged.
+    pub fn new(source_node: u32, timestamp: u64, known_peers: &[u32]) -> Self {
+        let mut acks = BTreeMap::new();
+
+        // Source node implicitly ACKs their own emergency
+        acks.insert(source_node, true);
+
+        // All other known peers start as not-acked
+        for &peer_id in known_peers {
+            if peer_id != source_node {
+                acks.entry(peer_id).or_insert(false);
+            }
+        }
+
+        Self {
+            source_node,
+            timestamp,
+            acks,
+        }
+    }
+
+    /// Get the source node that triggered the emergency
+    pub fn source_node(&self) -> u32 {
+        self.source_node
+    }
+
+    /// Get the timestamp when the emergency was triggered
+    pub fn timestamp(&self) -> u64 {
+        self.timestamp
+    }
+
+    /// Check if a specific node has acknowledged
+    pub fn has_acked(&self, node_id: u32) -> bool {
+        self.acks.get(&node_id).copied().unwrap_or(false)
+    }
+
+    /// Record an acknowledgment from a node
+    ///
+    /// Returns true if this was a new ACK (state changed)
+    pub fn ack(&mut self, node_id: u32) -> bool {
+        let entry = self.acks.entry(node_id).or_insert(false);
+        if !*entry {
+            *entry = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Add a peer to track (if not already present)
+    ///
+    /// New peers start as not-acked. This is useful when discovering
+    /// new peers after the emergency was created.
+    pub fn add_peer(&mut self, node_id: u32) {
+        self.acks.entry(node_id).or_insert(false);
+    }
+
+    /// Get list of nodes that have acknowledged
+    pub fn acked_nodes(&self) -> Vec<u32> {
+        self.acks
+            .iter()
+            .filter(|(_, &acked)| acked)
+            .map(|(&node_id, _)| node_id)
+            .collect()
+    }
+
+    /// Get list of nodes that have NOT acknowledged
+    pub fn pending_nodes(&self) -> Vec<u32> {
+        self.acks
+            .iter()
+            .filter(|(_, &acked)| !acked)
+            .map(|(&node_id, _)| node_id)
+            .collect()
+    }
+
+    /// Get all tracked node IDs (both acked and pending)
+    pub fn all_nodes(&self) -> Vec<u32> {
+        self.acks.keys().copied().collect()
+    }
+
+    /// Check if all tracked nodes have acknowledged
+    pub fn all_acked(&self) -> bool {
+        !self.acks.is_empty() && self.acks.values().all(|&acked| acked)
+    }
+
+    /// Get the total number of tracked nodes
+    pub fn peer_count(&self) -> usize {
+        self.acks.len()
+    }
+
+    /// Get the number of nodes that have acknowledged
+    pub fn ack_count(&self) -> usize {
+        self.acks.values().filter(|&&acked| acked).count()
+    }
+
+    /// Merge with another emergency event (CRDT semantics)
+    ///
+    /// # Returns
+    /// `true` if our state changed
+    ///
+    /// # Semantics
+    /// - Same event (source_node, timestamp): merge ACK maps with OR
+    /// - Different event: take the one with higher timestamp
+    pub fn merge(&mut self, other: &EmergencyEvent) -> bool {
+        // Different emergency - take newer one
+        if self.source_node != other.source_node || self.timestamp != other.timestamp {
+            if other.timestamp > self.timestamp {
+                *self = other.clone();
+                return true;
+            }
+            return false;
+        }
+
+        // Same emergency - merge ACK maps with OR
+        let mut changed = false;
+        for (&node_id, &other_acked) in &other.acks {
+            let entry = self.acks.entry(node_id).or_insert(false);
+            if other_acked && !*entry {
+                *entry = true;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// Encode to bytes for transmission
+    ///
+    /// Format: source_node(4) + timestamp(8) + num_acks(4) + acks[N](5 each)
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(16 + self.acks.len() * 5);
+
+        buf.extend_from_slice(&self.source_node.to_le_bytes());
+        buf.extend_from_slice(&self.timestamp.to_le_bytes());
+        buf.extend_from_slice(&(self.acks.len() as u32).to_le_bytes());
+
+        for (&node_id, &acked) in &self.acks {
+            buf.extend_from_slice(&node_id.to_le_bytes());
+            buf.push(if acked { 1 } else { 0 });
+        }
+
+        buf
+    }
+
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Validates source_node, timestamp, and limits ACK entries to prevent DoS.
+    /// Rejects garbage data that could indicate spoofing or corruption.
+    pub fn decode(data: &[u8]) -> Option<Self> {
+        if data.len() < 16 {
+            return None;
+        }
+
+        let source_node = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        let timestamp = u64::from_le_bytes([
+            data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+        ]);
+        let num_acks = u32::from_le_bytes([data[12], data[13], data[14], data[15]]) as usize;
+
+        // Security: Reject zero source_node (invalid)
+        if source_node == 0 {
+            return None;
+        }
+
+        // Security: Reject timestamps before 2020
+        if timestamp < MIN_VALID_TIMESTAMP {
+            return None;
+        }
+
+        // Security: Limit ACK entries to prevent DoS via huge allocations
+        if num_acks > MAX_EMERGENCY_ACKS {
+            return None;
+        }
+
+        if data.len() < 16 + num_acks * 5 {
+            return None;
+        }
+
+        let mut acks = BTreeMap::new();
+        let mut offset = 16;
+        for _ in 0..num_acks {
+            let node_id = u32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]);
+            // Security: Skip zero node_ids in ACK list
+            if node_id != 0 {
+                let acked = data[offset + 4] != 0;
+                acks.insert(node_id, acked);
+            }
+            offset += 5;
+        }
+
+        Some(Self {
+            source_node,
+            timestamp,
+            acks,
+        })
+    }
+}
+
+/// A peripheral device attached to a Node (soldier)
+///
+/// Peripherals are sub-tier devices that augment a soldier's capabilities
+/// with sensors and input (e.g., M5Stack Core2 wearable).
+#[derive(Debug, Clone, Default)]
+pub struct Peripheral {
+    /// Unique peripheral ID (derived from device MAC or similar)
+    pub id: u32,
+    /// Parent Node ID this peripheral is attached to (0 if not paired)
+    pub parent_node: u32,
+    /// Type of peripheral
+    pub peripheral_type: PeripheralType,
+    /// Callsign/name (inherited from parent or configured)
+    pub callsign: [u8; 12],
+    /// Current health status
+    pub health: HealthStatus,
+    /// Most recent event (if any)
+    pub last_event: Option<PeripheralEvent>,
+    /// Current location (if available)
+    pub location: Option<Position>,
+    /// Last update timestamp
+    pub timestamp: u64,
+}
+
+impl Peripheral {
+    /// Create a new peripheral
+    pub fn new(id: u32, peripheral_type: PeripheralType) -> Self {
+        Self {
+            id,
+            parent_node: 0,
+            peripheral_type,
+            callsign: [0u8; 12],
+            health: HealthStatus::default(),
+            last_event: None,
+            location: None,
+            timestamp: 0,
+        }
+    }
+
+    /// Set the callsign (truncated to 12 bytes)
+    pub fn with_callsign(mut self, callsign: &str) -> Self {
+        let bytes = callsign.as_bytes();
+        let len = bytes.len().min(12);
+        self.callsign[..len].copy_from_slice(&bytes[..len]);
+        self
+    }
+
+    /// Update callsign in place
+    pub fn set_callsign(&mut self, callsign: &str) {
+        self.callsign = [0u8; 12];
+        let bytes = callsign.as_bytes();
+        let len = bytes.len().min(12);
+        self.callsign[..len].copy_from_slice(&bytes[..len]);
+    }
+
+    /// Get callsign as string
+    pub fn callsign_str(&self) -> &str {
+        let len = self.callsign.iter().position(|&b| b == 0).unwrap_or(12);
+        core::str::from_utf8(&self.callsign[..len]).unwrap_or("")
+    }
+
+    /// Set parent node
+    pub fn with_parent(mut self, parent_node: u32) -> Self {
+        self.parent_node = parent_node;
+        self
+    }
+
+    /// Set location (builder pattern)
+    pub fn with_location(mut self, location: Position) -> Self {
+        self.location = Some(location);
+        self
+    }
+
+    /// Update location in place
+    pub fn set_location(&mut self, latitude: f32, longitude: f32, altitude: Option<f32>) {
+        let mut pos = Position::new(latitude, longitude);
+        if let Some(alt) = altitude {
+            pos = pos.with_altitude(alt);
+        }
+        self.location = Some(pos);
+    }
+
+    /// Clear location
+    pub fn clear_location(&mut self) {
+        self.location = None;
+    }
+
+    /// Record an event
+    pub fn set_event(&mut self, event_type: EventType, timestamp: u64) {
+        self.last_event = Some(PeripheralEvent::new(event_type, timestamp));
+        self.timestamp = timestamp;
+    }
+
+    /// Clear the last event
+    pub fn clear_event(&mut self) {
+        self.last_event = None;
+    }
+
+    /// Encode to bytes for BLE transmission
+    /// Format: [id:4][parent:4][type:1][callsign:12][health:4][has_event:1][event:9?][timestamp:8][has_location:1][location:9-20?]
+    /// Size: 35 bytes minimum (no event, no location), up to 64 bytes with both
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(64);
+        buf.extend_from_slice(&self.id.to_le_bytes());
+        buf.extend_from_slice(&self.parent_node.to_le_bytes());
+        buf.push(self.peripheral_type as u8);
+        buf.extend_from_slice(&self.callsign);
+        buf.extend_from_slice(&self.health.encode());
+
+        if let Some(ref event) = self.last_event {
+            buf.push(1); // has event
+            buf.extend_from_slice(&event.encode());
+        } else {
+            buf.push(0); // no event
+        }
+
+        buf.extend_from_slice(&self.timestamp.to_le_bytes());
+
+        // Location encoding (added in v0.1.0-rc.7)
+        if let Some(ref location) = self.location {
+            buf.push(1); // has location
+            buf.extend_from_slice(&location.encode());
+        } else {
+            buf.push(0); // no location
+        }
+
+        buf
+    }
+
+    /// Decode from bytes with validation
+    ///
+    /// # Security
+    /// Validates peripheral ID, callsign UTF-8, and timestamp.
+    /// Rejects garbage data that could indicate spoofing or corruption.
+    pub fn decode(data: &[u8]) -> Option<Self> {
+        if data.len() < 34 {
+            return None;
+        }
+
+        let id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        let parent_node = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
+        let peripheral_type = PeripheralType::from_u8(data[8]);
+
+        // Security: Reject zero peripheral ID (invalid)
+        if id == 0 {
+            return None;
+        }
+
+        let mut callsign = [0u8; 12];
+        callsign.copy_from_slice(&data[9..21]);
+
+        // Security: Validate callsign is valid UTF-8
+        // Find the actual length (up to first null or end)
+        let callsign_len = callsign.iter().position(|&b| b == 0).unwrap_or(12);
+        if callsign_len > 0 && core::str::from_utf8(&callsign[..callsign_len]).is_err() {
+            return None;
+        }
+
+        // HealthStatus::decode now validates internally
+        let health = HealthStatus::decode(&data[21..25])?;
+
+        let has_event = data[25] != 0;
+        let (last_event, timestamp_offset) = if has_event {
+            if data.len() < 43 {
+                return None;
+            }
+            // PeripheralEvent::decode now validates timestamp internally
+            (PeripheralEvent::decode(&data[26..35]), 35)
+        } else {
+            (None, 26)
+        };
+
+        if data.len() < timestamp_offset + 8 {
+            return None;
+        }
+
+        let timestamp = u64::from_le_bytes([
+            data[timestamp_offset],
+            data[timestamp_offset + 1],
+            data[timestamp_offset + 2],
+            data[timestamp_offset + 3],
+            data[timestamp_offset + 4],
+            data[timestamp_offset + 5],
+            data[timestamp_offset + 6],
+            data[timestamp_offset + 7],
+        ]);
+
+        // Security: Reject timestamps before 2020 (0 allowed for "not set")
+        if timestamp != 0 && timestamp < MIN_VALID_TIMESTAMP {
+            return None;
+        }
+
+        // Decode location if present (added in v0.1.0-rc.7)
+        // For backward compatibility, treat missing has_location byte as no location
+        let location_offset = timestamp_offset + 8;
+        let location = if data.len() > location_offset {
+            let has_location = data[location_offset] != 0;
+            if has_location && data.len() > location_offset + 1 {
+                Position::decode(&data[location_offset + 1..])
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Some(Self {
+            id,
+            parent_node,
+            peripheral_type,
+            callsign,
+            health,
+            last_event,
+            location,
+            timestamp,
+        })
+    }
+}
+
+// ============================================================================
+// ChatCRDT - Add-only set of chat messages for mesh-wide messaging
+// (gated behind "legacy-chat" feature, deprecated in favor of CannedMessage)
+// ============================================================================
+
+#[cfg(feature = "legacy-chat")]
+/// Maximum message text length in bytes
+pub const CHAT_MAX_TEXT_LEN: usize = 128;
+
+#[cfg(feature = "legacy-chat")]
+/// Maximum sender name length in bytes
+pub const CHAT_MAX_SENDER_LEN: usize = 12;
+
+#[cfg(feature = "legacy-chat")]
+/// Maximum number of messages to retain in the CRDT
+///
+/// Older messages are pruned to keep memory bounded on embedded devices.
+pub const CHAT_MAX_MESSAGES: usize = 32;
+
+#[cfg(feature = "legacy-chat")]
+/// Maximum number of chat messages to include in sync documents
+///
+/// BLE GATT notifications have a limited MTU (typically 512 bytes).
+/// To avoid exceeding this limit, sync documents only include the
+/// most recent messages. The full history is kept in the local CRDT.
+pub const CHAT_SYNC_LIMIT: usize = 8;
+
+#[cfg(feature = "legacy-chat")]
+/// A single chat message in the mesh
+///
+/// Messages are uniquely identified by `(origin_node, timestamp)`.
+/// This allows deduplication across mesh sync while preserving message ordering.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChatMessage {
+    /// Node that originated this message
+    pub origin_node: u32,
+    /// Timestamp when message was created (ms since epoch)
+    pub timestamp: u64,
+    /// Sender name/callsign (up to 12 bytes)
+    sender: [u8; CHAT_MAX_SENDER_LEN],
+    sender_len: u8,
+    /// Message text (up to 128 bytes)
+    text: [u8; CHAT_MAX_TEXT_LEN],
+    text_len: u8,
+    /// Whether this is a broadcast message (vs directed)
+    pub is_broadcast: bool,
+    /// Whether ACK is requested
+    pub requires_ack: bool,
+    /// Reply-to: origin node of the message being replied to (0 = not a reply)
+    pub reply_to_node: u32,
+    /// Reply-to: timestamp of the message being replied to (0 = not a reply)
+    pub reply_to_timestamp: u64,
+}
+
+#[cfg(feature = "legacy-chat")]
+impl Default for ChatMessage {
+    fn default() -> Self {
+        Self {
+            origin_node: 0,
+            timestamp: 0,
+            sender: [0u8; CHAT_MAX_SENDER_LEN],
+            sender_len: 0,
+            text: [0u8; CHAT_MAX_TEXT_LEN],
+            text_len: 0,
+            is_broadcast: true,
+            requires_ack: false,
+            reply_to_node: 0,
+            reply_to_timestamp: 0,
+        }
+    }
+}
+
+#[cfg(feature = "legacy-chat")]
+impl ChatMessage {
+    /// Create a new chat message
+    pub fn new(origin_node: u32, timestamp: u64, sender: &str, text: &str) -> Self {
+        let mut msg = Self {
+            origin_node,
+            timestamp,
+            ..Default::default()
+        };
+        msg.set_sender(sender);
+        msg.set_text(text);
+        msg
+    }
+
+    /// Set the sender name (truncated to 12 bytes)
+    pub fn set_sender(&mut self, sender: &str) {
+        let bytes = sender.as_bytes();
+        let len = bytes.len().min(CHAT_MAX_SENDER_LEN);
+        self.sender[..len].copy_from_slice(&bytes[..len]);
+        self.sender_len = len as u8;
+    }
+
+    /// Get the sender name as a string
+    pub fn sender(&self) -> &str {
+        core::str::from_utf8(&self.sender[..self.sender_len as usize]).unwrap_or("")
+    }
+
+    /// Set the message text (truncated to 128 bytes)
+    pub fn set_text(&mut self, text: &str) {
+        let bytes = text.as_bytes();
+        let len = bytes.len().min(CHAT_MAX_TEXT_LEN);
+        self.text[..len].copy_from_slice(&bytes[..len]);
+        self.text_len = len as u8;
+    }
+
+    /// Get the message text as a string
+    pub fn text(&self) -> &str {
+        core::str::from_utf8(&self.text[..self.text_len as usize]).unwrap_or("")
+    }
+
+    /// Set reply-to information
+    pub fn set_reply_to(&mut self, node: u32, timestamp: u64) {
+        self.reply_to_node = node;
+        self.reply_to_timestamp = timestamp;
+    }
+
+    /// Check if this is a reply to another message
+    pub fn is_reply(&self) -> bool {
+        self.reply_to_node != 0 || self.reply_to_timestamp != 0
+    }
+
+    /// Get the unique message ID (combines origin_node and timestamp)
+    ///
+    /// Format: `(origin_node as u64) << 32 | (timestamp & 0xFFFFFFFF)`
+    /// This provides a sortable key where messages from same node are ordered by time.
+    pub fn message_id(&self) -> u64 {
+        ((self.origin_node as u64) << 32) | (self.timestamp & 0xFFFFFFFF)
+    }
+
+    /// Encode to bytes for transmission
+    ///
+    /// Wire format:
+    /// ```text
+    /// origin_node:       4 bytes (LE)
+    /// timestamp:         8 bytes (LE)
+    /// sender_len:        1 byte
+    /// sender:            sender_len bytes
+    /// text_len:          1 byte
+    /// text:              text_len bytes
+    /// flags:             1 byte (bit 0: is_broadcast, bit 1: requires_ack)
+    /// reply_to_node:     4 bytes (LE)
+    /// reply_to_timestamp: 8 bytes (LE)
+    /// ```
+    pub fn encode(&self) -> Vec<u8> {
+        let size = 4 + 8 + 1 + self.sender_len as usize + 1 + self.text_len as usize + 1 + 4 + 8;
+        let mut buf = Vec::with_capacity(size);
+
+        buf.extend_from_slice(&self.origin_node.to_le_bytes());
+        buf.extend_from_slice(&self.timestamp.to_le_bytes());
+        buf.push(self.sender_len);
+        buf.extend_from_slice(&self.sender[..self.sender_len as usize]);
+        buf.push(self.text_len);
+        buf.extend_from_slice(&self.text[..self.text_len as usize]);
+
+        let mut flags = 0u8;
+        if self.is_broadcast {
+            flags |= 0x01;
+        }
+        if self.requires_ack {
+            flags |= 0x02;
+        }
+        buf.push(flags);
+
+        buf.extend_from_slice(&self.reply_to_node.to_le_bytes());
+        buf.extend_from_slice(&self.reply_to_timestamp.to_le_bytes());
+
+        buf
+    }
+
+    /// Decode from bytes with strict validation
+    ///
+    /// Returns `None` if the data is malformed or fails validation checks.
+    /// This is a security-critical function - malformed messages could be
+    /// spoofed or part of an attack.
+    ///
+    /// # Validation checks:
+    /// - origin_node must be non-zero
+    /// - timestamp must be non-zero and within reasonable bounds
+    /// - sender must be non-empty and valid UTF-8
+    /// - text must be valid UTF-8 (can be empty for ACK messages)
+    /// - All length fields must be within bounds
+    pub fn decode(data: &[u8]) -> Option<(Self, usize)> {
+        if data.len() < 14 {
+            // Minimum: 4 + 8 + 1 + 0 + 1 + 0 + 0 (no reply fields in old format)
+            return None;
+        }
+
+        let origin_node = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        let timestamp = u64::from_le_bytes([
+            data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+        ]);
+
+        // Security: Reject messages with zero origin_node (invalid/spoofed)
+        if origin_node == 0 {
+            return None;
+        }
+
+        // Security: Reject messages with timestamps before 2020
+        if timestamp < MIN_VALID_TIMESTAMP {
+            return None;
+        }
+
+        let sender_len = data[12] as usize;
+        if sender_len > CHAT_MAX_SENDER_LEN || data.len() < 13 + sender_len + 1 {
+            return None;
+        }
+
+        // Security: Reject messages with empty sender (required field)
+        if sender_len == 0 {
+            return None;
+        }
+
+        let mut sender = [0u8; CHAT_MAX_SENDER_LEN];
+        sender[..sender_len].copy_from_slice(&data[13..13 + sender_len]);
+
+        // Security: Validate sender is valid UTF-8 (reject garbage/binary data)
+        if core::str::from_utf8(&sender[..sender_len]).is_err() {
+            return None;
+        }
+
+        let text_offset = 13 + sender_len;
+        let text_len = data[text_offset] as usize;
+        if text_len > CHAT_MAX_TEXT_LEN || data.len() < text_offset + 1 + text_len + 1 {
+            return None;
+        }
+
+        let mut text = [0u8; CHAT_MAX_TEXT_LEN];
+        text[..text_len].copy_from_slice(&data[text_offset + 1..text_offset + 1 + text_len]);
+
+        // Security: Validate text is valid UTF-8 (reject garbage/binary data)
+        // Empty text is allowed (e.g., for ACK messages)
+        if text_len > 0 && core::str::from_utf8(&text[..text_len]).is_err() {
+            return None;
+        }
+
+        let flags_offset = text_offset + 1 + text_len;
+        let flags = data[flags_offset];
+        let is_broadcast = flags & 0x01 != 0;
+        let requires_ack = flags & 0x02 != 0;
+
+        // Reply-to fields (optional for backward compat)
+        let mut reply_to_node = 0u32;
+        let mut reply_to_timestamp = 0u64;
+        let mut total_len = flags_offset + 1;
+
+        if data.len() >= flags_offset + 1 + 12 {
+            reply_to_node = u32::from_le_bytes([
+                data[flags_offset + 1],
+                data[flags_offset + 2],
+                data[flags_offset + 3],
+                data[flags_offset + 4],
+            ]);
+            reply_to_timestamp = u64::from_le_bytes([
+                data[flags_offset + 5],
+                data[flags_offset + 6],
+                data[flags_offset + 7],
+                data[flags_offset + 8],
+                data[flags_offset + 9],
+                data[flags_offset + 10],
+                data[flags_offset + 11],
+                data[flags_offset + 12],
+            ]);
+            total_len = flags_offset + 13;
+        }
+
+        Some((
+            Self {
+                origin_node,
+                timestamp,
+                sender,
+                sender_len: sender_len as u8,
+                text,
+                text_len: text_len as u8,
+                is_broadcast,
+                requires_ack,
+                reply_to_node,
+                reply_to_timestamp,
+            },
+            total_len,
+        ))
+    }
+}
+
+#[cfg(feature = "legacy-chat")]
+/// Chat CRDT - Add-only set of messages
+///
+/// Implements add-only set semantics where messages are identified by
+/// `(origin_node, timestamp)`. Once a message is added, it cannot be removed
+/// (tombstone-free design optimized for mesh networks).
+///
+/// ## CRDT Semantics
+///
+/// - **Merge**: Union of all messages from both sets
+/// - **Identity**: `(origin_node, timestamp)` - duplicates are ignored
+/// - **Ordering**: Messages are stored sorted by message_id for efficient iteration
+/// - **Pruning**: Oldest messages are removed when exceeding `CHAT_MAX_MESSAGES`
+///
+/// ## Wire Format
+///
+/// ```text
+/// num_messages: 2 bytes (LE)
+/// messages[N]:  variable (see ChatMessage::encode)
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct ChatCRDT {
+    /// Messages indexed by message_id for deduplication
+    messages: BTreeMap<u64, ChatMessage>,
+}
+
+#[cfg(feature = "legacy-chat")]
+impl ChatCRDT {
+    /// Create a new empty chat CRDT
+    pub fn new() -> Self {
+        Self {
+            messages: BTreeMap::new(),
+        }
+    }
+
+    /// Add a message to the chat
+    ///
+    /// Returns `true` if the message was new (not a duplicate)
+    pub fn add_message(&mut self, message: ChatMessage) -> bool {
+        let id = message.message_id();
+        if self.messages.contains_key(&id) {
+            return false;
+        }
+
+        self.messages.insert(id, message);
+        self.prune_if_needed();
+        true
+    }
+
+    /// Create and add a new message
+    pub fn send_message(
+        &mut self,
+        origin_node: u32,
+        timestamp: u64,
+        sender: &str,
+        text: &str,
+    ) -> bool {
+        let msg = ChatMessage::new(origin_node, timestamp, sender, text);
+        self.add_message(msg)
+    }
+
+    /// Get a message by its ID
+    pub fn get_message(&self, origin_node: u32, timestamp: u64) -> Option<&ChatMessage> {
+        let id = ((origin_node as u64) << 32) | (timestamp & 0xFFFFFFFF);
+        self.messages.get(&id)
+    }
+
+    /// Get all messages, ordered by message_id
+    pub fn messages(&self) -> impl Iterator<Item = &ChatMessage> {
+        self.messages.values()
+    }
+
+    /// Get messages newer than a given timestamp
+    pub fn messages_since(&self, since_timestamp: u64) -> impl Iterator<Item = &ChatMessage> {
+        self.messages
+            .values()
+            .filter(move |m| m.timestamp > since_timestamp)
+    }
+
+    /// Get the number of messages
+    pub fn len(&self) -> usize {
+        self.messages.len()
+    }
+
+    /// Check if there are no messages
+    pub fn is_empty(&self) -> bool {
+        self.messages.is_empty()
+    }
+
+    /// Get the newest message timestamp (if any)
+    pub fn newest_timestamp(&self) -> Option<u64> {
+        self.messages.values().map(|m| m.timestamp).max()
+    }
+
+    /// Merge with another ChatCRDT
+    ///
+    /// Returns `true` if any new messages were added
+    pub fn merge(&mut self, other: &ChatCRDT) -> bool {
+        let mut changed = false;
+        for (id, msg) in &other.messages {
+            if !self.messages.contains_key(id) {
+                self.messages.insert(*id, msg.clone());
+                changed = true;
+            }
+        }
+        if changed {
+            self.prune_if_needed();
+        }
+        changed
+    }
+
+    /// Prune oldest messages if we exceed the limit
+    fn prune_if_needed(&mut self) {
+        while self.messages.len() > CHAT_MAX_MESSAGES {
+            // Remove the entry with the lowest timestamp
+            if let Some(&oldest_id) = self.messages.keys().next() {
+                self.messages.remove(&oldest_id);
+            }
+        }
+    }
+
+    /// Encode to bytes for transmission
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // Number of messages
+        buf.extend_from_slice(&(self.messages.len() as u16).to_le_bytes());
+
+        // Each message
+        for msg in self.messages.values() {
+            buf.extend_from_slice(&msg.encode());
+        }
+
+        buf
+    }
+
+    /// Decode from bytes
+    pub fn decode(data: &[u8]) -> Option<Self> {
+        if data.len() < 2 {
+            return None;
+        }
+
+        let num_messages = u16::from_le_bytes([data[0], data[1]]) as usize;
+        let mut messages = BTreeMap::new();
+        let mut offset = 2;
+
+        for _ in 0..num_messages {
+            if offset >= data.len() {
+                break;
+            }
+            if let Some((msg, len)) = ChatMessage::decode(&data[offset..]) {
+                let id = msg.message_id();
+                messages.insert(id, msg);
+                offset += len;
+            } else {
+                break;
+            }
+        }
+
+        Some(Self { messages })
+    }
+
+    /// Get the encoded size of this CRDT
+    pub fn encoded_size(&self) -> usize {
+        2 + self
+            .messages
+            .values()
+            .map(|m| m.encode().len())
+            .sum::<usize>()
+    }
+
+    /// Create a copy limited to the most recent messages for sync
+    ///
+    /// Returns a new ChatCRDT containing only the N most recent messages,
+    /// where N is `CHAT_SYNC_LIMIT`. This is used when building sync documents
+    /// to avoid exceeding BLE MTU limits.
+    ///
+    /// The local CRDT retains all messages up to `CHAT_MAX_MESSAGES`.
+    pub fn for_sync(&self) -> Self {
+        if self.messages.len() <= CHAT_SYNC_LIMIT {
+            return self.clone();
+        }
+
+        // BTreeMap is ordered by key (message_id), and message_id encodes
+        // timestamp in lower bits, so we take from the end for newest
+        let messages: BTreeMap<u64, ChatMessage> = self
+            .messages
+            .iter()
+            .rev()
+            .take(CHAT_SYNC_LIMIT)
+            .map(|(&k, v)| (k, v.clone()))
+            .collect();
+
+        Self { messages }
+    }
+}
+
+/// CRDT operation types for sync
+#[derive(Debug, Clone)]
+pub enum CrdtOperation {
+    /// Update a position register
+    UpdatePosition {
+        /// Node ID that owns this position
+        node_id: NodeId,
+        /// Position data
+        position: Position,
+        /// Timestamp of the update
+        timestamp: Timestamp,
+    },
+    /// Update health status register
+    UpdateHealth {
+        /// Node ID that owns this status
+        node_id: NodeId,
+        /// Health status data
+        status: HealthStatus,
+        /// Timestamp of the update
+        timestamp: Timestamp,
+    },
+    /// Increment a counter
+    IncrementCounter {
+        /// Counter identifier
+        counter_id: u8,
+        /// Node performing the increment
+        node_id: NodeId,
+        /// Amount to increment
+        amount: u64,
+    },
+    /// Generic LWW update (key-value)
+    UpdateRegister {
+        /// Key for the register
+        key: String,
+        /// Value data
+        value: Vec<u8>,
+        /// Timestamp of the update
+        timestamp: Timestamp,
+        /// Node that set the value
+        node_id: NodeId,
+    },
+}
+
+impl CrdtOperation {
+    /// Get the approximate size in bytes
+    pub fn size(&self) -> usize {
+        match self {
+            CrdtOperation::UpdatePosition { position, .. } => 4 + 8 + position.encode().len(),
+            CrdtOperation::UpdateHealth { status, .. } => 4 + 8 + status.encode().len(),
+            CrdtOperation::IncrementCounter { .. } => 1 + 4 + 8,
+            CrdtOperation::UpdateRegister { key, value, .. } => 4 + 8 + key.len() + value.len(),
+        }
+    }
+
+    /// Encode to bytes
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        match self {
+            CrdtOperation::UpdatePosition {
+                node_id,
+                position,
+                timestamp,
+            } => {
+                buf.push(0x01); // Type tag
+                buf.extend_from_slice(&node_id.as_u32().to_le_bytes());
+                buf.extend_from_slice(&timestamp.to_le_bytes());
+                buf.extend_from_slice(&position.encode());
+            }
+            CrdtOperation::UpdateHealth {
+                node_id,
+                status,
+                timestamp,
+            } => {
+                buf.push(0x02); // Type tag
+                buf.extend_from_slice(&node_id.as_u32().to_le_bytes());
+                buf.extend_from_slice(&timestamp.to_le_bytes());
+                buf.extend_from_slice(&status.encode());
+            }
+            CrdtOperation::IncrementCounter {
+                counter_id,
+                node_id,
+                amount,
+            } => {
+                buf.push(0x03); // Type tag
+                buf.push(*counter_id);
+                buf.extend_from_slice(&node_id.as_u32().to_le_bytes());
+                buf.extend_from_slice(&amount.to_le_bytes());
+            }
+            CrdtOperation::UpdateRegister {
+                key,
+                value,
+                timestamp,
+                node_id,
+            } => {
+                buf.push(0x04); // Type tag
+                buf.extend_from_slice(&node_id.as_u32().to_le_bytes());
+                buf.extend_from_slice(&timestamp.to_le_bytes());
+                buf.push(key.len() as u8);
+                buf.extend_from_slice(key.as_bytes());
+                buf.extend_from_slice(&(value.len() as u16).to_le_bytes());
+                buf.extend_from_slice(value);
+            }
+        }
+        buf
+    }
+
+    /// Decode from bytes
+    pub fn decode(data: &[u8]) -> Option<Self> {
+        if data.is_empty() {
+            return None;
+        }
+
+        match data[0] {
+            0x01 => {
+                // UpdatePosition
+                if data.len() < 13 {
+                    return None;
+                }
+                let node_id = NodeId::new(u32::from_le_bytes([data[1], data[2], data[3], data[4]]));
+                let timestamp = u64::from_le_bytes([
+                    data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12],
+                ]);
+                let position = Position::decode(&data[13..])?;
+                Some(CrdtOperation::UpdatePosition {
+                    node_id,
+                    position,
+                    timestamp,
+                })
+            }
+            0x02 => {
+                // UpdateHealth
+                if data.len() < 13 {
+                    return None;
+                }
+                let node_id = NodeId::new(u32::from_le_bytes([data[1], data[2], data[3], data[4]]));
+                let timestamp = u64::from_le_bytes([
+                    data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12],
+                ]);
+                let status = HealthStatus::decode(&data[13..])?;
+                Some(CrdtOperation::UpdateHealth {
+                    node_id,
+                    status,
+                    timestamp,
+                })
+            }
+            0x03 => {
+                // IncrementCounter
+                if data.len() < 14 {
+                    return None;
+                }
+                let counter_id = data[1];
+                let node_id = NodeId::new(u32::from_le_bytes([data[2], data[3], data[4], data[5]]));
+                let amount = u64::from_le_bytes([
+                    data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13],
+                ]);
+                Some(CrdtOperation::IncrementCounter {
+                    counter_id,
+                    node_id,
+                    amount,
+                })
+            }
+            0x04 => {
+                // UpdateRegister
+                if data.len() < 14 {
+                    return None;
+                }
+                let node_id = NodeId::new(u32::from_le_bytes([data[1], data[2], data[3], data[4]]));
+                let timestamp = u64::from_le_bytes([
+                    data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12],
+                ]);
+                let key_len = data[13] as usize;
+                if data.len() < 14 + key_len + 2 {
+                    return None;
+                }
+                let key = core::str::from_utf8(&data[14..14 + key_len])
+                    .ok()?
+                    .to_string();
+                let value_len =
+                    u16::from_le_bytes([data[14 + key_len], data[15 + key_len]]) as usize;
+                if data.len() < 16 + key_len + value_len {
+                    return None;
+                }
+                let value = data[16 + key_len..16 + key_len + value_len].to_vec();
+                Some(CrdtOperation::UpdateRegister {
+                    key,
+                    value,
+                    timestamp,
+                    node_id,
+                })
+            }
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Valid timestamp for tests: 2024-01-15 00:00:00 UTC
+    // All tests should use this or timestamps derived from it
+    const TEST_TIMESTAMP: u64 = 1705276800000;
+
+    #[test]
+    fn test_lww_register_basic() {
+        let mut reg = LwwRegister::new(42u32, 100, NodeId::new(1));
+        assert_eq!(*reg.get(), 42);
+        assert_eq!(reg.timestamp(), 100);
+
+        // Higher timestamp wins
+        assert!(reg.set(99, 200, NodeId::new(2)));
+        assert_eq!(*reg.get(), 99);
+
+        // Lower timestamp loses
+        assert!(!reg.set(50, 150, NodeId::new(3)));
+        assert_eq!(*reg.get(), 99);
+    }
+
+    #[test]
+    fn test_lww_register_tiebreak() {
+        let mut reg = LwwRegister::new(1u32, 100, NodeId::new(1));
+
+        // Same timestamp, higher node_id wins
+        assert!(reg.set(2, 100, NodeId::new(2)));
+        assert_eq!(*reg.get(), 2);
+
+        // Same timestamp, lower node_id loses
+        assert!(!reg.set(3, 100, NodeId::new(1)));
+        assert_eq!(*reg.get(), 2);
+    }
+
+    #[test]
+    fn test_lww_register_merge() {
+        let mut reg1 = LwwRegister::new(1u32, 100, NodeId::new(1));
+        let reg2 = LwwRegister::new(2u32, 200, NodeId::new(2));
+
+        assert!(reg1.merge(&reg2));
+        assert_eq!(*reg1.get(), 2);
+    }
+
+    #[test]
+    fn test_gcounter_basic() {
+        let mut counter = GCounter::new();
+        let node1 = NodeId::new(1);
+        let node2 = NodeId::new(2);
+
+        counter.increment(&node1, 5);
+        counter.increment(&node2, 3);
+        counter.increment(&node1, 2);
+
+        assert_eq!(counter.value(), 10);
+        assert_eq!(counter.node_count(&node1), 7);
+        assert_eq!(counter.node_count(&node2), 3);
+    }
+
+    #[test]
+    fn test_gcounter_merge() {
+        let mut counter1 = GCounter::new();
+        let mut counter2 = GCounter::new();
+        let node1 = NodeId::new(1);
+        let node2 = NodeId::new(2);
+
+        counter1.increment(&node1, 5);
+        counter2.increment(&node1, 3);
+        counter2.increment(&node2, 4);
+
+        counter1.merge(&counter2);
+
+        assert_eq!(counter1.value(), 9); // max(5,3) + 4
+        assert_eq!(counter1.node_count(&node1), 5);
+        assert_eq!(counter1.node_count(&node2), 4);
+    }
+
+    #[test]
+    fn test_gcounter_encode_decode() {
+        let mut counter = GCounter::new();
+        counter.increment(&NodeId::new(1), 5);
+        counter.increment(&NodeId::new(2), 10);
+
+        let encoded = counter.encode();
+        let decoded = GCounter::decode(&encoded).unwrap();
+
+        assert_eq!(decoded.value(), counter.value());
+        assert_eq!(decoded.node_count(&NodeId::new(1)), 5);
+        assert_eq!(decoded.node_count(&NodeId::new(2)), 10);
+    }
+
+    #[test]
+    fn test_position_encode_decode() {
+        let pos = Position::new(37.7749, -122.4194)
+            .with_altitude(100.0)
+            .with_accuracy(5.0);
+
+        let encoded = pos.encode();
+        let decoded = Position::decode(&encoded).unwrap();
+
+        assert_eq!(decoded.latitude, pos.latitude);
+        assert_eq!(decoded.longitude, pos.longitude);
+        assert_eq!(decoded.altitude, pos.altitude);
+        assert_eq!(decoded.accuracy, pos.accuracy);
+    }
+
+    #[test]
+    fn test_position_minimal_encode() {
+        let pos = Position::new(0.0, 0.0);
+        let encoded = pos.encode();
+        assert_eq!(encoded.len(), 9); // lat + lon + flags
+
+        let pos_with_alt = Position::new(0.0, 0.0).with_altitude(0.0);
+        let encoded_alt = pos_with_alt.encode();
+        assert_eq!(encoded_alt.len(), 13);
+    }
+
+    #[test]
+    fn test_health_status() {
+        let mut status = HealthStatus::new(85).with_heart_rate(72).with_activity(1);
+
+        assert_eq!(status.battery_percent, 85);
+        assert_eq!(status.heart_rate, Some(72));
+        assert!(!status.has_alert(HealthStatus::ALERT_MAN_DOWN));
+
+        status.set_alert(HealthStatus::ALERT_MAN_DOWN);
+        assert!(status.has_alert(HealthStatus::ALERT_MAN_DOWN));
+
+        let encoded = status.encode();
+        let decoded = HealthStatus::decode(&encoded).unwrap();
+        assert_eq!(decoded.battery_percent, 85);
+        assert_eq!(decoded.heart_rate, Some(72));
+        assert!(decoded.has_alert(HealthStatus::ALERT_MAN_DOWN));
+    }
+
+    #[test]
+    fn test_crdt_operation_position() {
+        let op = CrdtOperation::UpdatePosition {
+            node_id: NodeId::new(0x1234),
+            position: Position::new(37.0, -122.0),
+            timestamp: 1000,
+        };
+
+        let encoded = op.encode();
+        let decoded = CrdtOperation::decode(&encoded).unwrap();
+
+        if let CrdtOperation::UpdatePosition {
+            node_id,
+            position,
+            timestamp,
+        } = decoded
+        {
+            assert_eq!(node_id.as_u32(), 0x1234);
+            assert_eq!(timestamp, 1000);
+            assert_eq!(position.latitude, 37.0);
+        } else {
+            panic!("Wrong operation type");
+        }
+    }
+
+    #[test]
+    fn test_crdt_operation_counter() {
+        let op = CrdtOperation::IncrementCounter {
+            counter_id: 1,
+            node_id: NodeId::new(0x5678),
+            amount: 42,
+        };
+
+        let encoded = op.encode();
+        let decoded = CrdtOperation::decode(&encoded).unwrap();
+
+        if let CrdtOperation::IncrementCounter {
+            counter_id,
+            node_id,
+            amount,
+        } = decoded
+        {
+            assert_eq!(counter_id, 1);
+            assert_eq!(node_id.as_u32(), 0x5678);
+            assert_eq!(amount, 42);
+        } else {
+            panic!("Wrong operation type");
+        }
+    }
+
+    #[test]
+    fn test_crdt_operation_size() {
+        let pos_op = CrdtOperation::UpdatePosition {
+            node_id: NodeId::new(1),
+            position: Position::new(0.0, 0.0),
+            timestamp: 0,
+        };
+        assert!(pos_op.size() > 0);
+
+        let counter_op = CrdtOperation::IncrementCounter {
+            counter_id: 0,
+            node_id: NodeId::new(1),
+            amount: 1,
+        };
+        assert_eq!(counter_op.size(), 13);
+    }
+
+    // ============================================================================
+    // Peripheral Tests
+    // ============================================================================
+
+    #[test]
+    fn test_peripheral_type_from_u8() {
+        assert_eq!(PeripheralType::from_u8(0), PeripheralType::Unknown);
+        assert_eq!(PeripheralType::from_u8(1), PeripheralType::SoldierSensor);
+        assert_eq!(PeripheralType::from_u8(2), PeripheralType::FixedSensor);
+        assert_eq!(PeripheralType::from_u8(3), PeripheralType::Relay);
+        assert_eq!(PeripheralType::from_u8(99), PeripheralType::Unknown);
+    }
+
+    #[test]
+    fn test_event_type_from_u8() {
+        assert_eq!(EventType::from_u8(0), EventType::None);
+        assert_eq!(EventType::from_u8(1), EventType::Ping);
+        assert_eq!(EventType::from_u8(2), EventType::NeedAssist);
+        assert_eq!(EventType::from_u8(3), EventType::Emergency);
+        assert_eq!(EventType::from_u8(4), EventType::Moving);
+        assert_eq!(EventType::from_u8(5), EventType::InPosition);
+        assert_eq!(EventType::from_u8(6), EventType::Ack);
+        assert_eq!(EventType::from_u8(99), EventType::None);
+    }
+
+    #[test]
+    fn test_event_type_labels() {
+        assert_eq!(EventType::None.label(), "");
+        assert_eq!(EventType::Emergency.label(), "EMERGENCY");
+        assert_eq!(EventType::Ping.label(), "PING");
+    }
+
+    #[test]
+    fn test_peripheral_event_encode_decode() {
+        let event = PeripheralEvent::new(EventType::Emergency, TEST_TIMESTAMP);
+        let encoded = event.encode();
+        assert_eq!(encoded.len(), 9);
+
+        let decoded = PeripheralEvent::decode(&encoded).unwrap();
+        assert_eq!(decoded.event_type, EventType::Emergency);
+        assert_eq!(decoded.timestamp, TEST_TIMESTAMP);
+    }
+
+    #[test]
+    fn test_peripheral_new() {
+        let peripheral = Peripheral::new(0x12345678, PeripheralType::SoldierSensor);
+        assert_eq!(peripheral.id, 0x12345678);
+        assert_eq!(peripheral.peripheral_type, PeripheralType::SoldierSensor);
+        assert_eq!(peripheral.parent_node, 0);
+        assert!(peripheral.last_event.is_none());
+    }
+
+    #[test]
+    fn test_peripheral_with_callsign() {
+        let peripheral = Peripheral::new(1, PeripheralType::SoldierSensor).with_callsign("ALPHA-1");
+        assert_eq!(peripheral.callsign_str(), "ALPHA-1");
+
+        // Test truncation
+        let peripheral2 = Peripheral::new(2, PeripheralType::SoldierSensor)
+            .with_callsign("THIS_IS_A_VERY_LONG_CALLSIGN");
+        assert_eq!(peripheral2.callsign_str(), "THIS_IS_A_VE");
+    }
+
+    #[test]
+    fn test_peripheral_set_event() {
+        let mut peripheral = Peripheral::new(1, PeripheralType::SoldierSensor);
+        peripheral.set_event(EventType::Emergency, TEST_TIMESTAMP);
+
+        assert!(peripheral.last_event.is_some());
+        let event = peripheral.last_event.as_ref().unwrap();
+        assert_eq!(event.event_type, EventType::Emergency);
+        assert_eq!(event.timestamp, TEST_TIMESTAMP);
+        assert_eq!(peripheral.timestamp, TEST_TIMESTAMP);
+
+        peripheral.clear_event();
+        assert!(peripheral.last_event.is_none());
+    }
+
+    #[test]
+    fn test_peripheral_encode_decode_without_event() {
+        let peripheral = Peripheral::new(0xAABBCCDD, PeripheralType::SoldierSensor)
+            .with_callsign("BRAVO-2")
+            .with_parent(0x11223344);
+
+        let encoded = peripheral.encode();
+        assert_eq!(encoded.len(), 35); // No event + 1 byte has_location flag
+
+        let decoded = Peripheral::decode(&encoded).unwrap();
+        assert_eq!(decoded.id, 0xAABBCCDD);
+        assert_eq!(decoded.parent_node, 0x11223344);
+        assert_eq!(decoded.peripheral_type, PeripheralType::SoldierSensor);
+        assert_eq!(decoded.callsign_str(), "BRAVO-2");
+        assert!(decoded.last_event.is_none());
+        assert!(decoded.location.is_none());
+    }
+
+    #[test]
+    fn test_peripheral_encode_decode_with_event() {
+        let mut peripheral = Peripheral::new(0x12345678, PeripheralType::SoldierSensor)
+            .with_callsign("CHARLIE")
+            .with_parent(0x87654321);
+        peripheral.health = HealthStatus::new(85);
+        peripheral.set_event(EventType::NeedAssist, TEST_TIMESTAMP);
+
+        let encoded = peripheral.encode();
+        assert_eq!(encoded.len(), 44); // With event + 1 byte has_location flag
+
+        let decoded = Peripheral::decode(&encoded).unwrap();
+        assert_eq!(decoded.id, 0x12345678);
+        assert_eq!(decoded.parent_node, 0x87654321);
+        assert_eq!(decoded.callsign_str(), "CHARLIE");
+        assert_eq!(decoded.health.battery_percent, 85);
+        assert!(decoded.last_event.is_some());
+        let event = decoded.last_event.as_ref().unwrap();
+        assert_eq!(event.event_type, EventType::NeedAssist);
+        assert_eq!(event.timestamp, TEST_TIMESTAMP);
+        assert!(decoded.location.is_none());
+    }
+
+    #[test]
+    fn test_peripheral_encode_decode_with_location() {
+        let location = Position::new(37.7749, -122.4194).with_altitude(10.0);
+        let peripheral = Peripheral::new(0x12345678, PeripheralType::SoldierSensor)
+            .with_callsign("DELTA")
+            .with_location(location);
+
+        let encoded = peripheral.encode();
+        // 35 base + 13 location bytes (lat:4 + lon:4 + flags:1 + alt:4)
+        assert_eq!(encoded.len(), 48);
+
+        let decoded = Peripheral::decode(&encoded).unwrap();
+        assert_eq!(decoded.id, 0x12345678);
+        assert_eq!(decoded.callsign_str(), "DELTA");
+        assert!(decoded.location.is_some());
+
+        let loc = decoded.location.unwrap();
+        assert!((loc.latitude - 37.7749).abs() < 0.0001);
+        assert!((loc.longitude - (-122.4194)).abs() < 0.0001);
+        assert!(loc.altitude.is_some());
+        assert!((loc.altitude.unwrap() - 10.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn test_peripheral_decode_invalid_data() {
+        // Too short
+        assert!(Peripheral::decode(&[0u8; 10]).is_none());
+
+        // Valid length but id=0 is rejected
+        let mut data = vec![0u8; 34];
+        data[25] = 0; // no event flag
+        assert!(Peripheral::decode(&data).is_none()); // id=0 rejected
+
+        // Valid id but no event - should succeed
+        data[0..4].copy_from_slice(&1u32.to_le_bytes()); // id=1
+        assert!(Peripheral::decode(&data).is_some());
+
+        // Claims to have event but too short
+        data[25] = 1; // has event flag
+        assert!(Peripheral::decode(&data).is_none());
+    }
+
+    // ============================================================================
+    // EmergencyEvent Tests
+    // ============================================================================
+
+    #[test]
+    fn test_emergency_event_new() {
+        let peers = vec![0x22222222, 0x33333333];
+        let event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
+
+        assert_eq!(event.source_node(), 0x11111111);
+        assert_eq!(event.timestamp(), TEST_TIMESTAMP);
+        assert_eq!(event.peer_count(), 3); // source + 2 peers
+
+        // Source is auto-acked
+        assert!(event.has_acked(0x11111111));
+        // Others are not
+        assert!(!event.has_acked(0x22222222));
+        assert!(!event.has_acked(0x33333333));
+    }
+
+    #[test]
+    fn test_emergency_event_ack() {
+        let peers = vec![0x22222222, 0x33333333];
+        let mut event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
+
+        assert_eq!(event.ack_count(), 1); // just source
+        assert!(!event.all_acked());
+
+        // ACK from first peer
+        assert!(event.ack(0x22222222)); // returns true - new ack
+        assert_eq!(event.ack_count(), 2);
+        assert!(!event.all_acked());
+
+        // Duplicate ACK
+        assert!(!event.ack(0x22222222)); // returns false - already acked
+
+        // ACK from second peer
+        assert!(event.ack(0x33333333));
+        assert_eq!(event.ack_count(), 3);
+        assert!(event.all_acked());
+    }
+
+    #[test]
+    fn test_emergency_event_pending_nodes() {
+        let peers = vec![0x22222222, 0x33333333];
+        let mut event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
+
+        let pending = event.pending_nodes();
+        assert_eq!(pending.len(), 2);
+        assert!(pending.contains(&0x22222222));
+        assert!(pending.contains(&0x33333333));
+
+        event.ack(0x22222222);
+        let pending = event.pending_nodes();
+        assert_eq!(pending.len(), 1);
+        assert!(pending.contains(&0x33333333));
+    }
+
+    #[test]
+    fn test_emergency_event_encode_decode() {
+        let peers = vec![0x22222222, 0x33333333];
+        let mut event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
+        event.ack(0x22222222);
+
+        let encoded = event.encode();
+        let decoded = EmergencyEvent::decode(&encoded).unwrap();
+
+        assert_eq!(decoded.source_node(), 0x11111111);
+        assert_eq!(decoded.timestamp(), TEST_TIMESTAMP);
+        assert!(decoded.has_acked(0x11111111));
+        assert!(decoded.has_acked(0x22222222));
+        assert!(!decoded.has_acked(0x33333333));
+    }
+
+    #[test]
+    fn test_emergency_event_merge_same_event() {
+        // Two nodes have the same emergency, different ack states
+        let peers = vec![0x22222222, 0x33333333];
+        let mut event1 = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
+        let mut event2 = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &peers);
+
+        event1.ack(0x22222222);
+        event2.ack(0x33333333);
+
+        // Merge event2 into event1
+        let changed = event1.merge(&event2);
+        assert!(changed);
+        assert!(event1.has_acked(0x22222222));
+        assert!(event1.has_acked(0x33333333));
+        assert!(event1.all_acked());
+    }
+
+    #[test]
+    fn test_emergency_event_merge_different_events() {
+        // Old emergency
+        let mut old_event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &[0x22222222]);
+        old_event.ack(0x22222222);
+
+        // New emergency from different source
+        let new_event =
+            EmergencyEvent::new(0x33333333, TEST_TIMESTAMP + 1000, &[0x11111111, 0x22222222]);
+
+        // Merge new into old - should replace
+        let changed = old_event.merge(&new_event);
+        assert!(changed);
+        assert_eq!(old_event.source_node(), 0x33333333);
+        assert_eq!(old_event.timestamp(), TEST_TIMESTAMP + 1000);
+        // Old ack state should be gone
+        assert!(!old_event.has_acked(0x22222222));
+    }
+
+    #[test]
+    fn test_emergency_event_merge_older_event_ignored() {
+        // Current emergency
+        let mut current = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP + 1000, &[0x22222222]);
+
+        // Older emergency
+        let older = EmergencyEvent::new(0x33333333, TEST_TIMESTAMP, &[0x11111111]);
+
+        // Merge older into current - should NOT replace
+        let changed = current.merge(&older);
+        assert!(!changed);
+        assert_eq!(current.source_node(), 0x11111111);
+        assert_eq!(current.timestamp(), TEST_TIMESTAMP + 1000);
+    }
+
+    #[test]
+    fn test_emergency_event_add_peer() {
+        let mut event = EmergencyEvent::new(0x11111111, TEST_TIMESTAMP, &[]);
+
+        // Add a peer discovered after emergency started
+        event.add_peer(0x22222222);
+        assert!(!event.has_acked(0x22222222));
+        assert_eq!(event.peer_count(), 2);
+
+        // Adding same peer again doesn't change ack status
+        event.ack(0x22222222);
+        event.add_peer(0x22222222);
+        assert!(event.has_acked(0x22222222)); // still acked
+    }
+
+    #[test]
+    fn test_emergency_event_decode_invalid() {
+        // Too short
+        assert!(EmergencyEvent::decode(&[0u8; 10]).is_none());
+
+        // Valid header but claims more acks than data
+        let mut data = vec![0u8; 16];
+        data[12] = 5; // claims 5 ack entries
+        assert!(EmergencyEvent::decode(&data).is_none());
+    }
+
+    // ============================================================================
+    // ChatMessage Tests (gated behind legacy-chat)
+    // ============================================================================
+
+    #[cfg(feature = "legacy-chat")]
+    mod chat_tests {
+        use super::*;
+
+        #[test]
+        fn test_chat_message_new() {
+            let msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "ALPHA-1", "Hello mesh!");
+            assert_eq!(msg.origin_node, 0x12345678);
+            assert_eq!(msg.timestamp, TEST_TIMESTAMP);
+            assert_eq!(msg.sender(), "ALPHA-1");
+            assert_eq!(msg.text(), "Hello mesh!");
+            assert!(msg.is_broadcast);
+            assert!(!msg.requires_ack);
+            assert!(!msg.is_reply());
+        }
+
+        #[test]
+        fn test_chat_message_reply_to() {
+            let mut msg =
+                ChatMessage::new(0x12345678, TEST_TIMESTAMP + 1000, "BRAVO", "Roger that");
+            msg.set_reply_to(0xAABBCCDD, TEST_TIMESTAMP);
+
+            assert!(msg.is_reply());
+            assert_eq!(msg.reply_to_node, 0xAABBCCDD);
+            assert_eq!(msg.reply_to_timestamp, TEST_TIMESTAMP);
+        }
+
+        #[test]
+        fn test_chat_message_truncation() {
+            // Test sender truncation (max 12 bytes)
+            let msg = ChatMessage::new(0x1, TEST_TIMESTAMP, "VERY_LONG_CALLSIGN", "Hi");
+            assert_eq!(msg.sender(), "VERY_LONG_CA"); // 12 chars
+
+            // Test text truncation (max 128 bytes)
+            let long_text = "A".repeat(200);
+            let msg = ChatMessage::new(0x1, TEST_TIMESTAMP, "X", &long_text);
+            assert_eq!(msg.text().len(), 128);
+        }
+
+        #[test]
+        fn test_chat_message_id() {
+            let msg = ChatMessage::new(0x12345678, 0x18D4A51_ABCDEF01, "X", "Y");
+            let id = msg.message_id();
+            // ID = (origin << 32) | (timestamp & 0xFFFFFFFF)
+            assert_eq!(id, (0x12345678u64 << 32) | 0xABCDEF01);
+        }
+
+        #[test]
+        fn test_chat_message_encode_decode() {
+            let mut msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "CHARLIE", "Test message");
+            msg.is_broadcast = true;
+            msg.requires_ack = true;
+            msg.set_reply_to(0xAABBCCDD, TEST_TIMESTAMP - 1000);
+
+            let encoded = msg.encode();
+            let (decoded, len) = ChatMessage::decode(&encoded).unwrap();
+
+            assert_eq!(len, encoded.len());
+            assert_eq!(decoded.origin_node, 0x12345678);
+            assert_eq!(decoded.timestamp, TEST_TIMESTAMP);
+            assert_eq!(decoded.sender(), "CHARLIE");
+            assert_eq!(decoded.text(), "Test message");
+            assert!(decoded.is_broadcast);
+            assert!(decoded.requires_ack);
+            assert_eq!(decoded.reply_to_node, 0xAABBCCDD);
+            assert_eq!(decoded.reply_to_timestamp, TEST_TIMESTAMP - 1000);
+        }
+
+        #[test]
+        fn test_chat_message_decode_empty_text() {
+            // Message with valid sender but empty text (allowed for ACK messages)
+            let msg = ChatMessage::new(0x1, TEST_TIMESTAMP, "ACK-NODE", "");
+            let encoded = msg.encode();
+            let (decoded, _) = ChatMessage::decode(&encoded).unwrap();
+            assert_eq!(decoded.sender(), "ACK-NODE");
+            assert_eq!(decoded.text(), "");
+        }
+
+        // ============================================================================
+        // ChatMessage Validation/Security Tests
+        // ============================================================================
+
+        #[test]
+        fn test_chat_message_decode_rejects_zero_origin() {
+            // Build message bytes manually with origin_node = 0
+            let msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "TEST", "msg");
+            let mut encoded = msg.encode();
+            // Zero out the origin_node (first 4 bytes)
+            encoded[0] = 0;
+            encoded[1] = 0;
+            encoded[2] = 0;
+            encoded[3] = 0;
+
+            assert!(ChatMessage::decode(&encoded).is_none());
+        }
+
+        #[test]
+        fn test_chat_message_decode_rejects_old_timestamp() {
+            // Build message bytes manually with timestamp before 2020
+            let msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "TEST", "msg");
+            let mut encoded = msg.encode();
+            // Set timestamp to 1000 (way before 2020)
+            let old_ts: u64 = 1000;
+            encoded[4..12].copy_from_slice(&old_ts.to_le_bytes());
+
+            assert!(ChatMessage::decode(&encoded).is_none());
+        }
+
+        #[test]
+        fn test_chat_message_decode_rejects_empty_sender() {
+            // Build message bytes manually with sender_len = 0
+            let msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "X", "msg");
+            let mut encoded = msg.encode();
+            // Set sender_len to 0 at offset 12
+            encoded[12] = 0;
+            // Adjust text position (move text_len and text to right after sender_len)
+            // This is tricky - we need to rebuild the encoding properly
+            // Actually easier to just build raw bytes:
+            let mut raw = Vec::new();
+            raw.extend_from_slice(&0x12345678u32.to_le_bytes()); // origin_node
+            raw.extend_from_slice(&TEST_TIMESTAMP.to_le_bytes()); // timestamp
+            raw.push(0); // sender_len = 0 (INVALID)
+            raw.push(3); // text_len = 3
+            raw.extend_from_slice(b"msg"); // text
+            raw.push(0x01); // flags
+
+            assert!(ChatMessage::decode(&raw).is_none());
+        }
+
+        #[test]
+        fn test_chat_message_decode_rejects_invalid_utf8_sender() {
+            // Build message with invalid UTF-8 in sender
+            let mut raw = Vec::new();
+            raw.extend_from_slice(&0x12345678u32.to_le_bytes()); // origin_node
+            raw.extend_from_slice(&TEST_TIMESTAMP.to_le_bytes()); // timestamp
+            raw.push(4); // sender_len = 4
+            raw.extend_from_slice(&[0x66, 0x59, 0xFF, 0xFE]); // "fY" + invalid UTF-8
+            raw.push(3); // text_len = 3
+            raw.extend_from_slice(b"msg"); // text
+            raw.push(0x01); // flags
+            raw.extend_from_slice(&0u32.to_le_bytes()); // reply_to_node
+            raw.extend_from_slice(&0u64.to_le_bytes()); // reply_to_timestamp
+
+            assert!(ChatMessage::decode(&raw).is_none());
+        }
+
+        #[test]
+        fn test_chat_message_decode_rejects_invalid_utf8_text() {
+            // Build message with invalid UTF-8 in text
+            let mut raw = Vec::new();
+            raw.extend_from_slice(&0x12345678u32.to_le_bytes()); // origin_node
+            raw.extend_from_slice(&TEST_TIMESTAMP.to_le_bytes()); // timestamp
+            raw.push(4); // sender_len = 4
+            raw.extend_from_slice(b"TEST"); // valid sender
+            raw.push(4); // text_len = 4
+            raw.extend_from_slice(&[0x80, 0x81, 0x82, 0x83]); // invalid UTF-8
+            raw.push(0x01); // flags
+            raw.extend_from_slice(&0u32.to_le_bytes()); // reply_to_node
+            raw.extend_from_slice(&0u64.to_le_bytes()); // reply_to_timestamp
+
+            assert!(ChatMessage::decode(&raw).is_none());
+        }
+
+        #[test]
+        fn test_chat_message_decode_accepts_valid_utf8() {
+            // Build message with valid UTF-8 including unicode
+            let mut raw = Vec::new();
+            raw.extend_from_slice(&0x12345678u32.to_le_bytes()); // origin_node
+            raw.extend_from_slice(&TEST_TIMESTAMP.to_le_bytes()); // timestamp
+            raw.push(6); // sender_len = 6 (UTF-8 encoded)
+            raw.extend_from_slice("TËST".as_bytes()); // valid UTF-8 with umlaut (5 bytes: T, Ë=2bytes, S, T)
+                                                      // Wait, "TËST" is 5 bytes not 6. Let me fix:
+            let sender_bytes = "TËST1".as_bytes(); // T(1) + Ë(2) + S(1) + T(1) + 1(1) = 6 bytes
+            raw[12] = sender_bytes.len() as u8;
+            raw.truncate(13);
+            raw.extend_from_slice(sender_bytes);
+            raw.push(4); // text_len = 4
+            raw.extend_from_slice(b"test"); // text
+            raw.push(0x01); // flags
+            raw.extend_from_slice(&0u32.to_le_bytes()); // reply_to_node
+            raw.extend_from_slice(&0u64.to_le_bytes()); // reply_to_timestamp
+
+            let result = ChatMessage::decode(&raw);
+            assert!(result.is_some());
+            let (msg, _) = result.unwrap();
+            assert_eq!(msg.sender(), "TËST1");
+        }
+
+        // ============================================================================
+        // ChatCRDT Tests
+        // ============================================================================
+
+        #[test]
+        fn test_chat_crdt_new() {
+            let chat = ChatCRDT::new();
+            assert!(chat.is_empty());
+            assert_eq!(chat.len(), 0);
+        }
+
+        #[test]
+        fn test_chat_crdt_add_message() {
+            let mut chat = ChatCRDT::new();
+
+            let msg = ChatMessage::new(0x12345678, TEST_TIMESTAMP, "ALPHA", "Hello");
+            assert!(chat.add_message(msg.clone()));
+            assert_eq!(chat.len(), 1);
+
+            // Duplicate should be rejected
+            assert!(!chat.add_message(msg));
+            assert_eq!(chat.len(), 1);
+        }
+
+        #[test]
+        fn test_chat_crdt_send_message() {
+            let mut chat = ChatCRDT::new();
+
+            assert!(chat.send_message(0x1, TEST_TIMESTAMP, "ALPHA", "First"));
+            assert!(chat.send_message(0x2, TEST_TIMESTAMP + 1, "BRAVO", "Second"));
+            assert_eq!(chat.len(), 2);
+
+            // Same node, same timestamp = duplicate
+            assert!(!chat.send_message(0x1, TEST_TIMESTAMP, "ALPHA", "Duplicate"));
+            assert_eq!(chat.len(), 2);
+        }
+
+        #[test]
+        fn test_chat_crdt_get_message() {
+            let mut chat = ChatCRDT::new();
+            chat.send_message(0x12345678, TEST_TIMESTAMP, "ALPHA", "Test");
+
+            let msg = chat.get_message(0x12345678, TEST_TIMESTAMP);
+            assert!(msg.is_some());
+            assert_eq!(msg.unwrap().text(), "Test");
+
+            // Non-existent message
+            assert!(chat.get_message(0x99999999, TEST_TIMESTAMP).is_none());
+        }
+
+        #[test]
+        fn test_chat_crdt_merge() {
+            let mut chat1 = ChatCRDT::new();
+            let mut chat2 = ChatCRDT::new();
+
+            chat1.send_message(0x1, TEST_TIMESTAMP, "ALPHA", "From 1");
+            chat2.send_message(0x2, TEST_TIMESTAMP + 1, "BRAVO", "From 2");
+
+            // Merge chat2 into chat1
+            let changed = chat1.merge(&chat2);
+            assert!(changed);
+            assert_eq!(chat1.len(), 2);
+
+            // Merge again - no changes
+            let changed = chat1.merge(&chat2);
+            assert!(!changed);
+            assert_eq!(chat1.len(), 2);
+        }
+
+        #[test]
+        fn test_chat_crdt_merge_duplicates() {
+            let mut chat1 = ChatCRDT::new();
+            let mut chat2 = ChatCRDT::new();
+
+            // Both have the same message
+            chat1.send_message(0x1, TEST_TIMESTAMP, "ALPHA", "Same message");
+            chat2.send_message(0x1, TEST_TIMESTAMP, "ALPHA", "Same message");
+
+            // Merge should not create duplicates
+            chat1.merge(&chat2);
+            assert_eq!(chat1.len(), 1);
+        }
+
+        #[test]
+        fn test_chat_crdt_pruning() {
+            let mut chat = ChatCRDT::new();
+
+            // Add more than CHAT_MAX_MESSAGES with valid timestamps
+            for i in 0..(CHAT_MAX_MESSAGES + 10) {
+                chat.send_message(i as u32 + 1, TEST_TIMESTAMP + i as u64, "X", "Y");
+            }
+
+            // Should be pruned to max
+            assert_eq!(chat.len(), CHAT_MAX_MESSAGES);
+
+            // Oldest messages should be removed (first 10)
+            // Message IDs are (node << 32) | (timestamp & 0xFFFFFFFF)
+            // node=1, ts=TEST_TIMESTAMP has lowest ID, etc.
+            assert!(chat.get_message(1, TEST_TIMESTAMP).is_none());
+            assert!(chat.get_message(10, TEST_TIMESTAMP + 9).is_none());
+            // Newer messages should remain
+            assert!(chat.get_message(11, TEST_TIMESTAMP + 10).is_some());
+        }
+
+        #[test]
+        fn test_chat_crdt_encode_decode() {
+            let mut chat = ChatCRDT::new();
+            chat.send_message(0x12345678, TEST_TIMESTAMP, "ALPHA", "First message");
+            chat.send_message(0xAABBCCDD, TEST_TIMESTAMP + 1000, "BRAVO", "Second message");
+
+            let encoded = chat.encode();
+            let decoded = ChatCRDT::decode(&encoded).unwrap();
+
+            assert_eq!(decoded.len(), 2);
+            assert!(decoded.get_message(0x12345678, TEST_TIMESTAMP).is_some());
+            assert!(decoded
+                .get_message(0xAABBCCDD, TEST_TIMESTAMP + 1000)
+                .is_some());
+        }
+
+        #[test]
+        fn test_chat_crdt_messages_since() {
+            let mut chat = ChatCRDT::new();
+            chat.send_message(0x1, TEST_TIMESTAMP, "A", "Old");
+            chat.send_message(0x2, TEST_TIMESTAMP + 1000, "B", "Mid");
+            chat.send_message(0x3, TEST_TIMESTAMP + 2000, "C", "New");
+
+            let recent: Vec<_> = chat.messages_since(TEST_TIMESTAMP + 500).collect();
+            assert_eq!(recent.len(), 2);
+        }
+
+        #[test]
+        fn test_chat_crdt_newest_timestamp() {
+            let mut chat = ChatCRDT::new();
+            assert!(chat.newest_timestamp().is_none());
+
+            chat.send_message(0x1, TEST_TIMESTAMP, "A", "1");
+            assert_eq!(chat.newest_timestamp(), Some(TEST_TIMESTAMP));
+
+            chat.send_message(0x2, TEST_TIMESTAMP + 2000, "B", "2");
+            assert_eq!(chat.newest_timestamp(), Some(TEST_TIMESTAMP + 2000));
+
+            chat.send_message(0x3, TEST_TIMESTAMP + 1000, "C", "3"); // older timestamp
+            assert_eq!(chat.newest_timestamp(), Some(TEST_TIMESTAMP + 2000));
+        }
+
+        // ============================================================================
+        // ChatCRDT Security/Validation Tests
+        // ============================================================================
+
+        #[test]
+        fn test_chat_crdt_decode_skips_invalid_messages() {
+            // Build a CRDT with 2 messages, one valid and one invalid
+            let mut valid_chat = ChatCRDT::new();
+            valid_chat.send_message(0x12345678, TEST_TIMESTAMP, "VALID", "Good message");
+
+            let encoded = valid_chat.encode();
+
+            // Decode should work and contain the valid message
+            let decoded = ChatCRDT::decode(&encoded).unwrap();
+            assert_eq!(decoded.len(), 1);
+            assert!(decoded.get_message(0x12345678, TEST_TIMESTAMP).is_some());
+        }
+
+        #[test]
+        fn test_chat_crdt_decode_handles_truncated_data() {
+            let mut chat = ChatCRDT::new();
+            chat.send_message(0x12345678, TEST_TIMESTAMP, "TEST", "Message");
+
+            let encoded = chat.encode();
+
+            // Truncate to just the message count
+            let truncated = &encoded[..2];
+            let decoded = ChatCRDT::decode(truncated);
+            assert!(decoded.is_some());
+            assert_eq!(decoded.unwrap().len(), 0); // No messages decoded
+        }
+    } // mod chat_tests
+}

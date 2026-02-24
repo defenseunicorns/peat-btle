@@ -1,0 +1,498 @@
+// Copyright (c) 2025-2026 (r)evolve - Revolve Team LLC
+// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Observer pattern for Eche mesh events
+//!
+//! This module provides the event types and observer trait for receiving
+//! notifications about mesh state changes. Platform implementations register
+//! observers to receive callbacks when peers are discovered, connected,
+//! disconnected, or when documents are synced.
+//!
+//! ## Usage
+//!
+//! ```ignore
+//! use eche_btle::observer::{EcheEvent, EcheObserver};
+//!
+//! struct MyObserver;
+//!
+//! impl EcheObserver for MyObserver {
+//!     fn on_event(&self, event: EcheEvent) {
+//!         match event {
+//!             EcheEvent::PeerDiscovered { peer } => {
+//!                 println!("Discovered: {}", peer.display_name());
+//!             }
+//!             EcheEvent::EmergencyReceived { from_node } => {
+//!                 println!("EMERGENCY from {:08X}", from_node.as_u32());
+//!             }
+//!             _ => {}
+//!         }
+//!     }
+//! }
+//! ```
+
+#[cfg(not(feature = "std"))]
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+#[cfg(feature = "std")]
+use std::sync::Arc;
+
+// Re-import Vec for EcheEvent variants
+#[cfg(feature = "std")]
+use std::string::String;
+#[cfg(feature = "std")]
+use std::vec::Vec;
+
+use crate::peer::EchePeer;
+use crate::sync::crdt::EventType;
+use crate::NodeId;
+
+/// Events emitted by the Eche mesh
+///
+/// These events notify observers about changes in mesh state, peer lifecycle,
+/// and document synchronization.
+#[derive(Debug, Clone)]
+pub enum EcheEvent {
+    // ==================== Peer Lifecycle Events ====================
+    /// A new peer was discovered via BLE scanning
+    PeerDiscovered {
+        /// The discovered peer
+        peer: EchePeer,
+    },
+
+    /// A peer connected to us (either direction)
+    PeerConnected {
+        /// Node ID of the connected peer
+        node_id: NodeId,
+    },
+
+    /// A peer disconnected
+    PeerDisconnected {
+        /// Node ID of the disconnected peer
+        node_id: NodeId,
+        /// Reason for disconnection
+        reason: DisconnectReason,
+    },
+
+    /// A peer was removed due to timeout (stale)
+    PeerLost {
+        /// Node ID of the lost peer
+        node_id: NodeId,
+    },
+
+    // ==================== Mesh Events ====================
+    /// An emergency event was received from a peer
+    EmergencyReceived {
+        /// Node ID that sent the emergency
+        from_node: NodeId,
+    },
+
+    /// An ACK event was received from a peer
+    AckReceived {
+        /// Node ID that sent the ACK
+        from_node: NodeId,
+    },
+
+    /// A generic event was received from a peer
+    EventReceived {
+        /// Node ID that sent the event
+        from_node: NodeId,
+        /// Type of event
+        event_type: EventType,
+    },
+
+    /// A document was synced with a peer
+    DocumentSynced {
+        /// Node ID that we synced with
+        from_node: NodeId,
+        /// Updated total counter value
+        total_count: u64,
+    },
+
+    /// An app-layer document was received and stored/merged
+    ///
+    /// Emitted when a registered app document type (0xC0-0xCF) is received
+    /// and successfully processed through the document registry.
+    AppDocumentReceived {
+        /// Document type ID (0xC0-0xCF)
+        type_id: u8,
+        /// Source node that created the document
+        source_node: NodeId,
+        /// Document creation timestamp
+        timestamp: u64,
+        /// True if the document was new or changed after merge
+        changed: bool,
+    },
+
+    // ==================== Mesh State Events ====================
+    /// Mesh state changed (peer count, connected count)
+    MeshStateChanged {
+        /// Total number of known peers
+        peer_count: usize,
+        /// Number of connected peers
+        connected_count: usize,
+    },
+
+    /// All peers have acknowledged an emergency
+    AllPeersAcked {
+        /// Number of peers that acknowledged
+        ack_count: usize,
+    },
+
+    // ==================== Per-Peer E2EE Events ====================
+    /// E2EE session established with a peer
+    PeerE2eeEstablished {
+        /// Node ID of the peer we established E2EE with
+        peer_node_id: NodeId,
+    },
+
+    /// E2EE session closed with a peer
+    PeerE2eeClosed {
+        /// Node ID of the peer whose E2EE session closed
+        peer_node_id: NodeId,
+    },
+
+    /// Received an E2EE encrypted message from a peer
+    PeerE2eeMessageReceived {
+        /// Node ID of the sender
+        from_node: NodeId,
+        /// Decrypted message data
+        data: Vec<u8>,
+    },
+
+    /// E2EE session failed to establish
+    PeerE2eeFailed {
+        /// Node ID of the peer
+        peer_node_id: NodeId,
+        /// Error description
+        error: String,
+    },
+
+    // ==================== Security Events ====================
+    /// A security violation was detected
+    SecurityViolation {
+        /// Type of violation
+        kind: SecurityViolationKind,
+        /// Optional source identifier (node_id, BLE identifier, etc.)
+        source: Option<String>,
+    },
+
+    // ==================== Relay Events ====================
+    /// A message was relayed to other peers
+    MessageRelayed {
+        /// Original sender of the message
+        origin_node: NodeId,
+        /// Number of peers the message was relayed to
+        relay_count: usize,
+        /// Current hop count
+        hop_count: u8,
+    },
+
+    /// A duplicate message was detected and dropped
+    DuplicateMessageDropped {
+        /// Original sender of the message
+        origin_node: NodeId,
+        /// How many times we've seen this message
+        seen_count: u32,
+    },
+
+    /// A message was dropped due to TTL expiration
+    MessageTtlExpired {
+        /// Original sender of the message
+        origin_node: NodeId,
+        /// Hop count when dropped
+        hop_count: u8,
+    },
+}
+
+impl EcheEvent {
+    /// Create a peer discovered event
+    pub fn peer_discovered(peer: EchePeer) -> Self {
+        Self::PeerDiscovered { peer }
+    }
+
+    /// Create a peer connected event
+    pub fn peer_connected(node_id: NodeId) -> Self {
+        Self::PeerConnected { node_id }
+    }
+
+    /// Create a peer disconnected event
+    pub fn peer_disconnected(node_id: NodeId, reason: DisconnectReason) -> Self {
+        Self::PeerDisconnected { node_id, reason }
+    }
+
+    /// Create a peer lost event (timeout)
+    pub fn peer_lost(node_id: NodeId) -> Self {
+        Self::PeerLost { node_id }
+    }
+
+    /// Create an emergency received event
+    pub fn emergency_received(from_node: NodeId) -> Self {
+        Self::EmergencyReceived { from_node }
+    }
+
+    /// Create an ACK received event
+    pub fn ack_received(from_node: NodeId) -> Self {
+        Self::AckReceived { from_node }
+    }
+
+    /// Create a generic event received
+    pub fn event_received(from_node: NodeId, event_type: EventType) -> Self {
+        Self::EventReceived {
+            from_node,
+            event_type,
+        }
+    }
+
+    /// Create a document synced event
+    pub fn document_synced(from_node: NodeId, total_count: u64) -> Self {
+        Self::DocumentSynced {
+            from_node,
+            total_count,
+        }
+    }
+
+    /// Create an app document received event
+    pub fn app_document_received(
+        type_id: u8,
+        source_node: NodeId,
+        timestamp: u64,
+        changed: bool,
+    ) -> Self {
+        Self::AppDocumentReceived {
+            type_id,
+            source_node,
+            timestamp,
+            changed,
+        }
+    }
+
+    /// Create a peer E2EE established event
+    pub fn peer_e2ee_established(peer_node_id: NodeId) -> Self {
+        Self::PeerE2eeEstablished { peer_node_id }
+    }
+
+    /// Create a peer E2EE closed event
+    pub fn peer_e2ee_closed(peer_node_id: NodeId) -> Self {
+        Self::PeerE2eeClosed { peer_node_id }
+    }
+
+    /// Create a peer E2EE message received event
+    pub fn peer_e2ee_message_received(from_node: NodeId, data: Vec<u8>) -> Self {
+        Self::PeerE2eeMessageReceived { from_node, data }
+    }
+
+    /// Create a peer E2EE failed event
+    pub fn peer_e2ee_failed(peer_node_id: NodeId, error: String) -> Self {
+        Self::PeerE2eeFailed {
+            peer_node_id,
+            error,
+        }
+    }
+
+    /// Create a security violation event
+    pub fn security_violation(kind: SecurityViolationKind, source: Option<String>) -> Self {
+        Self::SecurityViolation { kind, source }
+    }
+}
+
+/// Reason for peer disconnection
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DisconnectReason {
+    /// Local initiated disconnect
+    LocalRequest,
+    /// Remote peer initiated disconnect
+    RemoteRequest,
+    /// Connection timed out
+    Timeout,
+    /// BLE link lost
+    LinkLoss,
+    /// Connection failed
+    ConnectionFailed,
+    /// Unknown reason
+    #[default]
+    Unknown,
+}
+
+/// Types of security violations that can be detected
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityViolationKind {
+    /// Received unencrypted document when strict encryption mode is enabled
+    UnencryptedInStrictMode,
+    /// Decryption failed (wrong key or corrupted data)
+    DecryptionFailed,
+    /// Replay attack detected (duplicate message counter)
+    ReplayDetected,
+    /// Message from unknown/unauthorized node
+    UnauthorizedNode,
+}
+
+/// Observer trait for receiving Eche mesh events
+///
+/// Implement this trait to receive callbacks when mesh events occur.
+/// Observers must be thread-safe (Send + Sync) as they may be called
+/// from any thread.
+///
+/// ## Platform Notes
+///
+/// - **iOS/macOS**: Wrap in a Swift class that conforms to this protocol via UniFFI
+/// - **Android**: Implement via JNI callback interface
+/// - **ESP32**: Use direct Rust implementation with static callbacks
+pub trait EcheObserver: Send + Sync {
+    /// Called when a mesh event occurs
+    ///
+    /// This method should return quickly to avoid blocking the mesh.
+    /// If heavy processing is needed, dispatch to another thread.
+    fn on_event(&self, event: EcheEvent);
+}
+
+/// A simple observer that collects events into a vector (useful for testing)
+#[cfg(feature = "std")]
+#[derive(Debug, Default)]
+pub struct CollectingObserver {
+    events: std::sync::Mutex<Vec<EcheEvent>>,
+}
+
+#[cfg(feature = "std")]
+impl CollectingObserver {
+    /// Create a new collecting observer
+    pub fn new() -> Self {
+        Self {
+            events: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Get all collected events
+    pub fn events(&self) -> Vec<EcheEvent> {
+        self.events.lock().unwrap().clone()
+    }
+
+    /// Clear collected events
+    pub fn clear(&self) {
+        self.events.lock().unwrap().clear();
+    }
+
+    /// Get count of collected events
+    pub fn count(&self) -> usize {
+        self.events.lock().unwrap().len()
+    }
+}
+
+#[cfg(feature = "std")]
+impl EcheObserver for CollectingObserver {
+    fn on_event(&self, event: EcheEvent) {
+        self.events.lock().unwrap().push(event);
+    }
+}
+
+/// Helper to manage multiple observers
+#[cfg(feature = "std")]
+pub struct ObserverManager {
+    observers: std::sync::RwLock<Vec<Arc<dyn EcheObserver>>>,
+}
+
+#[cfg(feature = "std")]
+impl Default for ObserverManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "std")]
+impl ObserverManager {
+    /// Create a new observer manager
+    pub fn new() -> Self {
+        Self {
+            observers: std::sync::RwLock::new(Vec::new()),
+        }
+    }
+
+    /// Add an observer
+    pub fn add(&self, observer: Arc<dyn EcheObserver>) {
+        self.observers.write().unwrap().push(observer);
+    }
+
+    /// Remove an observer (by Arc pointer equality)
+    pub fn remove(&self, observer: &Arc<dyn EcheObserver>) {
+        self.observers
+            .write()
+            .unwrap()
+            .retain(|o| !Arc::ptr_eq(o, observer));
+    }
+
+    /// Notify all observers of an event
+    pub fn notify(&self, event: EcheEvent) {
+        // Use try_read to avoid panicking on poisoned locks
+        if let Ok(observers) = self.observers.try_read() {
+            for observer in observers.iter() {
+                observer.on_event(event.clone());
+            }
+        }
+    }
+
+    /// Get the number of registered observers
+    pub fn count(&self) -> usize {
+        self.observers.read().unwrap().len()
+    }
+}
+
+#[cfg(all(test, feature = "std"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_collecting_observer() {
+        let observer = CollectingObserver::new();
+
+        observer.on_event(EcheEvent::peer_connected(NodeId::new(0x12345678)));
+        observer.on_event(EcheEvent::emergency_received(NodeId::new(0x87654321)));
+
+        assert_eq!(observer.count(), 2);
+
+        let events = observer.events();
+        assert!(matches!(events[0], EcheEvent::PeerConnected { .. }));
+        assert!(matches!(events[1], EcheEvent::EmergencyReceived { .. }));
+
+        observer.clear();
+        assert_eq!(observer.count(), 0);
+    }
+
+    #[test]
+    fn test_observer_manager() {
+        let manager = ObserverManager::new();
+
+        // Keep concrete references for count checks
+        let obs1_concrete = Arc::new(CollectingObserver::new());
+        let obs2_concrete = Arc::new(CollectingObserver::new());
+        let observer1: Arc<dyn EcheObserver> = obs1_concrete.clone();
+        let observer2: Arc<dyn EcheObserver> = obs2_concrete.clone();
+
+        manager.add(observer1.clone());
+        manager.add(observer2.clone());
+
+        assert_eq!(manager.count(), 2);
+
+        manager.notify(EcheEvent::peer_connected(NodeId::new(0x12345678)));
+
+        assert_eq!(obs1_concrete.count(), 1);
+        assert_eq!(obs2_concrete.count(), 1);
+
+        manager.remove(&observer1);
+        assert_eq!(manager.count(), 1);
+
+        manager.notify(EcheEvent::peer_lost(NodeId::new(0x12345678)));
+
+        assert_eq!(obs1_concrete.count(), 1); // Not notified
+        assert_eq!(obs2_concrete.count(), 2); // Got both events
+    }
+}
