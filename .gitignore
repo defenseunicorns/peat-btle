@@ -1,0 +1,27 @@
+# Build artifacts
+target/
+**/*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local scripts (but allow CI scripts)
+/scripts/
+!/scripts/functional-test.sh
+
+# Android build artifacts (main library and examples)
+**/.gradle/
+**/build/
+**/.kotlin/
+**/local.properties
+android/src/main/jniLibs/
+*.apk
+*.aab
+

@@ -1,0 +1,4 @@
+module eche_apple_ffiFFI {
+    header "eche_apple_ffiFFI.h"
+    export *
+}

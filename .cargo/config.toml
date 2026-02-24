@@ -1,0 +1,82 @@
+# Cargo configuration for cross-compilation
+#
+# This file configures the linkers and build settings for cross-compiling
+# eche-btle to various Android and iOS targets.
+#
+# Android NDK Setup:
+# 1. Download the NDK from Android Studio or https://developer.android.com/ndk
+# 2. Set ANDROID_NDK_HOME environment variable
+# 3. Add Rust targets:
+#    rustup target add aarch64-linux-android armv7-linux-androideabi
+#
+# iOS Setup:
+# 1. Install Xcode
+# 2. Add Rust targets:
+#    rustup target add aarch64-apple-ios
+
+# ============================================================================
+# Android Targets
+# ============================================================================
+
+[target.aarch64-linux-android]
+# ARM64 (arm64-v8a) - Modern Android phones and tablets
+linker = "aarch64-linux-android21-clang"
+
+[target.armv7-linux-androideabi]
+# ARM32 (armeabi-v7a) - Older Android devices
+linker = "armv7a-linux-androideabi21-clang"
+
+[target.x86_64-linux-android]
+# x86_64 - Android emulators
+linker = "x86_64-linux-android21-clang"
+
+[target.i686-linux-android]
+# x86 - Older Android emulators
+linker = "i686-linux-android21-clang"
+
+# ============================================================================
+# iOS Targets
+# ============================================================================
+
+[target.aarch64-apple-ios]
+# iOS devices (iPhone, iPad)
+# Uses the default Xcode linker
+
+[target.aarch64-apple-ios-sim]
+# iOS simulator on Apple Silicon Macs
+# Uses the default Xcode linker
+
+[target.x86_64-apple-ios]
+# iOS simulator on Intel Macs
+# Uses the default Xcode linker
+
+# ============================================================================
+# Environment Variables for Android NDK
+# ============================================================================
+#
+# The Android NDK linkers should be in your PATH. You can add them by:
+#
+# export ANDROID_NDK_HOME=/path/to/android-ndk
+# export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+#
+# Or on macOS:
+# export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin:$PATH
+#
+# Alternatively, specify full paths to linkers:
+#
+# [target.aarch64-linux-android]
+# linker = "/path/to/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+
+# ============================================================================
+# Build Settings
+# ============================================================================
+
+[build]
+# Uncomment to set a default target
+# target = "aarch64-linux-android"
+
+[env]
+# Set this to the minimum Android API level you want to support
+# API 21 = Android 5.0 (Lollipop)
+# API 26 = Android 8.0 (Oreo) - Minimum for Wear OS 3
+ANDROID_API = "26"
