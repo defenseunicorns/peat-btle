@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+# Goa CI script for eche-btle
+# Triggered when changes are detected on the Radicle repo
+#
+# Architecture:
+#   - CI machine (kitlab): Runs fmt, clippy, tests, examples, orchestrates BLE test
+#   - rpi-ci: Runs BLE responder
+#   - rpi-ci2: Runs BLE test client
+#   - Functional test: rpi-ci2 ←─BLE─→ rpi-ci (discover, connect, sync, verify)
+#
+# Security: Only runs CI for:
+#   - Patches from delegates (automatic)
+#   - Community patches approved by delegate comment "ok-to-test"
+
+set -euo pipefail
+
+# Ensure cargo is in PATH for systemd/service environments
+export PATH="$HOME/.cargo/bin:$PATH"
+
+echo "=== Goa CI triggered at $(date) ==="
+echo "Commit: ${GOA_COMMIT_OID:-unknown}"
+echo "Patch: ${GOA_PATCH_ID:-none}"
+
+# Resource limits to prevent abuse
+ulimit -t 600 2>/dev/null || true      # 10 min CPU time
+ulimit -v 8388608 2>/dev/null || true  # 8GB virtual memory
+
+# Authorization check for patches
+if [ -n "${GOA_PATCH_ID:-}" ]; then
+    echo ""
+    echo "--- Authorization Check ---"
+
+    # Get patch author DID
+    PATCH_JSON=$(rad patch show "$GOA_PATCH_ID" 2>/dev/null || echo "{}")
+    AUTHOR_DID=$(echo "$PATCH_JSON" | grep -oP 'did:key:[a-zA-Z0-9]+' | head -1 || echo "")
+
+    # Get repository delegates
+    DELEGATES=$(rad inspect --delegates 2>/dev/null || echo "")
+
+    if [ -z "$AUTHOR_DID" ]; then
+        echo "WARNING: Could not determine patch author, proceeding anyway"
+    elif echo "$DELEGATES" | grep -q "$AUTHOR_DID"; then
+        echo "Author is delegate - authorized"
+    else
+        echo "Author is community member - checking for delegate approval..."
+
+        # Look for "ok-to-test" comment from a delegate
+        # Check patch comments for approval
+        PATCH_COMMENTS=$(rad patch show "$GOA_PATCH_ID" 2>/dev/null || echo "")
+        APPROVED=0
+
+        for DELEGATE in $DELEGATES; do
+            # Extract just the DID part
+            DELEGATE_DID=$(echo "$DELEGATE" | grep -oP 'did:key:[a-zA-Z0-9]+' || echo "$DELEGATE")
+            if echo "$PATCH_COMMENTS" | grep -B5 "ok-to-test" | grep -q "$DELEGATE_DID"; then
+                echo "Found approval from delegate: $DELEGATE_DID"
+                APPROVED=1
+                break
+            fi
+        done
+
+        if [ $APPROVED -eq 0 ]; then
+            echo ""
+            echo "=== CI skipped: Awaiting delegate approval ==="
+            echo "A delegate must comment 'ok-to-test' to run CI on community patches."
+            exit 0
+        fi
+    fi
+fi
+
+# Pull latest changes and checkout the commit under test
+git fetch rad
+
+ORIGINAL_REF=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD)
+COMMIT="${GOA_COMMIT_OID:-}"
+
+if [ -n "$COMMIT" ]; then
+    echo "Checking out commit: $COMMIT"
+    git checkout --quiet "$COMMIT" || {
+        echo "ERROR: Failed to checkout $COMMIT"
+        exit 1
+    }
+fi
+
+# Ensure we restore the original branch/commit on exit
+cleanup() {
+    if [ -n "${ORIGINAL_REF:-}" ]; then
+        echo "Restoring working tree to $ORIGINAL_REF"
+        git checkout --quiet "$ORIGINAL_REF" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+# Track CI results
+FMT_STATUS="skip"
+CLIPPY_STATUS="skip"
+TESTS_STATUS="skip"
+EXAMPLES_STATUS="skip"
+FUNCTIONAL_STATUS="skip"
+HAS_FAILURE=0
+
+# Raspberry Pi BLE test rig configuration
+# Two Pis: one runs the responder, the other runs the client
+RESPONDER_HOST="${RESPONDER_HOST:-kit@rpi-ci}"
+CLIENT_HOST="${CLIENT_HOST:-kit@rpi-ci2}"
+REMOTE_REPO="${REMOTE_REPO:-/home/kit/eche-btle}"
+
+# Run CI checks with timeouts
+CI_TIMEOUT=300  # 5 minutes per step
+
+echo ""
+echo "--- Format Check ---"
+if timeout $CI_TIMEOUT cargo fmt --check; then
+    FMT_STATUS="pass"
+else
+    FMT_STATUS="FAIL"
+    HAS_FAILURE=1
+fi
+
+echo ""
+echo "--- Clippy ---"
+if timeout $CI_TIMEOUT cargo clippy --features linux -- -D warnings; then
+    CLIPPY_STATUS="pass"
+else
+    CLIPPY_STATUS="FAIL"
+    HAS_FAILURE=1
+fi
+
+echo ""
+echo "--- Tests ---"
+if timeout $CI_TIMEOUT cargo test --features linux; then
+    TESTS_STATUS="pass"
+else
+    TESTS_STATUS="FAIL"
+    HAS_FAILURE=1
+fi
+
+echo ""
+echo "--- Examples ---"
+if timeout $CI_TIMEOUT cargo check --examples --features linux; then
+    EXAMPLES_STATUS="pass"
+else
+    EXAMPLES_STATUS="FAIL"
+    HAS_FAILURE=1
+fi
+
+echo ""
+echo "--- Functional Test (rpi-ci ↔ rpi-ci2) ---"
+# Pi-to-Pi BLE test: rpi-ci runs the responder, rpi-ci2 runs the client
+
+# Check both Pis are reachable
+SKIP_FUNCTIONAL=0
+if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$RESPONDER_HOST" "true" 2>/dev/null; then
+    echo "Skipped (responder Pi unreachable: $RESPONDER_HOST)"
+    SKIP_FUNCTIONAL=1
+elif ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$CLIENT_HOST" "true" 2>/dev/null; then
+    echo "Skipped (client Pi unreachable: $CLIENT_HOST)"
+    SKIP_FUNCTIONAL=1
+fi
+
+if [[ "$SKIP_FUNCTIONAL" -eq 1 ]]; then
+    FUNCTIONAL_STATUS="skip"
+else
+    # Check both Pis have BT adapters
+    RESP_BT=$(ssh -o BatchMode=yes "$RESPONDER_HOST" "hciconfig 2>/dev/null | grep -c '^hci' || echo 0")
+    CLIENT_BT=$(ssh -o BatchMode=yes "$CLIENT_HOST" "hciconfig 2>/dev/null | grep -c '^hci' || echo 0")
+
+    if [[ "$RESP_BT" -lt 1 ]] || [[ "$CLIENT_BT" -lt 1 ]]; then
+        echo "Skipped (responder BT=$RESP_BT, client BT=$CLIENT_BT — need at least 1 each)"
+        FUNCTIONAL_STATUS="skip"
+    else
+        echo "Responder ($RESPONDER_HOST): $RESP_BT adapter(s)"
+        echo "Client ($CLIENT_HOST): $CLIENT_BT adapter(s)"
+
+        # Sync source to both Pis
+        echo "Syncing source to Pis..."
+        rsync -az --delete \
+            --exclude 'target/' \
+            --exclude 'android/build/' \
+            --exclude 'android/.gradle/' \
+            --exclude '.git/' \
+            ./ "$RESPONDER_HOST:$REMOTE_REPO/" &
+        RSYNC1=$!
+        rsync -az --delete \
+            --exclude 'target/' \
+            --exclude 'android/build/' \
+            --exclude 'android/.gradle/' \
+            --exclude '.git/' \
+            ./ "$CLIENT_HOST:$REMOTE_REPO/" &
+        RSYNC2=$!
+        wait $RSYNC1 $RSYNC2
+
+        # Build on both Pis in parallel
+        echo "Building on both Pis..."
+        ssh -o BatchMode=yes "$RESPONDER_HOST" "cd $REMOTE_REPO && source ~/.cargo/env && cargo build --release --features linux --example ble_responder" &
+        BUILD1=$!
+        ssh -o BatchMode=yes "$CLIENT_HOST" "cd $REMOTE_REPO && source ~/.cargo/env && cargo build --release --features linux --example ble_test_client" &
+        BUILD2=$!
+        wait $BUILD1 $BUILD2
+
+        # Clear BlueZ device caches to prevent stale names from causing discovery failures
+        echo "Clearing BlueZ device caches..."
+        ssh -o BatchMode=yes "$CLIENT_HOST" "bluetoothctl devices | awk '{print \$2}' | xargs -I{} bluetoothctl remove {} 2>/dev/null || true"
+        ssh -o BatchMode=yes "$RESPONDER_HOST" "bluetoothctl devices | awk '{print \$2}' | xargs -I{} bluetoothctl remove {} 2>/dev/null || true"
+
+        # Start responder on rpi-ci (background), capture PID
+        echo "Starting responder on $RESPONDER_HOST..."
+        ssh -o BatchMode=yes "$RESPONDER_HOST" \
+            "cd $REMOTE_REPO && source ~/.cargo/env && (nohup ./target/release/examples/ble_responder --mesh-id CITEST --callsign PI-RESP </dev/null >/tmp/responder.log 2>&1 & echo \$! >/tmp/responder.pid) && cat /tmp/responder.pid" > /tmp/responder_pid.txt
+        RESPONDER_PID=$(cat /tmp/responder_pid.txt)
+        echo "Responder PID: $RESPONDER_PID"
+        sleep 3
+
+        # Run client on rpi-ci2
+        echo "Running client on $CLIENT_HOST (rpi-ci2 → rpi-ci)..."
+        RESULT=0
+        ssh -o BatchMode=yes "$CLIENT_HOST" \
+            "cd $REMOTE_REPO && source ~/.cargo/env && timeout 90 ./target/release/examples/ble_test_client --adapter hci0 --mesh-id CITEST --timeout 60" || RESULT=$?
+
+        # Stop responder
+        echo "Stopping responder..."
+        ssh -o BatchMode=yes "$RESPONDER_HOST" "kill $RESPONDER_PID 2>/dev/null || true"
+
+        if [[ $RESULT -eq 0 ]]; then
+            FUNCTIONAL_STATUS="pass"
+        else
+            echo "Client failed with exit code: $RESULT"
+            echo "--- Responder log (rpi-ci) ---"
+            ssh -o BatchMode=yes "$RESPONDER_HOST" "tail -30 /tmp/responder.log" || true
+            FUNCTIONAL_STATUS="FAIL"
+            HAS_FAILURE=1
+        fi
+    fi
+fi
+
+echo ""
+
+# Build status message
+STATUS_MSG="fmt: ${FMT_STATUS}, clippy: ${CLIPPY_STATUS}, tests: ${TESTS_STATUS}, examples: ${EXAMPLES_STATUS}, functional: ${FUNCTIONAL_STATUS}"
+
+# Report results to patch if this is a patch trigger
+if [ -n "${GOA_PATCH_ID:-}" ]; then
+    if [ $HAS_FAILURE -eq 0 ]; then
+        echo "=== CI passed, accepting patch ==="
+        rad patch review "$GOA_PATCH_ID" --accept -m "CI passed - ${STATUS_MSG}"
+    else
+        echo "=== CI failed, rejecting patch ==="
+        rad patch review "$GOA_PATCH_ID" --reject -m "CI failed - ${STATUS_MSG}"
+    fi
+fi
+
+# Final status
+if [ $HAS_FAILURE -eq 0 ]; then
+    echo "=== CI completed successfully ==="
+    exit 0
+else
+    echo "=== CI failed: ${STATUS_MSG} ==="
+    exit 1
+fi
