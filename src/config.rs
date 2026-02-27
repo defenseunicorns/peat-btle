@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Configuration types for ECHE-BTLE
+//! Configuration types for PEAT-BTLE
 //!
 //! Provides configuration structures for BLE transport, discovery,
 //! GATT, mesh, power management, and security settings.
@@ -79,7 +79,7 @@ pub enum PowerProfile {
     Balanced,
 
     /// Low Power - ~2% duty cycle, ~20+ hour watch battery
-    /// Recommended for Eche-Lite nodes
+    /// Recommended for Peat-Lite nodes
     LowPower,
 
     /// Custom power profile with explicit parameters
@@ -232,7 +232,7 @@ pub struct MeshConfig {
     /// Mesh identifier - nodes only auto-connect to peers with matching mesh ID
     ///
     /// Format: 4-character alphanumeric (e.g., "DEMO", "ALFA", "TEST")
-    /// This maps to the `app_id` concept in eche-protocol.
+    /// This maps to the `app_id` concept in peat-protocol.
     pub mesh_id: String,
     /// Maximum number of simultaneous connections
     pub max_connections: u8,
@@ -259,9 +259,9 @@ impl MeshConfig {
 
     /// Generate the BLE device name for this node
     ///
-    /// Format: `ECHE_<MESH_ID>-<NODE_ID>` (e.g., "ECHE_DEMO-12345678")
+    /// Format: `PEAT_<MESH_ID>-<NODE_ID>` (e.g., "PEAT_DEMO-12345678")
     pub fn device_name(&self, node_id: NodeId) -> String {
-        format!("ECHE_{}-{:08X}", self.mesh_id, node_id.as_u32())
+        format!("PEAT_{}-{:08X}", self.mesh_id, node_id.as_u32())
     }
 
     /// Parse mesh ID and node ID from a device name
@@ -269,16 +269,16 @@ impl MeshConfig {
     /// Returns `Some((mesh_id, node_id))` for valid names, `None` otherwise.
     ///
     /// Supports both formats:
-    /// - New: `ECHE_<MESH_ID>-<NODE_ID>` (e.g., "ECHE_DEMO-12345678")
-    /// - Legacy: `ECHE-<NODE_ID>` (e.g., "ECHE-12345678") - returns None for mesh_id
+    /// - New: `PEAT_<MESH_ID>-<NODE_ID>` (e.g., "PEAT_DEMO-12345678")
+    /// - Legacy: `PEAT-<NODE_ID>` (e.g., "PEAT-12345678") - returns None for mesh_id
     pub fn parse_device_name(name: &str) -> Option<(Option<String>, NodeId)> {
-        if let Some(rest) = name.strip_prefix("ECHE_") {
-            // New format: ECHE_MESHID-NODEID
+        if let Some(rest) = name.strip_prefix("PEAT_") {
+            // New format: PEAT_MESHID-NODEID
             let (mesh_id, node_id_str) = rest.split_once('-')?;
             let node_id = u32::from_str_radix(node_id_str, 16).ok()?;
             Some((Some(mesh_id.to_string()), NodeId::new(node_id)))
-        } else if let Some(node_id_str) = name.strip_prefix("ECHE-") {
-            // Legacy format: ECHE-NODEID (no mesh ID)
+        } else if let Some(node_id_str) = name.strip_prefix("PEAT-") {
+            // Legacy format: PEAT-NODEID (no mesh ID)
             let node_id = u32::from_str_radix(node_id_str, 16).ok()?;
             Some((None, NodeId::new(node_id)))
         } else {
@@ -419,13 +419,13 @@ impl BleConfig {
         }
     }
 
-    /// Create a Eche-Lite optimized configuration
+    /// Create a Peat-Lite optimized configuration
     ///
     /// Optimized for battery efficiency with:
     /// - Low power profile (~2% duty cycle)
     /// - Leaf node (no children)
     /// - Minimal scanning
-    pub fn eche_lite(node_id: NodeId) -> Self {
+    pub fn peat_lite(node_id: NodeId) -> Self {
         let mut config = Self::new(node_id);
         config.power_profile = PowerProfile::LowPower;
         config.mesh.max_children = 0; // Leaf node
@@ -457,26 +457,26 @@ impl Default for BleConfig {
 
 /// Get the compile-time embedded encryption secret, if set.
 ///
-/// Set the `ECHE_ENCRYPTION_SECRET` environment variable during build to embed
+/// Set the `PEAT_ENCRYPTION_SECRET` environment variable during build to embed
 /// a 64-character hex string (32 bytes) as the default mesh encryption secret.
 ///
 /// # Example
 ///
 /// Build with embedded secret:
 /// ```bash
-/// ECHE_ENCRYPTION_SECRET=0102030405060708091011121314151617181920212223242526272829303132 \
+/// PEAT_ENCRYPTION_SECRET=0102030405060708091011121314151617181920212223242526272829303132 \
 ///   cargo build --release
 /// ```
 ///
 /// Use in code:
 /// ```ignore
-/// use eche_btle::config::embedded_encryption_secret;
-/// use eche_btle::eche_mesh::EcheMeshConfig;
+/// use peat_btle::config::embedded_encryption_secret;
+/// use peat_btle::peat_mesh::PeatMeshConfig;
 ///
 /// let config = if let Some(secret) = embedded_encryption_secret() {
-///     EcheMeshConfig::new(node_id, "CALL", "MESH").with_encryption(secret)
+///     PeatMeshConfig::new(node_id, "CALL", "MESH").with_encryption(secret)
 /// } else {
-///     EcheMeshConfig::new(node_id, "CALL", "MESH")
+///     PeatMeshConfig::new(node_id, "CALL", "MESH")
 /// };
 /// ```
 ///
@@ -489,26 +489,26 @@ impl Default for BleConfig {
 /// For dynamic secret management, use `MeshGenesis` or runtime configuration.
 pub fn embedded_encryption_secret() -> Option<[u8; 32]> {
     // Read at compile time - returns None if not set
-    option_env!("ECHE_ENCRYPTION_SECRET").and_then(parse_hex_secret)
+    option_env!("PEAT_ENCRYPTION_SECRET").and_then(parse_hex_secret)
 }
 
 /// Get the compile-time embedded mesh ID, if set.
 ///
-/// Set the `ECHE_MESH_ID` environment variable during build to embed
+/// Set the `PEAT_MESH_ID` environment variable during build to embed
 /// a default mesh ID.
 ///
 /// # Example
 ///
 /// ```bash
-/// ECHE_MESH_ID=ALPHA cargo build --release
+/// PEAT_MESH_ID=ALPHA cargo build --release
 /// ```
 pub fn embedded_mesh_id() -> Option<&'static str> {
-    option_env!("ECHE_MESH_ID")
+    option_env!("PEAT_MESH_ID")
 }
 
 /// Check if a compile-time encryption secret was embedded.
 pub fn has_embedded_encryption_secret() -> bool {
-    option_env!("ECHE_ENCRYPTION_SECRET").is_some()
+    option_env!("PEAT_ENCRYPTION_SECRET").is_some()
 }
 
 /// Parse a 64-character hex string into a 32-byte array.
@@ -559,8 +559,8 @@ mod tests {
     }
 
     #[test]
-    fn test_eche_lite_config() {
-        let config = BleConfig::eche_lite(NodeId::new(0x12345678));
+    fn test_peat_lite_config() {
+        let config = BleConfig::peat_lite(NodeId::new(0x12345678));
         assert_eq!(config.mesh.max_children, 0);
         assert_eq!(config.power_profile, PowerProfile::LowPower);
         assert_eq!(config.discovery.scan_interval_ms, 5000);
@@ -592,23 +592,23 @@ mod tests {
     fn test_device_name_generation() {
         let config = MeshConfig::new("DEMO");
         let name = config.device_name(NodeId::new(0x12345678));
-        assert_eq!(name, "ECHE_DEMO-12345678");
+        assert_eq!(name, "PEAT_DEMO-12345678");
 
         let config = MeshConfig::new("ALFA");
         let name = config.device_name(NodeId::new(0xDEADBEEF));
-        assert_eq!(name, "ECHE_ALFA-DEADBEEF");
+        assert_eq!(name, "PEAT_ALFA-DEADBEEF");
     }
 
     #[test]
     fn test_parse_device_name_new_format() {
-        // New format: ECHE_MESHID-NODEID
-        let result = MeshConfig::parse_device_name("ECHE_DEMO-12345678");
+        // New format: PEAT_MESHID-NODEID
+        let result = MeshConfig::parse_device_name("PEAT_DEMO-12345678");
         assert!(result.is_some());
         let (mesh_id, node_id) = result.unwrap();
         assert_eq!(mesh_id, Some("DEMO".to_string()));
         assert_eq!(node_id.as_u32(), 0x12345678);
 
-        let result = MeshConfig::parse_device_name("ECHE_ALFA-DEADBEEF");
+        let result = MeshConfig::parse_device_name("PEAT_ALFA-DEADBEEF");
         assert!(result.is_some());
         let (mesh_id, node_id) = result.unwrap();
         assert_eq!(mesh_id, Some("ALFA".to_string()));
@@ -617,8 +617,8 @@ mod tests {
 
     #[test]
     fn test_parse_device_name_legacy_format() {
-        // Legacy format: ECHE-NODEID (no mesh ID)
-        let result = MeshConfig::parse_device_name("ECHE-12345678");
+        // Legacy format: PEAT-NODEID (no mesh ID)
+        let result = MeshConfig::parse_device_name("PEAT-12345678");
         assert!(result.is_some());
         let (mesh_id, node_id) = result.unwrap();
         assert_eq!(mesh_id, None);
@@ -627,8 +627,8 @@ mod tests {
 
     #[test]
     fn test_parse_device_name_invalid() {
-        assert!(MeshConfig::parse_device_name("NotECHE").is_none());
-        assert!(MeshConfig::parse_device_name("ECHE_DEMO").is_none()); // Missing node ID
+        assert!(MeshConfig::parse_device_name("NotPEAT").is_none());
+        assert!(MeshConfig::parse_device_name("PEAT_DEMO").is_none()); // Missing node ID
         assert!(MeshConfig::parse_device_name("").is_none());
     }
 

@@ -13,23 +13,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Document synchronization for Eche BLE mesh
+//! Document synchronization for Peat BLE mesh
 //!
-//! This module provides centralized document state management for Eche-Lite nodes.
+//! This module provides centralized document state management for Peat-Lite nodes.
 //! It manages the local CRDT state (GCounter) and handles merging with received documents.
 //!
 //! ## Design Notes
 //!
 //! This implementation uses a simple GCounter for resource-constrained devices (ESP32,
-//! smartwatches). For full Eche nodes using AutomergeIroh, this component can be replaced
+//! smartwatches). For full Peat nodes using AutomergeIroh, this component can be replaced
 //! or extended - the observer pattern and BLE transport layer are independent of the
 //! document format.
 //!
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::document_sync::DocumentSync;
-//! use eche_btle::NodeId;
+//! use peat_btle::document_sync::DocumentSync;
+//! use peat_btle::NodeId;
 //!
 //! let sync = DocumentSync::new(NodeId::new(0x12345678), "SOLDIER-1");
 //!
@@ -55,21 +55,21 @@ use spin::RwLock;
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use crate::document::{EcheDocument, MergeResult};
+use crate::document::{MergeResult, PeatDocument};
 #[cfg(feature = "legacy-chat")]
 use crate::sync::crdt::{ChatCRDT, ChatMessage};
 use crate::sync::crdt::{EmergencyEvent, EventType, GCounter, Peripheral, PeripheralType};
 use crate::NodeId;
 
-/// Document synchronization manager for Eche-Lite nodes
+/// Document synchronization manager for Peat-Lite nodes
 ///
 /// Manages the local CRDT state and handles document serialization/merging.
 /// Thread-safe for use from multiple BLE callbacks.
 ///
-/// ## Integration with Full Eche
+/// ## Integration with Full Peat
 ///
 /// This implementation uses a simple GCounter suitable for embedded devices.
-/// For integration with the larger Eche project using AutomergeIroh:
+/// For integration with the larger Peat project using AutomergeIroh:
 /// - The `build_document()` output can be wrapped in an Automerge-compatible format
 /// - The observer events (Emergency, Ack, DocumentSynced) work with any backend
 /// - The BLE transport layer is document-format agnostic
@@ -549,7 +549,7 @@ impl DocumentSync {
         #[cfg(feature = "legacy-chat")]
         let chat = self.chat.read().unwrap().as_ref().map(|c| c.for_sync());
 
-        let doc = EcheDocument {
+        let doc = PeatDocument {
             version: self.version.load(Ordering::Relaxed),
             node_id: self.node_id,
             counter,
@@ -567,7 +567,7 @@ impl DocumentSync {
     /// Returns `Some(MergeResult)` if the document was valid, `None` otherwise.
     /// The result contains information about what changed and any events.
     pub fn merge_document(&self, data: &[u8]) -> Option<MergeResult> {
-        let received = EcheDocument::decode(data)?;
+        let received = PeatDocument::decode(data)?;
 
         // Don't process our own documents
         if received.node_id == self.node_id {
@@ -639,8 +639,8 @@ impl DocumentSync {
     }
 
     /// Create a document from raw bytes (for inspection without merging)
-    pub fn decode_document(data: &[u8]) -> Option<EcheDocument> {
-        EcheDocument::decode(data)
+    pub fn decode_document(data: &[u8]) -> Option<PeatDocument> {
+        PeatDocument::decode(data)
     }
 
     // ==================== Internal Helpers ====================
@@ -671,7 +671,7 @@ pub struct DocumentCheck {
 impl DocumentCheck {
     /// Quick check of a document without full parsing
     pub fn from_document(data: &[u8]) -> Option<Self> {
-        let doc = EcheDocument::decode(data)?;
+        let doc = PeatDocument::decode(data)?;
 
         let (is_emergency, is_ack) = doc
             .peripheral
@@ -723,7 +723,7 @@ mod tests {
         assert!(!sync.is_ack_active());
 
         // Verify we can decode what we sent
-        let doc = EcheDocument::decode(&doc_bytes).unwrap();
+        let doc = PeatDocument::decode(&doc_bytes).unwrap();
         assert_eq!(doc.node_id.as_u32(), 0x12345678);
         assert!(doc.peripheral.is_some());
         let event = doc.peripheral.unwrap().last_event.unwrap();

@@ -1,14 +1,14 @@
-# eche-btle
+# peat-btle
 
 Bluetooth Low Energy mesh transport for tactical edge networking.
 
-[![Crate](https://img.shields.io/crates/v/eche-btle.svg)](https://crates.io/crates/eche-btle)
-[![Documentation](https://docs.rs/eche-btle/badge.svg)](https://docs.rs/eche-btle)
+[![Crate](https://img.shields.io/crates/v/peat-btle.svg)](https://crates.io/crates/peat-btle)
+[![Documentation](https://docs.rs/peat-btle/badge.svg)](https://docs.rs/peat-btle)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 ## Overview
 
-`eche-btle` provides a cross-platform Bluetooth Low Energy mesh networking stack optimized for resource-constrained tactical devices. It enables peer-to-peer discovery, advertisement, connectivity, and efficient CRDT-based data synchronization over BLE.
+`peat-btle` provides a cross-platform Bluetooth Low Energy mesh networking stack optimized for resource-constrained tactical devices. It enables peer-to-peer discovery, advertisement, connectivity, and efficient CRDT-based data synchronization over BLE.
 
 ### Key Features
 
@@ -19,11 +19,11 @@ Bluetooth Low Energy mesh transport for tactical edge networking.
 - **Efficient Sync**: Delta-based CRDT synchronization over GATT
 - **Embedded Ready**: `no_std` support for bare-metal targets
 
-### Why eche-btle?
+### Why peat-btle?
 
 Traditional BLE mesh implementations (like those in commercial sync SDKs) often suffer from:
 
-| Problem | Impact | eche-btle Solution |
+| Problem | Impact | peat-btle Solution |
 |---------|--------|-------------------|
 | Continuous scanning | 20%+ radio duty cycle | Batched sync windows (<5%) |
 | Gossip-based discovery | All devices advertise constantly | Hierarchical discovery (leaf nodes don't scan) |
@@ -49,7 +49,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-eche-btle = { version = "0.1", features = ["linux"] }
+peat-btle = { version = "0.1", features = ["linux"] }
 ```
 
 ### Feature Flags
@@ -70,7 +70,7 @@ eche-btle = { version = "0.1", features = ["linux"] }
 ## Quick Start
 
 ```rust
-use eche_btle::{BleConfig, BluetoothLETransport, NodeId, PowerProfile};
+use peat_btle::{BleConfig, BluetoothLETransport, NodeId, PowerProfile};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -80,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create platform adapter (Linux example)
     #[cfg(feature = "linux")]
-    let adapter = eche_btle::platform::linux::BluerAdapter::new().await?;
+    let adapter = peat_btle::platform::linux::BluerAdapter::new().await?;
 
     // Create and start transport
     let transport = BluetoothLETransport::new(config, adapter);
@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Standalone vs HIVE Integration
 
-eche-btle is designed for **dual use**:
+peat-btle is designed for **dual use**:
 
 1. **Standalone**: Pure embedded mesh (ESP32/Pico devices) without any full HIVE nodes
 2. **HIVE Integration**: BLE transport for full HIVE nodes, with gateway translation to Automerge
@@ -117,24 +117,24 @@ eche-btle is designed for **dual use**:
 │  │                            ↕                                       │  │
 │  │  ┌─────────────────────────────────────────────────────────────┐  │  │
 │  │  │              Translation Layer (HIVE repo)                   │  │  │
-│  │  │        Maps: Automerge ↔ eche-btle lightweight               │  │  │
+│  │  │        Maps: Automerge ↔ peat-btle lightweight               │  │  │
 │  │  └─────────────────────────────────────────────────────────────┘  │  │
 │  │                            ↕                                       │  │
 │  │  ┌─────────────────────────────────────────────────────────────┐  │  │
-│  │  │                      eche-btle                               │  │  │
+│  │  │                      peat-btle                               │  │  │
 │  │  │            (BLE transport + lightweight CRDTs)               │  │  │
 │  │  └─────────────────────────────────────────────────────────────┘  │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                ↕ BLE                                     │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
 │  │               Embedded Node (ESP32/Pico)                           │  │
-│  │                        eche-btle                                   │  │
+│  │                        peat-btle                                   │  │
 │  │              (standalone, lightweight CRDTs)                       │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Why two modes?** Automerge is too resource-intensive for embedded targets (requires ~10MB+ RAM, `std` library). eche-btle's lightweight CRDTs (GCounter, Peripheral) provide the same semantics in <256KB RAM. Full HIVE nodes translate between formats.
+**Why two modes?** Automerge is too resource-intensive for embedded targets (requires ~10MB+ RAM, `std` library). peat-btle's lightweight CRDTs (GCounter, Peripheral) provide the same semantics in <256KB RAM. Full HIVE nodes translate between formats.
 
 ### Component Architecture
 
@@ -160,7 +160,7 @@ eche-btle is designed for **dual use**:
 
 | Component | Description |
 |-----------|-------------|
-| **Discovery** | Eche beacon format, scanning, and advertising |
+| **Discovery** | Peat beacon format, scanning, and advertising |
 | **GATT** | BLE service definition and sync protocol |
 | **Mesh** | Topology management and message routing |
 | **PHY** | Physical layer configuration (1M, 2M, Coded) |
@@ -180,11 +180,11 @@ eche-btle is designed for **dual use**:
 
 ## GATT Service
 
-eche-btle defines a custom GATT service for mesh communication:
+peat-btle defines a custom GATT service for mesh communication:
 
 | UUID | Characteristic | Description |
 |------|----------------|-------------|
-| `0xF47A` | Service | Eche BLE Service (16-bit short form) |
+| `0xF47A` | Service | Peat BLE Service (16-bit short form) |
 | `0x0001` | Node Info | Node ID, capabilities, hierarchy level |
 | `0x0002` | Sync State | Vector clock and sync metadata |
 | `0x0003` | Sync Data | CRDT delta payloads (chunked) |
@@ -193,21 +193,21 @@ eche-btle defines a custom GATT service for mesh communication:
 
 ## Mesh-Wide Encryption
 
-eche-btle supports optional mesh-wide encryption using ChaCha20-Poly1305 AEAD. When enabled, all documents are encrypted before transmission, providing confidentiality across multi-hop BLE relay.
+peat-btle supports optional mesh-wide encryption using ChaCha20-Poly1305 AEAD. When enabled, all documents are encrypted before transmission, providing confidentiality across multi-hop BLE relay.
 
 ### Enabling Encryption
 
 ```rust
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
+use peat_btle::{PeatMesh, PeatMeshConfig, NodeId};
 
 // Create a 32-byte shared secret (distribute securely to all mesh nodes)
 let secret: [u8; 32] = [0x42; 32]; // Use a real secret in production!
 
 // Configure mesh with encryption
-let config = EcheMeshConfig::new(NodeId::new(0x12345678), "ALPHA-1", "DEMO")
+let config = PeatMeshConfig::new(NodeId::new(0x12345678), "ALPHA-1", "DEMO")
     .with_encryption(secret);
 
-let mesh = EcheMesh::new(config);
+let mesh = PeatMesh::new(config);
 
 // All documents sent through this mesh are now encrypted
 let encrypted_doc = mesh.build_document();
@@ -239,19 +239,19 @@ Nodes without the shared secret can relay encrypted documents but cannot read th
 
 ## Per-Peer E2EE (End-to-End Encryption)
 
-For sensitive communications, eche-btle supports per-peer end-to-end encryption using X25519 key exchange and ChaCha20-Poly1305. Unlike mesh-wide encryption where all formation members share a key, per-peer E2EE ensures only the sender and recipient can decrypt messages—even other mesh members cannot read them.
+For sensitive communications, peat-btle supports per-peer end-to-end encryption using X25519 key exchange and ChaCha20-Poly1305. Unlike mesh-wide encryption where all formation members share a key, per-peer E2EE ensures only the sender and recipient can decrypt messages—even other mesh members cannot read them.
 
 ### Enabling Per-Peer E2EE
 
 ```rust
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
+use peat_btle::{PeatMesh, PeatMeshConfig, NodeId};
 
 // Create mesh instances
-let config1 = EcheMeshConfig::new(NodeId::new(0x11111111), "ALPHA-1", "DEMO");
-let mesh1 = EcheMesh::new(config1);
+let config1 = PeatMeshConfig::new(NodeId::new(0x11111111), "ALPHA-1", "DEMO");
+let mesh1 = PeatMesh::new(config1);
 
-let config2 = EcheMeshConfig::new(NodeId::new(0x22222222), "BRAVO-1", "DEMO");
-let mesh2 = EcheMesh::new(config2);
+let config2 = PeatMeshConfig::new(NodeId::new(0x22222222), "BRAVO-1", "DEMO");
+let mesh2 = PeatMesh::new(config2);
 
 // Enable E2EE on both nodes (generates identity keys)
 mesh1.enable_peer_e2ee();
@@ -331,12 +331,12 @@ Per-peer E2EE adds 46 bytes overhead per message:
 
 ## Device Identity
 
-eche-btle provides cryptographic device identity using Ed25519 keypairs. Each device generates a persistent identity that binds its node ID to a public key, preventing impersonation attacks.
+peat-btle provides cryptographic device identity using Ed25519 keypairs. Each device generates a persistent identity that binds its node ID to a public key, preventing impersonation attacks.
 
 ### Creating a Device Identity
 
 ```rust
-use eche_btle::security::{DeviceIdentity, IdentityAttestation};
+use peat_btle::security::{DeviceIdentity, IdentityAttestation};
 
 // Generate a new device identity
 let identity = DeviceIdentity::generate();
@@ -370,7 +370,7 @@ When nodes communicate, they exchange signed attestations proving they control t
 New meshes are created through a genesis protocol that establishes cryptographic roots:
 
 ```rust
-use eche_btle::security::{DeviceIdentity, MeshGenesis, MembershipPolicy, MeshCredentials};
+use peat_btle::security::{DeviceIdentity, MeshGenesis, MembershipPolicy, MeshCredentials};
 
 // Create founder's identity
 let founder = DeviceIdentity::generate();
@@ -410,9 +410,9 @@ The genesis contains all cryptographic material to bootstrap a mesh:
 **Threat**: Attacks like WhisperPair (CVE-2024-XXXXX) can downgrade BLE pairing
 security by manipulating the key exchange timing, resulting in weaker session keys.
 
-**ECHE-BTLE Mitigation**: BLE link security is **not** the trust boundary.
+**PEAT-BTLE Mitigation**: BLE link security is **not** the trust boundary.
 
-1. **Discovery-only dependency**: Eche uses BLE for proximity detection and
+1. **Discovery-only dependency**: Peat uses BLE for proximity detection and
    initial rendezvous. Security-critical operations require application-layer
    authentication per ADR-006.
 
@@ -423,7 +423,7 @@ security by manipulating the key exchange timing, resulting in weaker session ke
    regardless of BLE security level.
 
 4. **Defense in depth**: Even a fully compromised BLE link exposes only
-   encrypted, authenticated traffic that cannot be injected into the Eche mesh.
+   encrypted, authenticated traffic that cannot be injected into the Peat mesh.
 
 **Recommendation**: For maximum security, enable mesh-wide encryption (default in
 `MeshGenesis`) and consider per-peer E2EE for sensitive operations.
@@ -460,8 +460,8 @@ sudo systemctl start bluetooth
 
 See the [`examples/`](examples/) directory:
 
-- `linux_scanner.rs` - Scan for Eche nodes on Linux
-- `linux_advertiser.rs` - Advertise as an Eche node
+- `linux_scanner.rs` - Scan for Peat nodes on Linux
+- `linux_advertiser.rs` - Advertise as an Peat node
 - `mesh_demo.rs` - Two-node mesh demonstration
 
 Run examples with:

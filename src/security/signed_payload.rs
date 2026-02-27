@@ -34,7 +34,7 @@
 //! # Example
 //!
 //! ```
-//! use eche_btle::security::{DeviceIdentity, SignedPayload};
+//! use peat_btle::security::{DeviceIdentity, SignedPayload};
 //!
 //! let identity = DeviceIdentity::generate();
 //!
@@ -78,7 +78,7 @@ pub struct DecodedPayload<'a> {
 /// Signed payload encoding and verification utilities
 ///
 /// Transport-agnostic helpers for creating and verifying signed messages.
-/// Used by eche-lite CannedMessage and Eche protocol messages.
+/// Used by peat-lite CannedMessage and Peat protocol messages.
 pub struct SignedPayload;
 
 impl SignedPayload {

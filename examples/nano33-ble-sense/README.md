@@ -1,10 +1,10 @@
-# Eche Sensor Beacon - Arduino Nano 33 BLE Sense
+# Peat Sensor Beacon - Arduino Nano 33 BLE Sense
 
-Transmit-only Eche mesh node using the nRF52840-based Arduino Nano 33 BLE Sense.
+Transmit-only Peat mesh node using the nRF52840-based Arduino Nano 33 BLE Sense.
 
 ## What It Does
 
-- Advertises as an Eche node via BLE
+- Advertises as an Peat node via BLE
 - Serves sensor data via GATT characteristic
 - Syncs CRDT documents with mesh peers
 - Low power, headless operation
@@ -61,7 +61,7 @@ cargo build --release
 cargo run --release
 
 # Or just flash
-probe-rs run --chip nRF52840_xxAA target/thumbv7em-none-eabihf/release/nano33-ble-sense-eche
+probe-rs run --chip nRF52840_xxAA target/thumbv7em-none-eabihf/release/nano33-ble-sense-peat
 ```
 
 ## Viewing Logs
@@ -73,10 +73,10 @@ Logs are output via RTT (Real-Time Transfer):
 probe-rs attach --chip nRF52840_xxAA
 ```
 
-## Eche Integration
+## Peat Integration
 
 This node:
-1. Advertises with Eche service UUID (0xF47A)
+1. Advertises with Peat service UUID (0xF47A)
 2. Exposes GATT service with document + sensor characteristics
 3. Accepts document writes from mesh peers (merges CRDT)
 4. Broadcasts sensor readings to subscribed peers

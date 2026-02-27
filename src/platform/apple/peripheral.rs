@@ -35,7 +35,7 @@ use tokio::sync::{mpsc, RwLock};
 use crate::config::DiscoveryConfig;
 use crate::error::{BleError, Result};
 use crate::NodeId;
-use crate::ECHE_SERVICE_UUID;
+use crate::PEAT_SERVICE_UUID;
 
 use super::delegates::{CentralState, PeripheralManagerEvent, RustPeripheralManagerDelegate};
 
@@ -141,7 +141,7 @@ impl CharacteristicPropertiesFlags {
         }
     }
 
-    /// Properties for a read/write/notify characteristic (typical for Eche sync)
+    /// Properties for a read/write/notify characteristic (typical for Peat sync)
     pub fn read_write_notify() -> Self {
         Self {
             read: true,
@@ -241,14 +241,14 @@ impl PeripheralManager {
         }
     }
 
-    /// Register the Eche GATT service
+    /// Register the Peat GATT service
     ///
-    /// Creates the Eche BLE service with all required characteristics.
-    pub(super) async fn register_eche_service(&self, node_id: NodeId) -> Result<()> {
+    /// Creates the Peat BLE service with all required characteristics.
+    pub(super) async fn register_peat_service(&self, node_id: NodeId) -> Result<()> {
         // All ObjC work happens in this block, dropped before any await
         // The Retained<> types are not Send, so they can't cross await points
         {
-            let (cb_characteristics, char_entries) = self.create_eche_characteristics(node_id)?;
+            let (cb_characteristics, char_entries) = self.create_peat_characteristics(node_id)?;
 
             // Store characteristics (sync lock since it contains non-Send types)
             {
@@ -262,7 +262,7 @@ impl PeripheralManager {
             let service = unsafe {
                 // Create service UUID
                 let service_uuid = {
-                    let uuid_str = NSString::from_str(&ECHE_SERVICE_UUID.to_string());
+                    let uuid_str = NSString::from_str(&PEAT_SERVICE_UUID.to_string());
                     CBUUID::UUIDWithString(&uuid_str)
                 };
 
@@ -302,7 +302,7 @@ impl PeripheralManager {
             }
 
             log::info!(
-                "Registered Eche service with node ID {:08X}",
+                "Registered Peat service with node ID {:08X}",
                 node_id.as_u32()
             );
 
@@ -315,7 +315,7 @@ impl PeripheralManager {
 
         // Store service info (async)
         let service_info = ServiceInfo {
-            uuid: ECHE_SERVICE_UUID.to_string(),
+            uuid: PEAT_SERVICE_UUID.to_string(),
             is_primary: true,
             characteristics: vec![
                 CharacteristicInfo {
@@ -353,13 +353,13 @@ impl PeripheralManager {
         self.services
             .write()
             .await
-            .insert(ECHE_SERVICE_UUID.to_string(), service_info);
+            .insert(PEAT_SERVICE_UUID.to_string(), service_info);
 
         Ok(())
     }
 
-    /// Create all Eche characteristics (synchronous helper)
-    fn create_eche_characteristics(
+    /// Create all Peat characteristics (synchronous helper)
+    fn create_peat_characteristics(
         &self,
         node_id: NodeId,
     ) -> Result<(
@@ -479,7 +479,7 @@ impl PeripheralManager {
         node_id: NodeId,
         _config: &DiscoveryConfig,
     ) -> Result<()> {
-        let local_name = format!("ECHE-{:08X}", node_id.as_u32());
+        let local_name = format!("PEAT-{:08X}", node_id.as_u32());
 
         // Build advertisement data dictionary with local name and service UUIDs
         // This is required for other platforms (Linux, Android) to discover this device
@@ -492,7 +492,7 @@ impl PeripheralManager {
             let name_str = NSString::from_str(&local_name);
 
             // Create the service UUID - CRITICAL for cross-platform discovery
-            let service_uuid_str = NSString::from_str(&ECHE_SERVICE_UUID.to_string());
+            let service_uuid_str = NSString::from_str(&PEAT_SERVICE_UUID.to_string());
             let service_uuid = CBUUID::UUIDWithString(&service_uuid_str);
 
             // Create an array containing the service UUID for advertisement

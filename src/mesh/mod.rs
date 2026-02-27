@@ -15,7 +15,7 @@
 
 //! Mesh Topology Management
 //!
-//! This module provides mesh topology management for ECHE-BTLE, including:
+//! This module provides mesh topology management for PEAT-BTLE, including:
 //!
 //! - **Topology tracking**: Parent/child/peer relationships
 //! - **Connection management**: Connect, disconnect, failover
@@ -45,8 +45,8 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::mesh::{MeshManager, TopologyConfig, TopologyEvent};
-//! use eche_btle::{NodeId, HierarchyLevel};
+//! use peat_btle::mesh::{MeshManager, TopologyConfig, TopologyEvent};
+//! use peat_btle::{NodeId, HierarchyLevel};
 //!
 //! // Create mesh manager
 //! let manager = MeshManager::new(
@@ -98,7 +98,7 @@
 //! - **Targeted**: To a specific node
 //!
 //! ```ignore
-//! use eche_btle::mesh::{MeshRouter, RouteDirection};
+//! use peat_btle::mesh::{MeshRouter, RouteDirection};
 //!
 //! let router = MeshRouter::new(node_id, my_level);
 //! let topology = manager.topology();

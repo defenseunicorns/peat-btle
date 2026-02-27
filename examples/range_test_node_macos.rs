@@ -1,6 +1,6 @@
 //! Range Test Node - macOS BLE node for field testing WearTAK
 //!
-//! This binary runs on macOS and acts as an Eche mesh node that:
+//! This binary runs on macOS and acts as an Peat mesh node that:
 //! 1. Uses the same encrypted genesis as WearTAK watches
 //! 2. Logs all discovered devices with RSSI and timestamps
 //! 3. Can connect to discovered watches to sync data
@@ -11,11 +11,11 @@
 //! Build:
 //!   cargo build --release --features macos --example range_test_node_macos
 
-use eche_btle::{
+use peat_btle::{
     config::BleConfig,
     platform::{apple::CoreBluetoothAdapter, BleAdapter, DiscoveredDevice},
     security::MeshGenesis,
-    EcheMesh, EcheMeshConfig,
+    PeatMesh, PeatMeshConfig,
 };
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
-/// WEARTAK shared genesis - same as in EcheBtleService.kt
+/// WEARTAK shared genesis - same as in PeatBtleService.kt
 /// MESH_ID: 29C916FA (decoded from base64)
 const WEARTAK_GENESIS_BYTES: &[u8] = &[
     0x07, 0x00, 0x57, 0x45, 0x41, 0x52, 0x54, 0x41, 0x4B, 0xE0, 0xEE, 0xED, 0x84, 0x0D, 0x37, 0x75,
@@ -49,8 +49,8 @@ struct TestState {
     sos_start_time: Option<u64>,
     last_rssi: i16,
     peers_seen: std::collections::HashMap<u32, PeerInfo>,
-    /// Track Eche peripherals by their CoreBluetooth identifier (for devices without node ID in name)
-    eche_peripherals: std::collections::HashMap<String, EchePeripheral>,
+    /// Track Peat peripherals by their CoreBluetooth identifier (for devices without node ID in name)
+    peat_peripherals: std::collections::HashMap<String, PeatPeripheral>,
 }
 
 struct PeerInfo {
@@ -61,8 +61,8 @@ struct PeerInfo {
     address: String,
 }
 
-/// Track a discovered Eche peripheral before we know its node ID
-struct EchePeripheral {
+/// Track a discovered Peat peripheral before we know its node ID
+struct PeatPeripheral {
     identifier: String,
     name: Option<String>,
     last_seen: u64,
@@ -101,13 +101,13 @@ impl TestState {
             sos_start_time: None,
             last_rssi: -999,
             peers_seen: std::collections::HashMap::new(),
-            eche_peripherals: std::collections::HashMap::new(),
+            peat_peripherals: std::collections::HashMap::new(),
         }
     }
 
     /// Get peripherals that are ready to connect (discovered but not yet connecting/connected)
     fn get_connectable_peripherals(&self) -> Vec<String> {
-        self.eche_peripherals
+        self.peat_peripherals
             .iter()
             .filter(|(_, p)| p.connection_state == ConnectionState::Discovered)
             .map(|(id, _)| id.clone())
@@ -185,7 +185,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mesh_id = genesis.mesh_id();
 
     // Use a fixed node ID for stable testing
-    let node_id = eche_btle::NodeId::new(0xBA5E0001); // "BASE-0001"
+    let node_id = peat_btle::NodeId::new(0xBA5E0001); // "BASE-0001"
 
     log::info!("================================================");
     log::info!("WearTAK Range Test Node (macOS)");
@@ -209,9 +209,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Create mesh with encryption credentials from genesis
-    let mesh_config = EcheMeshConfig::new(node_id, callsign, &mesh_id)
+    let mesh_config = PeatMeshConfig::new(node_id, callsign, &mesh_id)
         .with_encryption(genesis.encryption_secret());
-    let mesh = Arc::new(RwLock::new(EcheMesh::new(mesh_config)));
+    let mesh = Arc::new(RwLock::new(PeatMesh::new(mesh_config)));
 
     log::info!("Mesh initialized with encryption, starting BLE adapter...");
 
@@ -233,8 +233,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mesh_clone = mesh.clone();
     let debug_mode = debug_scan;
     adapter.set_discovery_callback(Some(Arc::new(move |device: DiscoveredDevice| {
-        // In debug mode, log ALL devices; otherwise only Eche nodes
-        if device.is_hive_node || debug_mode {
+        // In debug mode, log ALL devices; otherwise only Peat nodes
+        if device.is_peat_node || debug_mode {
             let state = test_state_discovery.clone();
             let device_clone = device.clone();
             let _mesh = mesh_clone.clone();
@@ -244,7 +244,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let node_id_opt = device_clone.node_id;
 
                 // Filter out self-discovery (our own advertisement)
-                // CoreBluetooth truncates names, so "ECHE-BA5E0001" becomes "ECHE-BA5E0"
+                // CoreBluetooth truncates names, so "PEAT-BA5E0001" becomes "PEAT-BA5E0"
                 // Check by name pattern (hex prefix match) or exact node ID
                 let our_hex = format!("{:08X}", our_node_id.as_u32());
                 let is_self = device_clone
@@ -252,8 +252,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .as_ref()
                     .map(|n| {
                         // Check if name contains our node ID (or truncated prefix)
-                        // Our ID: BA5E0001 -> name might be ECHE-BA5E0 (truncated)
-                        if let Some(suffix) = n.strip_prefix("ECHE-") {
+                        // Our ID: BA5E0001 -> name might be PEAT-BA5E0 (truncated)
+                        if let Some(suffix) = n.strip_prefix("PEAT-") {
                             // Check if our hex starts with the advertised suffix
                             our_hex.starts_with(&suffix.to_uppercase())
                         } else {
@@ -274,14 +274,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Log discovery
                 {
                     let mut state = state.write().await;
-                    let eche_marker = if device_clone.is_hive_node {
-                        "[ECHE]"
+                    let peat_marker = if device_clone.is_peat_node {
+                        "[PEAT]"
                     } else {
                         "[other]"
                     };
                     state.log(&format!(
                         "DISCOVERED {}: {} ({}) RSSI={} NodeID={:?}",
-                        eche_marker,
+                        peat_marker,
                         device_clone.name.as_deref().unwrap_or("?"),
                         address,
                         device_clone.rssi,
@@ -303,9 +303,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         // Try to extract callsign from name
                         if let Some(name) = &device_clone.name {
-                            // Format: ECHE_<MESH>-<CALLSIGN>-<SHORT_ID> or ECHE-<NODE_ID>
-                            if let Some(rest) = name.strip_prefix("ECHE_") {
-                                // ECHE_WEARTAK-RANGER-8DD4
+                            // Format: PEAT_<MESH>-<CALLSIGN>-<SHORT_ID> or PEAT-<NODE_ID>
+                            if let Some(rest) = name.strip_prefix("PEAT_") {
+                                // PEAT_WEARTAK-RANGER-8DD4
                                 if let Some(after_mesh) = rest.split('-').nth(1) {
                                     peer.callsign = Some(after_mesh.to_string());
                                 }
@@ -322,11 +322,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
 
-                    // Also track by CoreBluetooth identifier for Eche devices
-                    // This is important for devices advertising F47A but without ECHE-style name
-                    if device_clone.is_hive_node {
-                        let peripheral = state.eche_peripherals.entry(address.clone()).or_insert(
-                            EchePeripheral {
+                    // Also track by CoreBluetooth identifier for Peat devices
+                    // This is important for devices advertising F47A but without PEAT-style name
+                    if device_clone.is_peat_node {
+                        let peripheral = state.peat_peripherals.entry(address.clone()).or_insert(
+                            PeatPeripheral {
                                 identifier: address.clone(),
                                 name: device_clone.name.clone(),
                                 last_seen: 0,
@@ -365,13 +365,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("================================================");
     log::info!("Range Test Node RUNNING (macOS)");
-    log::info!("Advertising as: ECHE-{:08X}", node_id.as_u32());
+    log::info!("Advertising as: PEAT-{:08X}", node_id.as_u32());
     log::info!("GATT service ready for incoming connections");
     log::info!("");
     if debug_scan {
         log::info!("MODE: DEBUG - scanning ALL BLE devices");
     } else {
-        log::info!("MODE: Passive - listening for Eche advertisements");
+        log::info!("MODE: Passive - listening for Peat advertisements");
     }
     log::info!("      CoreBluetooth will handle connections automatically");
     log::info!("");
@@ -432,13 +432,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
 
-                    // Log Eche peripherals by identifier (devices without node ID in name)
-                    let eche_count = state.eche_peripherals.len();
-                    let connectable: Vec<_> = state.eche_peripherals.values()
+                    // Log Peat peripherals by identifier (devices without node ID in name)
+                    let peat_count = state.peat_peripherals.len();
+                    let connectable: Vec<_> = state.peat_peripherals.values()
                         .filter(|p| p.connection_state == ConnectionState::Discovered && now.saturating_sub(p.last_seen) < 10000)
                         .collect();
-                    if eche_count > 0 {
-                        log::info!("  Eche peripherals: {} total, {} ready to connect", eche_count, connectable.len());
+                    if peat_count > 0 {
+                        log::info!("  Peat peripherals: {} total, {} ready to connect", peat_count, connectable.len());
                         for p in &connectable {
                             log::info!(
                                 "    - {} ({}): RSSI={}",
@@ -450,7 +450,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                // Attempt to connect to discovered Eche peripherals every 5 seconds
+                // Attempt to connect to discovered Peat peripherals every 5 seconds
                 if tick_count % 50 == 25 {
                     // Get a connectable peripheral
                     let connectable = {
@@ -459,12 +459,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
 
                     if let Some(identifier) = connectable {
-                        log::info!("Attempting to connect to Eche peripheral: {}...", &identifier[..8]);
+                        log::info!("Attempting to connect to Peat peripheral: {}...", &identifier[..8]);
 
                         // Mark as connecting
                         {
                             let mut state = test_state.write().await;
-                            if let Some(p) = state.eche_peripherals.get_mut(&identifier) {
+                            if let Some(p) = state.peat_peripherals.get_mut(&identifier) {
                                 p.connection_state = ConnectionState::Connecting;
                             }
                         }
@@ -478,7 +478,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 log::warn!("Failed to connect to {}: {}", &identifier[..8], e);
                                 // Mark as failed
                                 let mut state = test_state.write().await;
-                                if let Some(p) = state.eche_peripherals.get_mut(&identifier) {
+                                if let Some(p) = state.peat_peripherals.get_mut(&identifier) {
                                     p.connection_state = ConnectionState::Failed;
                                 }
                             }
@@ -491,7 +491,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if tick_count % 10 == 5 {
                     let connecting_peripherals: Vec<String> = {
                         let state = test_state.read().await;
-                        state.eche_peripherals
+                        state.peat_peripherals
                             .iter()
                             .filter(|(_, p)| p.connection_state == ConnectionState::Connecting)
                             .map(|(id, _)| id.clone())
@@ -507,12 +507,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // Update state and start service discovery
                                 {
                                     let mut state = test_state.write().await;
-                                    if let Some(p) = state.eche_peripherals.get_mut(&identifier) {
+                                    if let Some(p) = state.peat_peripherals.get_mut(&identifier) {
                                         p.connection_state = ConnectionState::DiscoveringServices;
                                     }
                                 }
 
-                                // Discover Eche GATT service
+                                // Discover Peat GATT service
                                 match adapter.discover_services(&identifier).await {
                                     Ok(()) => {
                                         log::info!("Service discovery initiated for {}", &identifier[..8]);
@@ -528,7 +528,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Process peripheral events (service discovery, characteristic updates, etc.)
                 while let Some(event) = adapter.try_recv_peripheral_event().await {
-                    use eche_btle::platform::apple::PeripheralEvent;
+                    use peat_btle::platform::apple::PeripheralEvent;
                     match event {
                         PeripheralEvent::ServicesDiscovered { identifier, error } => {
                             if let Some(err) = error {
@@ -539,12 +539,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // Update state
                                 {
                                     let mut state = test_state.write().await;
-                                    if let Some(p) = state.eche_peripherals.get_mut(&identifier) {
+                                    if let Some(p) = state.peat_peripherals.get_mut(&identifier) {
                                         p.connection_state = ConnectionState::DiscoveringCharacteristics;
                                     }
                                 }
 
-                                // Discover characteristics for Eche service
+                                // Discover characteristics for Peat service
                                 if let Err(e) = adapter.discover_characteristics(&identifier).await {
                                     log::warn!("Failed to discover characteristics: {}", e);
                                 }
@@ -560,7 +560,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // Update state
                                 {
                                     let mut state = test_state.write().await;
-                                    if let Some(p) = state.eche_peripherals.get_mut(&identifier) {
+                                    if let Some(p) = state.peat_peripherals.get_mut(&identifier) {
                                         p.connection_state = ConnectionState::ReadingNodeInfo;
                                     }
                                 }
@@ -568,7 +568,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // Try reading node_info with various UUID formats
                                 // WearTAK uses format like F47A0001-58CC-4372-A567-0E02B2C3D479
                                 let node_info_uuids = [
-                                    "F47A0001-58CC-4372-A567-0E02B2C3D479",  // Full Eche format
+                                    "F47A0001-58CC-4372-A567-0E02B2C3D479",  // Full Peat format
                                     "0001",                                   // Short format
                                     "00000001-0000-1000-8000-00805F9B34FB",  // Bluetooth SIG base
                                 ];
@@ -612,7 +612,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                         // Update state with the discovered node ID
                                         let mut state = test_state.write().await;
-                                        if let Some(p) = state.eche_peripherals.get_mut(&identifier) {
+                                        if let Some(p) = state.peat_peripherals.get_mut(&identifier) {
                                             p.node_id = Some(node_id);
                                             p.connection_state = ConnectionState::Ready;
                                         }
@@ -631,11 +631,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         state.log(&format!("NODE_ID_DISCOVERED: {:08X} at {}", node_id, &identifier[..8.min(identifier.len())]));
                                     }
                                 }
-                                // If this is sync_data (0003), it contains encrypted Eche documents
+                                // If this is sync_data (0003), it contains encrypted Peat documents
                                 else if characteristic_uuid.contains("0003") {
                                     log::info!("Received sync_data ({} bytes) from {}", value.len(), &identifier[..8.min(identifier.len())]);
 
-                                    // Process through EcheMesh to decrypt and extract data
+                                    // Process through PeatMesh to decrypt and extract data
                                     let result = {
                                         let mesh_guard = mesh.read().await;
                                         mesh_guard.on_ble_data_received_anonymous(&identifier, &value, now_ms())
@@ -666,7 +666,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                         // Update state with the discovered node ID
                                         let mut state = test_state.write().await;
-                                        if let Some(p) = state.eche_peripherals.get_mut(&identifier) {
+                                        if let Some(p) = state.peat_peripherals.get_mut(&identifier) {
                                             p.node_id = Some(source_node);
                                             p.connection_state = ConnectionState::Ready;
                                         }

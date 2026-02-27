@@ -41,14 +41,14 @@ android {
 
         // Build-time configuration for mesh credentials
         // Set via environment variables when building:
-        //   ECHE_ENCRYPTION_SECRET=<64-char-hex> ./gradlew assembleRelease
-        //   ECHE_MESH_ID=ALPHA ./gradlew assembleRelease
+        //   PEAT_ENCRYPTION_SECRET=<64-char-hex> ./gradlew assembleRelease
+        //   PEAT_MESH_ID=ALPHA ./gradlew assembleRelease
         // Downstream projects can override in their build.gradle.kts:
-        //   buildConfigField("String", "ECHE_ENCRYPTION_SECRET", "\"...\"")
-        buildConfigField("String", "ECHE_ENCRYPTION_SECRET",
-            "\"${System.getenv("ECHE_ENCRYPTION_SECRET") ?: ""}\"")
-        buildConfigField("String", "ECHE_MESH_ID",
-            "\"${System.getenv("ECHE_MESH_ID") ?: ""}\"")
+        //   buildConfigField("String", "PEAT_ENCRYPTION_SECRET", "\"...\"")
+        buildConfigField("String", "PEAT_ENCRYPTION_SECRET",
+            "\"${System.getenv("PEAT_ENCRYPTION_SECRET") ?: ""}\"")
+        buildConfigField("String", "PEAT_MESH_ID",
+            "\"${System.getenv("PEAT_MESH_ID") ?: ""}\"")
     }
 
     buildFeatures {
@@ -108,7 +108,7 @@ tasks.register<Exec>("buildNativeLibs") {
     description = "Build native Rust libraries for Android"
     group = "build"
 
-    // eche-btle root is parent of android directory
+    // peat-btle root is parent of android directory
     val hiveBtleRoot = rootProject.projectDir.parentFile
     workingDir = hiveBtleRoot
 
@@ -121,31 +121,31 @@ tasks.register<Exec>("buildNativeLibs") {
 
     commandLine("bash", "-c", """
         set -e
-        echo "Building eche-btle native libraries from: $(pwd)"
+        echo "Building peat-btle native libraries from: $(pwd)"
 
         # Build for arm64-v8a (modern Android devices)
         echo "Building for aarch64-linux-android (arm64-v8a)..."
-        cargo build --release --target aarch64-linux-android --features android,eche-lite-sync
+        cargo build --release --target aarch64-linux-android --features android,peat-lite-sync
         mkdir -p android/src/main/jniLibs/arm64-v8a
-        cp target/aarch64-linux-android/release/libeche_btle.so android/src/main/jniLibs/arm64-v8a/
+        cp target/aarch64-linux-android/release/libpeat_btle.so android/src/main/jniLibs/arm64-v8a/
 
         # Build for armeabi-v7a (older devices)
         echo "Building for armv7-linux-androideabi (armeabi-v7a)..."
-        cargo build --release --target armv7-linux-androideabi --features android,eche-lite-sync
+        cargo build --release --target armv7-linux-androideabi --features android,peat-lite-sync
         mkdir -p android/src/main/jniLibs/armeabi-v7a
-        cp target/armv7-linux-androideabi/release/libeche_btle.so android/src/main/jniLibs/armeabi-v7a/
+        cp target/armv7-linux-androideabi/release/libpeat_btle.so android/src/main/jniLibs/armeabi-v7a/
 
         # Build for x86_64 (emulators)
         echo "Building for x86_64-linux-android (x86_64)..."
-        cargo build --release --target x86_64-linux-android --features android,eche-lite-sync
+        cargo build --release --target x86_64-linux-android --features android,peat-lite-sync
         mkdir -p android/src/main/jniLibs/x86_64
-        cp target/x86_64-linux-android/release/libeche_btle.so android/src/main/jniLibs/x86_64/
+        cp target/x86_64-linux-android/release/libpeat_btle.so android/src/main/jniLibs/x86_64/
 
         echo ""
         echo "Native libraries built successfully!"
-        echo "  arm64-v8a: android/src/main/jniLibs/arm64-v8a/libeche_btle.so"
-        echo "  armeabi-v7a: android/src/main/jniLibs/armeabi-v7a/libeche_btle.so"
-        echo "  x86_64: android/src/main/jniLibs/x86_64/libeche_btle.so"
+        echo "  arm64-v8a: android/src/main/jniLibs/arm64-v8a/libpeat_btle.so"
+        echo "  armeabi-v7a: android/src/main/jniLibs/armeabi-v7a/libpeat_btle.so"
+        echo "  x86_64: android/src/main/jniLibs/x86_64/libpeat_btle.so"
     """.trimIndent())
 }
 
@@ -155,9 +155,9 @@ tasks.register<Delete>("cleanNativeLibs") {
     group = "build"
 
     delete(
-        "src/main/jniLibs/arm64-v8a/libeche_btle.so",
-        "src/main/jniLibs/armeabi-v7a/libeche_btle.so",
-        "src/main/jniLibs/x86_64/libeche_btle.so"
+        "src/main/jniLibs/arm64-v8a/libpeat_btle.so",
+        "src/main/jniLibs/armeabi-v7a/libpeat_btle.so",
+        "src/main/jniLibs/x86_64/libpeat_btle.so"
     )
 }
 
@@ -191,9 +191,9 @@ afterEvaluate {
                 from(components["release"])
 
                 pom {
-                    name.set("Eche Android")
-                    description.set("Bluetooth Low Energy mesh transport for Eche Protocol - Android library by Revolve Team")
-                    url.set("https://github.com/Ascent-Integrated-Tech/eche-btle")
+                    name.set("Peat Android")
+                    description.set("Bluetooth Low Energy mesh transport for Peat Protocol - Android library by Revolve Team")
+                    url.set("https://github.com/Ascent-Integrated-Tech/peat-btle")
 
                     licenses {
                         license {
@@ -211,9 +211,9 @@ afterEvaluate {
                     }
 
                     scm {
-                        connection.set("scm:git:git://github.com/Ascent-Integrated-Tech/eche-btle.git")
-                        developerConnection.set("scm:git:ssh://github.com/Ascent-Integrated-Tech/eche-btle.git")
-                        url.set("https://github.com/Ascent-Integrated-Tech/eche-btle")
+                        connection.set("scm:git:git://github.com/Ascent-Integrated-Tech/peat-btle.git")
+                        developerConnection.set("scm:git:ssh://github.com/Ascent-Integrated-Tech/peat-btle.git")
+                        url.set("https://github.com/Ascent-Integrated-Tech/peat-btle")
                     }
                 }
             }
@@ -222,7 +222,7 @@ afterEvaluate {
         repositories {
             maven {
                 name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/Ascent-Integrated-Tech/eche-btle")
+                url = uri("https://maven.pkg.github.com/Ascent-Integrated-Tech/peat-btle")
                 credentials {
                     username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
                     password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")

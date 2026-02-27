@@ -1,19 +1,19 @@
-# ProGuard rules for eche-btle Android library
+# ProGuard rules for peat-btle Android library
 
 # Keep JNI native methods
 -keepclasseswithmembernames class * {
     native <methods>;
 }
 
-# Keep all classes in the eche.btle package
--keep class com.eche.btle.** { *; }
+# Keep all classes in the peat.btle package
+-keep class com.peat.btle.** { *; }
 
 # Keep callback proxies (called from native code)
--keep class com.eche.btle.ScanCallbackProxy { *; }
--keep class com.eche.btle.GattCallbackProxy { *; }
--keep class com.eche.btle.AdvertiseCallbackProxy { *; }
+-keep class com.peat.btle.ScanCallbackProxy { *; }
+-keep class com.peat.btle.GattCallbackProxy { *; }
+-keep class com.peat.btle.AdvertiseCallbackProxy { *; }
 
-# Keep EcheBtle main class
--keep class com.eche.btle.EcheBtle { *; }
--keep class com.eche.btle.EcheConnection { *; }
--keep class com.eche.btle.DiscoveredDevice { *; }
+# Keep PeatBtle main class
+-keep class com.peat.btle.PeatBtle { *; }
+-keep class com.peat.btle.PeatConnection { *; }
+-keep class com.peat.btle.DiscoveredDevice { *; }

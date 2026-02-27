@@ -27,8 +27,8 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::platform::linux::BluerAdapter;
-//! use eche_btle::{BleConfig, NodeId};
+//! use peat_btle::platform::linux::BluerAdapter;
+//! use peat_btle::{BleConfig, NodeId};
 //!
 //! let config = BleConfig::new(NodeId::new(0x12345678));
 //! let mut adapter = BluerAdapter::new().await?;

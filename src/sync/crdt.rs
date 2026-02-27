@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! CRDT (Conflict-free Replicated Data Types) for Eche-Lite
+//! CRDT (Conflict-free Replicated Data Types) for Peat-Lite
 //!
 //! Provides lightweight CRDT implementations optimized for BLE sync:
 //! - LWW-Register: Last-Writer-Wins for single values

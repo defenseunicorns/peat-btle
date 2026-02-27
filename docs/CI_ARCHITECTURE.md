@@ -1,6 +1,6 @@
 # CI Architecture for Radicle-hosted Projects
 
-This document outlines the CI/CD strategy for eche-btle, a Radicle-hosted project requiring CI status on patches for distributed team review.
+This document outlines the CI/CD strategy for peat-btle, a Radicle-hosted project requiring CI status on patches for distributed team review.
 
 ## Requirements
 

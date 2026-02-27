@@ -17,21 +17,21 @@
 //!
 //! These tests verify multi-node CRDT sync using the MockBleAdapter.
 
-use eche_btle::config::{BleConfig, DiscoveryConfig};
-use eche_btle::document::EcheDocument;
-use eche_btle::eche_mesh::{EcheMesh, EcheMeshConfig};
-use eche_btle::gossip::{GossipStrategy, RandomFanout};
-use eche_btle::platform::mock::{MockBleAdapter, MockNetwork};
-use eche_btle::platform::BleAdapter;
-use eche_btle::sync::delta_document::DeltaDocument;
-use eche_btle::NodeId;
+use peat_btle::config::{BleConfig, DiscoveryConfig};
+use peat_btle::document::PeatDocument;
+use peat_btle::gossip::{GossipStrategy, RandomFanout};
+use peat_btle::peat_mesh::{PeatMesh, PeatMeshConfig};
+use peat_btle::platform::mock::{MockBleAdapter, MockNetwork};
+use peat_btle::platform::BleAdapter;
+use peat_btle::sync::delta_document::DeltaDocument;
+use peat_btle::NodeId;
 
 /// Create a mock adapter and mesh for testing
 async fn create_test_node(
     node_id: u32,
     callsign: &str,
     network: MockNetwork,
-) -> (MockBleAdapter, EcheMesh) {
+) -> (MockBleAdapter, PeatMesh) {
     let node = NodeId::new(node_id);
     let mut adapter = MockBleAdapter::new(node, network);
     adapter.init(&BleConfig::default()).await.unwrap();
@@ -40,8 +40,8 @@ async fn create_test_node(
         .await
         .unwrap();
 
-    let config = EcheMeshConfig::new(node, callsign, "TEST");
-    let mesh = EcheMesh::new(config);
+    let config = PeatMeshConfig::new(node, callsign, "TEST");
+    let mesh = PeatMesh::new(config);
 
     (adapter, mesh)
 }
@@ -107,8 +107,8 @@ async fn test_document_sync_basic() {
 #[tokio::test]
 async fn test_counter_increment_and_sync() {
     // Create two documents
-    let mut doc1 = EcheDocument::new(NodeId::new(0x111));
-    let mut doc2 = EcheDocument::new(NodeId::new(0x222));
+    let mut doc1 = PeatDocument::new(NodeId::new(0x111));
+    let mut doc2 = PeatDocument::new(NodeId::new(0x222));
 
     // Increment counters independently
     doc1.increment_counter();
@@ -154,10 +154,10 @@ async fn test_gossip_fanout_selection() {
     let strategy = RandomFanout::new(2);
     let peers = adapters[0].connected_peers();
 
-    // Create EchePeer structs for the strategy
-    let eche_peers: Vec<_> = peers
+    // Create PeatPeer structs for the strategy
+    let peat_peers: Vec<_> = peers
         .iter()
-        .map(|id| eche_btle::peer::EchePeer {
+        .map(|id| peat_btle::peer::PeatPeer {
             node_id: *id,
             identifier: format!("device-{}", id.as_u32()),
             mesh_id: Some("TEST".to_string()),
@@ -168,16 +168,16 @@ async fn test_gossip_fanout_selection() {
         })
         .collect();
 
-    let selected = strategy.select_peers(&eche_peers);
+    let selected = strategy.select_peers(&peat_peers);
     assert_eq!(selected.len(), 2); // Should only select 2 even with 4 connected
 }
 
 #[tokio::test]
 async fn test_multi_hop_document_propagation() {
     // Simulate A -> B -> C propagation
-    let mut doc_a = EcheDocument::new(NodeId::new(0xAAA));
-    let mut doc_b = EcheDocument::new(NodeId::new(0xBBB));
-    let mut doc_c = EcheDocument::new(NodeId::new(0xCCC));
+    let mut doc_a = PeatDocument::new(NodeId::new(0xAAA));
+    let mut doc_b = PeatDocument::new(NodeId::new(0xBBB));
+    let mut doc_c = PeatDocument::new(NodeId::new(0xCCC));
 
     // A increments
     doc_a.increment_counter();
@@ -187,7 +187,7 @@ async fn test_multi_hop_document_propagation() {
     let data_from_a = doc_a.encode();
 
     // B receives from A
-    let decoded = EcheDocument::decode(&data_from_a).unwrap();
+    let decoded = PeatDocument::decode(&data_from_a).unwrap();
     let b_changed = doc_b.merge(&decoded);
     assert!(b_changed);
     assert_eq!(doc_b.total_count(), 1);
@@ -200,7 +200,7 @@ async fn test_multi_hop_document_propagation() {
     let data_from_b = doc_b.encode();
 
     // C receives from B
-    let decoded = EcheDocument::decode(&data_from_b).unwrap();
+    let decoded = PeatDocument::decode(&data_from_b).unwrap();
     let c_changed = doc_c.merge(&decoded);
     assert!(c_changed);
     assert_eq!(doc_c.total_count(), 2); // C now has both A and B's data
@@ -211,7 +211,7 @@ async fn test_multi_hop_document_propagation() {
 
     // Verify all nodes eventually have same value after full sync
     let data_from_c = doc_c.encode();
-    let decoded = EcheDocument::decode(&data_from_c).unwrap();
+    let decoded = PeatDocument::decode(&data_from_c).unwrap();
     doc_a.merge(&decoded);
     doc_b.merge(&decoded);
 
@@ -223,9 +223,9 @@ async fn test_multi_hop_document_propagation() {
 #[tokio::test]
 async fn test_concurrent_increments_convergence() {
     // Test CRDT convergence with concurrent updates
-    let mut doc1 = EcheDocument::new(NodeId::new(0x111));
-    let mut doc2 = EcheDocument::new(NodeId::new(0x222));
-    let mut doc3 = EcheDocument::new(NodeId::new(0x333));
+    let mut doc1 = PeatDocument::new(NodeId::new(0x111));
+    let mut doc2 = PeatDocument::new(NodeId::new(0x222));
+    let mut doc3 = PeatDocument::new(NodeId::new(0x333));
 
     // All nodes increment concurrently (before any sync)
     doc1.increment_counter();
@@ -245,18 +245,18 @@ async fn test_concurrent_increments_convergence() {
     let data2 = doc2.encode();
     let data3 = doc3.encode();
 
-    doc2.merge(&EcheDocument::decode(&data1).unwrap());
-    doc3.merge(&EcheDocument::decode(&data2).unwrap());
-    doc1.merge(&EcheDocument::decode(&data3).unwrap());
+    doc2.merge(&PeatDocument::decode(&data1).unwrap());
+    doc3.merge(&PeatDocument::decode(&data2).unwrap());
+    doc1.merge(&PeatDocument::decode(&data3).unwrap());
 
     // Second round to complete convergence
     let data1 = doc1.encode();
     let data2 = doc2.encode();
     let data3 = doc3.encode();
 
-    doc2.merge(&EcheDocument::decode(&data1).unwrap());
-    doc3.merge(&EcheDocument::decode(&data2).unwrap());
-    doc1.merge(&EcheDocument::decode(&data3).unwrap());
+    doc2.merge(&PeatDocument::decode(&data1).unwrap());
+    doc3.merge(&PeatDocument::decode(&data2).unwrap());
+    doc1.merge(&PeatDocument::decode(&data3).unwrap());
 
     // All should converge to 6 (2 + 3 + 1)
     assert_eq!(doc1.total_count(), 6);
@@ -269,8 +269,8 @@ async fn test_concurrent_increments_convergence() {
 #[tokio::test]
 async fn test_delta_document_build_full() {
     // Test building a full delta document
-    let config = EcheMeshConfig::new(NodeId::new(0x111), "ALPHA-1", "TEST");
-    let mesh = EcheMesh::new(config);
+    let config = PeatMeshConfig::new(NodeId::new(0x111), "ALPHA-1", "TEST");
+    let mesh = PeatMesh::new(config);
 
     // Build full delta document
     let now_ms = 1000u64;
@@ -290,8 +290,8 @@ async fn test_delta_document_build_full() {
 #[tokio::test]
 async fn test_delta_document_for_peer_first_sync() {
     // Test first delta sync to a peer (should send everything)
-    let config = EcheMeshConfig::new(NodeId::new(0x111), "ALPHA-1", "TEST");
-    let mesh = EcheMesh::new(config);
+    let config = PeatMeshConfig::new(NodeId::new(0x111), "ALPHA-1", "TEST");
+    let mesh = PeatMesh::new(config);
 
     // Register peer for delta tracking
     let peer_id = NodeId::new(0x222);
@@ -309,8 +309,8 @@ async fn test_delta_document_for_peer_first_sync() {
 #[tokio::test]
 async fn test_delta_document_for_peer_no_changes() {
     // Test delta sync when nothing has changed
-    let config = EcheMeshConfig::new(NodeId::new(0x111), "ALPHA-1", "TEST");
-    let mesh = EcheMesh::new(config);
+    let config = PeatMeshConfig::new(NodeId::new(0x111), "ALPHA-1", "TEST");
+    let mesh = PeatMesh::new(config);
 
     // Register peer for delta tracking
     let peer_id = NodeId::new(0x222);
@@ -342,7 +342,7 @@ async fn test_delta_document_receive_basic() {
     // Register peer in mesh2 before receiving
     mesh2.on_ble_discovered(
         "device-111",
-        Some("ECHE_TEST-00000111"),
+        Some("PEAT_TEST-00000111"),
         -60,
         Some("TEST"),
         1000,
@@ -378,7 +378,7 @@ async fn test_delta_sync_round_trip() {
     // Set up mesh2 to recognize mesh1
     mesh2.on_ble_discovered(
         "device-111",
-        Some("ECHE_TEST-00000111"),
+        Some("PEAT_TEST-00000111"),
         -60,
         Some("TEST"),
         1000,
@@ -404,8 +404,8 @@ async fn test_delta_sync_round_trip() {
 #[tokio::test]
 async fn test_delta_stats_tracking() {
     // Test that delta sync stats are tracked correctly
-    let config = EcheMeshConfig::new(NodeId::new(0x111), "ALPHA-1", "TEST");
-    let mesh = EcheMesh::new(config);
+    let config = PeatMeshConfig::new(NodeId::new(0x111), "ALPHA-1", "TEST");
+    let mesh = PeatMesh::new(config);
 
     // Register peer
     let peer_id = NodeId::new(0x222);
@@ -434,8 +434,8 @@ async fn test_delta_stats_tracking() {
 #[tokio::test]
 async fn test_delta_peer_reset() {
     // Test resetting delta state for a peer
-    let config = EcheMeshConfig::new(NodeId::new(0x111), "ALPHA-1", "TEST");
-    let mesh = EcheMesh::new(config);
+    let config = PeatMeshConfig::new(NodeId::new(0x111), "ALPHA-1", "TEST");
+    let mesh = PeatMesh::new(config);
 
     let peer_id = NodeId::new(0x222);
     mesh.register_peer_for_delta(&peer_id);
@@ -471,13 +471,13 @@ async fn test_encrypted_document_includes_location() {
 
     // Create sender mesh with encryption
     let sender_config =
-        EcheMeshConfig::new(NodeId::new(0x111), "SENDER", "TEST").with_encryption(TEST_SECRET);
-    let sender = EcheMesh::new(sender_config);
+        PeatMeshConfig::new(NodeId::new(0x111), "SENDER", "TEST").with_encryption(TEST_SECRET);
+    let sender = PeatMesh::new(sender_config);
 
     // Create receiver mesh with same encryption key
     let receiver_config =
-        EcheMeshConfig::new(NodeId::new(0x222), "RECEIVER", "TEST").with_encryption(TEST_SECRET);
-    let receiver = EcheMesh::new(receiver_config);
+        PeatMeshConfig::new(NodeId::new(0x222), "RECEIVER", "TEST").with_encryption(TEST_SECRET);
+    let receiver = PeatMesh::new(receiver_config);
 
     // Set location on sender (San Francisco coordinates)
     sender.update_location(37.7749, -122.4194, Some(10.0));
@@ -529,12 +529,12 @@ async fn test_chat_sync_unencrypted() {
     // This verifies the basic chat CRDT sync works before adding encryption complexity.
 
     // Create sender mesh (no encryption)
-    let sender_config = EcheMeshConfig::new(NodeId::new(0x111), "SENDER", "TEST");
-    let sender = EcheMesh::new(sender_config);
+    let sender_config = PeatMeshConfig::new(NodeId::new(0x111), "SENDER", "TEST");
+    let sender = PeatMesh::new(sender_config);
 
     // Create receiver mesh (no encryption)
-    let receiver_config = EcheMeshConfig::new(NodeId::new(0x222), "RECEIVER", "TEST");
-    let receiver = EcheMesh::new(receiver_config);
+    let receiver_config = PeatMeshConfig::new(NodeId::new(0x222), "RECEIVER", "TEST");
+    let receiver = PeatMesh::new(receiver_config);
 
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -557,7 +557,7 @@ async fn test_chat_sync_unencrypted() {
     assert_ne!(doc_bytes[0], 0xAE, "Document should NOT be encrypted");
 
     // Decode and inspect the document
-    let decoded = EcheDocument::decode(&doc_bytes);
+    let decoded = PeatDocument::decode(&doc_bytes);
     assert!(decoded.is_some(), "Document should decode");
     let doc = decoded.unwrap();
 
@@ -571,7 +571,7 @@ async fn test_chat_sync_unencrypted() {
     // First, discover and connect the sender
     receiver.on_ble_discovered(
         "device-sender",
-        Some("ECHE_TEST-00000111"),
+        Some("PEAT_TEST-00000111"),
         -60,
         Some("TEST"),
         now_ms,
@@ -599,13 +599,13 @@ async fn test_chat_sync_encrypted() {
 
     // Create sender mesh with encryption
     let sender_config =
-        EcheMeshConfig::new(NodeId::new(0x111), "SENDER", "TEST").with_encryption(TEST_SECRET);
-    let sender = EcheMesh::new(sender_config);
+        PeatMeshConfig::new(NodeId::new(0x111), "SENDER", "TEST").with_encryption(TEST_SECRET);
+    let sender = PeatMesh::new(sender_config);
 
     // Create receiver mesh with same encryption key
     let receiver_config =
-        EcheMeshConfig::new(NodeId::new(0x222), "RECEIVER", "TEST").with_encryption(TEST_SECRET);
-    let receiver = EcheMesh::new(receiver_config);
+        PeatMeshConfig::new(NodeId::new(0x222), "RECEIVER", "TEST").with_encryption(TEST_SECRET);
+    let receiver = PeatMesh::new(receiver_config);
 
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -631,7 +631,7 @@ async fn test_chat_sync_encrypted() {
     // First, discover and connect the sender
     receiver.on_ble_discovered(
         "device-sender",
-        Some("ECHE_TEST-00000111"),
+        Some("PEAT_TEST-00000111"),
         -60,
         Some("TEST"),
         now_ms,

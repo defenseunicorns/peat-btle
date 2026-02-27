@@ -59,7 +59,7 @@
 //! ### Fixed PHY
 //!
 //! ```ignore
-//! use eche_btle::phy::{PhyController, PhyStrategy, PhyCapabilities, BlePhy};
+//! use peat_btle::phy::{PhyController, PhyStrategy, PhyCapabilities, BlePhy};
 //!
 //! let caps = PhyCapabilities::ble5_full();
 //! let mut ctrl = PhyController::with_defaults(caps);
@@ -71,7 +71,7 @@
 //! ### Adaptive PHY
 //!
 //! ```ignore
-//! use eche_btle::phy::{PhyController, PhyStrategy, PhyCapabilities};
+//! use peat_btle::phy::{PhyController, PhyStrategy, PhyCapabilities};
 //!
 //! let caps = PhyCapabilities::ble5_full();
 //! let mut ctrl = PhyController::with_defaults(caps);

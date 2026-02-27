@@ -13,15 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! ECHE-BTLE: Bluetooth Low Energy mesh transport for Eche Protocol
+//! PEAT-BTLE: Bluetooth Low Energy mesh transport for Peat Protocol
 //!
-//! This crate provides BLE-based peer-to-peer mesh networking for Eche,
-//! supporting discovery, advertisement, connectivity, and Eche-Lite sync.
+//! This crate provides BLE-based peer-to-peer mesh networking for Peat,
+//! supporting discovery, advertisement, connectivity, and Peat-Lite sync.
 //!
 //! ## Overview
 //!
-//! ECHE-BTLE implements the pluggable transport abstraction (ADR-032) for
-//! Bluetooth Low Energy, enabling Eche Protocol to operate over BLE in
+//! PEAT-BTLE implements the pluggable transport abstraction (ADR-032) for
+//! Bluetooth Low Energy, enabling Peat Protocol to operate over BLE in
 //! resource-constrained environments like smartwatches.
 //!
 //! ## Key Features
@@ -29,7 +29,7 @@
 //! - **Cross-platform**: Linux, Android, macOS, iOS, Windows, ESP32
 //! - **Power efficient**: Designed for 18+ hour battery life on watches
 //! - **Long range**: Coded PHY support for 300m+ range
-//! - **Eche-Lite sync**: Optimized CRDT sync over GATT
+//! - **Peat-Lite sync**: Optimized CRDT sync over GATT
 //!
 //! ## Architecture
 //!
@@ -50,14 +50,14 @@
 //! ## Quick Start
 //!
 //! ```ignore
-//! use eche_btle::{BleConfig, BluetoothLETransport, NodeId};
+//! use peat_btle::{BleConfig, BluetoothLETransport, NodeId};
 //!
-//! // Create Eche-Lite optimized config for battery efficiency
-//! let config = BleConfig::eche_lite(NodeId::new(0x12345678));
+//! // Create Peat-Lite optimized config for battery efficiency
+//! let config = BleConfig::peat_lite(NodeId::new(0x12345678));
 //!
 //! // Create transport with platform adapter
 //! #[cfg(feature = "linux")]
-//! let adapter = eche_btle::platform::linux::BluerAdapter::new()?;
+//! let adapter = peat_btle::platform::linux::BluerAdapter::new()?;
 //!
 //! let transport = BluetoothLETransport::new(config, adapter);
 //!
@@ -71,10 +71,8 @@
 //! ## Feature Flags
 //!
 //! - `std` (default): Standard library support
-//! - `standalone` (default): Full eche-btle with eche-lite CRDTs (CannedMessage sync)
-//! - `transport-only`: Pure BLE transport, no app-layer CRDTs (no eche-lite dependency)
+//! - `transport-only`: Pure BLE transport, no app-layer CRDTs
 //! - `legacy-chat`: Deprecated ChatCRDT support (will be removed in 0.2.0)
-//! - `eche-lite-sync`: eche-lite integration for CannedMessage sync
 //! - `linux`: Linux/BlueZ support via `bluer`
 //! - `android`: Android support via JNI
 //! - `macos`: macOS support via CoreBluetooth
@@ -84,25 +82,25 @@
 //! - `coded-phy`: Enable Coded PHY for extended range
 //! - `extended-adv`: Enable extended advertising
 //!
-//! ## External Crate Usage (eche-ffi)
+//! ## External Crate Usage (peat-ffi)
 //!
-//! This crate exports platform adapters for use by external crates like `eche-ffi`.
+//! This crate exports platform adapters for use by external crates like `peat-ffi`.
 //! Each platform adapter is conditionally exported based on feature flags:
 //!
 //! ```toml
 //! # In your Cargo.toml
 //! [dependencies]
-//! eche-btle = { version = "0.2.0", features = ["linux"] }
+//! peat-btle = { version = "0.2.0", features = ["linux"] }
 //! ```
 //!
 //! Then use the appropriate adapter:
 //!
 //! ```ignore
-//! use eche_btle::{BleConfig, BluerAdapter, EcheMesh, NodeId};
+//! use peat_btle::{BleConfig, BluerAdapter, PeatMesh, NodeId};
 //!
 //! // Platform adapter is automatically available via feature flag
 //! let adapter = BluerAdapter::new().await?;
-//! let config = BleConfig::eche_lite(NodeId::new(0x12345678));
+//! let config = BleConfig::peat_lite(NodeId::new(0x12345678));
 //! ```
 //!
 //! ### Platform → Adapter Mapping
@@ -117,13 +115,13 @@
 //!
 //! ### Document Encoding for Translation Layer
 //!
-//! For translating between Automerge (full Eche) and eche-btle documents:
+//! For translating between Automerge (full Peat) and peat-btle documents:
 //!
 //! ```ignore
-//! use eche_btle::EcheDocument;
+//! use peat_btle::PeatDocument;
 //!
 //! // Decode bytes received from BLE
-//! let doc = EcheDocument::from_bytes(&received_bytes)?;
+//! let doc = PeatDocument::from_bytes(&received_bytes)?;
 //!
 //! // Encode for BLE transmission
 //! let bytes = doc.to_bytes();
@@ -139,9 +137,9 @@
 //!
 //! ## Related ADRs
 //!
-//! - ADR-039: ECHE-BTLE Mesh Transport Crate
+//! - ADR-039: PEAT-BTLE Mesh Transport Crate
 //! - ADR-032: Pluggable Transport Abstraction
-//! - ADR-035: Eche-Lite Embedded Nodes
+//! - ADR-035: Peat-Lite Embedded Nodes
 //! - ADR-037: Resource-Constrained Device Optimization
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -156,13 +154,13 @@ pub mod config;
 pub mod discovery;
 pub mod document;
 pub mod document_sync;
-pub mod eche_mesh;
 pub mod error;
 pub mod gatt;
 #[cfg(feature = "std")]
 pub mod gossip;
 pub mod mesh;
 pub mod observer;
+pub mod peat_mesh;
 pub mod peer;
 pub mod peer_lifetime;
 pub mod peer_manager;
@@ -175,9 +173,6 @@ pub mod reconnect;
 pub mod registry;
 pub mod relay;
 
-// eche-lite integration (optional)
-#[cfg(feature = "eche-lite-sync")]
-pub mod eche_lite_sync;
 pub mod security;
 pub mod sync;
 pub mod transport;
@@ -196,10 +191,10 @@ pub use config::{
 };
 #[cfg(feature = "std")]
 pub use discovery::Scanner;
-pub use discovery::{Advertiser, EcheBeacon, ScanFilter};
+pub use discovery::{Advertiser, PeatBeacon, ScanFilter};
 pub use error::{BleError, Result};
 #[cfg(feature = "std")]
-pub use gatt::EcheGattService;
+pub use gatt::PeatGattService;
 pub use gatt::SyncProtocol;
 #[cfg(feature = "std")]
 pub use mesh::MeshManager;
@@ -207,7 +202,7 @@ pub use mesh::{MeshRouter, MeshTopology, TopologyConfig, TopologyEvent};
 pub use phy::{PhyCapabilities, PhyController, PhyStrategy};
 pub use platform::{BleAdapter, ConnectionEvent, DisconnectReason, DiscoveredDevice, StubAdapter};
 
-// Platform-specific adapter re-exports for external crates (eche-ffi)
+// Platform-specific adapter re-exports for external crates (peat-ffi)
 // These allow external crates to use platform adapters via feature flags
 #[cfg(all(feature = "linux", target_os = "linux"))]
 pub use platform::linux::BluerAdapter;
@@ -229,19 +224,19 @@ pub use transport::{BleConnection, BluetoothLETransport, MeshTransport, Transpor
 
 // New centralized mesh management types
 pub use document::{
-    EcheDocument, MergeResult, ENCRYPTED_MARKER, EXTENDED_MARKER, KEY_EXCHANGE_MARKER,
+    MergeResult, PeatDocument, ENCRYPTED_MARKER, EXTENDED_MARKER, KEY_EXCHANGE_MARKER,
     PEER_E2EE_MARKER,
 };
 
 // Security (mesh-wide and per-peer encryption)
 pub use document_sync::{DocumentCheck, DocumentSync};
 #[cfg(feature = "std")]
-pub use eche_mesh::{DataReceivedResult, EcheMesh, EcheMeshConfig, RelayDecision};
-#[cfg(feature = "std")]
 pub use observer::{CollectingObserver, ObserverManager};
-pub use observer::{DisconnectReason as EcheDisconnectReason, EcheEvent, EcheObserver};
+pub use observer::{DisconnectReason as PeatDisconnectReason, PeatEvent, PeatObserver};
+#[cfg(feature = "std")]
+pub use peat_mesh::{DataReceivedResult, PeatMesh, PeatMeshConfig, RelayDecision};
 pub use peer::{
-    ConnectionState, ConnectionStateGraph, EchePeer, FullStateCountSummary, IndirectPeer,
+    ConnectionState, ConnectionStateGraph, FullStateCountSummary, IndirectPeer, PeatPeer,
     PeerConnectionState, PeerDegree, PeerManagerConfig, SignalStrength, StateCountSummary,
     MAX_TRACKED_DEGREE,
 };
@@ -288,34 +283,30 @@ pub use registry::{
     APP_OP_BASE, APP_TYPE_MAX, APP_TYPE_MIN,
 };
 
-// eche-lite integration (optional)
-#[cfg(feature = "eche-lite-sync")]
-pub use eche_lite_sync::CannedMessageDocument;
-
-/// Eche BLE Service UUID (128-bit)
+/// Peat BLE Service UUID (128-bit)
 ///
-/// All Eche nodes advertise this UUID for discovery.
-pub const ECHE_SERVICE_UUID: uuid::Uuid = uuid::uuid!("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d");
+/// All Peat nodes advertise this UUID for discovery.
+pub const PEAT_SERVICE_UUID: uuid::Uuid = uuid::uuid!("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d");
 
-/// Eche BLE Service UUID (16-bit short form)
+/// Peat BLE Service UUID (16-bit short form)
 ///
 /// Derived from the first two bytes of the 128-bit UUID (0xA1B2 from a1b2c3d4).
 /// Used for space-constrained advertising to fit within 31-byte limit.
-pub const ECHE_SERVICE_UUID_16BIT: u16 = 0xA1B2;
+pub const PEAT_SERVICE_UUID_16BIT: u16 = 0xA1B2;
 
-/// ECHE Node Info Characteristic UUID
+/// PEAT Node Info Characteristic UUID
 pub const CHAR_NODE_INFO_UUID: u16 = 0x0001;
 
-/// ECHE Sync State Characteristic UUID
+/// PEAT Sync State Characteristic UUID
 pub const CHAR_SYNC_STATE_UUID: u16 = 0x0002;
 
-/// ECHE Sync Data Characteristic UUID
+/// PEAT Sync Data Characteristic UUID
 pub const CHAR_SYNC_DATA_UUID: u16 = 0x0003;
 
-/// ECHE Command Characteristic UUID
+/// PEAT Command Characteristic UUID
 pub const CHAR_COMMAND_UUID: u16 = 0x0004;
 
-/// ECHE Status Characteristic UUID
+/// PEAT Status Characteristic UUID
 pub const CHAR_STATUS_UUID: u16 = 0x0005;
 
 /// Crate version
@@ -323,7 +314,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Node identifier
 ///
-/// Represents a unique node in the Eche mesh. For BLE, this is typically
+/// Represents a unique node in the Peat mesh. For BLE, this is typically
 /// derived from the Bluetooth MAC address or a configured value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct NodeId {
@@ -360,7 +351,7 @@ impl NodeId {
     ///
     /// # Example
     /// ```
-    /// use eche_btle::NodeId;
+    /// use peat_btle::NodeId;
     ///
     /// let mac = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
     /// let node_id = NodeId::from_mac_address(&mac);
@@ -388,7 +379,7 @@ impl NodeId {
     ///
     /// # Example
     /// ```
-    /// use eche_btle::NodeId;
+    /// use peat_btle::NodeId;
     ///
     /// let node_id = NodeId::from_mac_string("00:11:22:33:44:55").unwrap();
     /// assert_eq!(node_id.as_u32(), 0x22334455);
@@ -428,9 +419,9 @@ impl From<NodeId> for u32 {
 
 /// Node capability flags
 ///
-/// Advertised in the Eche beacon to indicate what this node can do.
+/// Advertised in the Peat beacon to indicate what this node can do.
 pub mod capabilities {
-    /// This is an Eche-Lite node (minimal state, single parent)
+    /// This is an Peat-Lite node (minimal state, single parent)
     pub const LITE_NODE: u16 = 0x0001;
     /// Has accelerometer sensor
     pub const SENSOR_ACCEL: u16 = 0x0002;
@@ -452,7 +443,7 @@ pub mod capabilities {
     pub const HAS_GPS: u16 = 0x0200;
 }
 
-/// Hierarchy levels in the Eche mesh
+/// Hierarchy levels in the Peat mesh
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[repr(u8)]
 pub enum HierarchyLevel {
@@ -537,7 +528,7 @@ mod tests {
     #[test]
     fn test_service_uuid() {
         assert_eq!(
-            ECHE_SERVICE_UUID.to_string(),
+            PEAT_SERVICE_UUID.to_string(),
             "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
         );
     }

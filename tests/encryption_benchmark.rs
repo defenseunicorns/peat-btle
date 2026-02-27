@@ -20,8 +20,8 @@
 //!
 //! Run with: cargo test --test encryption_benchmark --features linux -- --nocapture
 
-use eche_btle::eche_mesh::{EcheMesh, EcheMeshConfig};
-use eche_btle::NodeId;
+use peat_btle::peat_mesh::{PeatMesh, PeatMeshConfig};
+use peat_btle::NodeId;
 use std::time::{Duration, Instant};
 
 /// Test document sizes (approximate payload sizes in bytes)
@@ -43,21 +43,21 @@ const TEST_SECRET: [u8; 32] = [
 ];
 
 /// Create a mesh node without encryption
-fn create_unencrypted_mesh(node_id: u32, callsign: &str) -> EcheMesh {
-    let config = EcheMeshConfig::new(NodeId::new(node_id), callsign, "BENCH");
-    EcheMesh::new(config)
+fn create_unencrypted_mesh(node_id: u32, callsign: &str) -> PeatMesh {
+    let config = PeatMeshConfig::new(NodeId::new(node_id), callsign, "BENCH");
+    PeatMesh::new(config)
 }
 
 /// Create a mesh node with encryption enabled
-fn create_encrypted_mesh(node_id: u32, callsign: &str) -> EcheMesh {
+fn create_encrypted_mesh(node_id: u32, callsign: &str) -> PeatMesh {
     let config =
-        EcheMeshConfig::new(NodeId::new(node_id), callsign, "BENCH").with_encryption(TEST_SECRET);
-    EcheMesh::new(config)
+        PeatMeshConfig::new(NodeId::new(node_id), callsign, "BENCH").with_encryption(TEST_SECRET);
+    PeatMesh::new(config)
 }
 
 /// Add chat messages to increase document size
 #[cfg(feature = "legacy-chat")]
-fn populate_mesh_with_chats(mesh: &EcheMesh, count: usize) {
+fn populate_mesh_with_chats(mesh: &PeatMesh, count: usize) {
     for i in 0..count {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -71,7 +71,7 @@ fn populate_mesh_with_chats(mesh: &EcheMesh, count: usize) {
 }
 
 /// Benchmark document building (serialization)
-fn benchmark_build_document(mesh: &EcheMesh, iterations: usize) -> Duration {
+fn benchmark_build_document(mesh: &PeatMesh, iterations: usize) -> Duration {
     let start = Instant::now();
     for _ in 0..iterations {
         let _doc = mesh.build_document();
@@ -80,7 +80,7 @@ fn benchmark_build_document(mesh: &EcheMesh, iterations: usize) -> Duration {
 }
 
 /// Benchmark full sync cycle: build -> "transmit" -> process
-fn benchmark_sync_cycle(sender: &EcheMesh, receiver: &EcheMesh, iterations: usize) -> Duration {
+fn benchmark_sync_cycle(sender: &PeatMesh, receiver: &PeatMesh, iterations: usize) -> Duration {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -148,7 +148,7 @@ fn print_results(
 fn benchmark_encryption_latency() {
     println!("\n");
     println!("{}", "=".repeat(180));
-    println!("ECHE-BTLE Encryption Benchmark: Sync Latency Comparison");
+    println!("PEAT-BTLE Encryption Benchmark: Sync Latency Comparison");
     println!("{}", "=".repeat(180));
     println!("Iterations per test: {}", ITERATIONS);
     println!("Encryption: ChaCha20-Poly1305 (30 byte overhead)");
@@ -231,7 +231,7 @@ fn benchmark_encryption_latency() {
 fn benchmark_encryption_throughput() {
     println!("\n");
     println!("{}", "=".repeat(100));
-    println!("ECHE-BTLE Encryption Throughput Benchmark");
+    println!("PEAT-BTLE Encryption Throughput Benchmark");
     println!("{}", "=".repeat(100));
 
     // Create meshes

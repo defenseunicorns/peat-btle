@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Delta Encoder for Eche-Lite Sync
+//! Delta Encoder for Peat-Lite Sync
 //!
 //! Tracks what state has been sent to each peer and only sends
 //! the changes (deltas) since the last sync. This dramatically

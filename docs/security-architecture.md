@@ -4,7 +4,7 @@
 
 ## Overview
 
-eche-btle implements a layered security model designed for tactical mesh networks operating on resource-constrained devices. This document covers the architecture decisions, trade-offs, and known limitations.
+peat-btle implements a layered security model designed for tactical mesh networks operating on resource-constrained devices. This document covers the architecture decisions, trade-offs, and known limitations.
 
 ## Threat Model
 
@@ -35,9 +35,9 @@ eche-btle implements a layered security model designed for tactical mesh network
 **Threat**: Attacks like WhisperPair (CVE-2024-XXXXX) can downgrade BLE pairing
 security by manipulating key exchange timing, resulting in weaker session keys.
 
-**ECHE-BTLE Mitigation**: BLE link security is **not** the trust boundary.
+**PEAT-BTLE Mitigation**: BLE link security is **not** the trust boundary.
 
-1. **Discovery-only dependency**: Eche uses BLE for proximity detection and
+1. **Discovery-only dependency**: Peat uses BLE for proximity detection and
    initial rendezvous. Security-critical operations require application-layer
    authentication per ADR-006.
 
@@ -48,7 +48,7 @@ security by manipulating key exchange timing, resulting in weaker session keys.
    regardless of BLE security level.
 
 4. **Defense in depth**: Even a fully compromised BLE link exposes only
-   encrypted, authenticated traffic that cannot be injected into the Eche mesh.
+   encrypted, authenticated traffic that cannot be injected into the Peat mesh.
 
 **Recommendation**: For maximum security, require BLE Security Level 3+ for
 sync operations (MITM-protected pairing) but design assuming it's compromised.
@@ -106,7 +106,7 @@ sync operations (MITM-protected pairing) but design assuming it's compromised.
 Each device generates a persistent Ed25519 keypair (`DeviceIdentity`):
 
 ```rust
-use eche_btle::security::DeviceIdentity;
+use peat_btle::security::DeviceIdentity;
 
 let identity = DeviceIdentity::generate();
 let node_id = identity.node_id();        // Derived from public key
@@ -159,7 +159,7 @@ let hkdf = Hkdf::<Sha256>::new(
     &shared_secret             // IKM: 32-byte shared secret
 );
 let mut key = [0u8; 32];
-hkdf.expand(b"ECHE-BTLE-mesh-encryption-v1", &mut key);
+hkdf.expand(b"PEAT-BTLE-mesh-encryption-v1", &mut key);
 ```
 
 **Design Decision**: Using `mesh_id` as HKDF salt ensures that the same shared secret produces different keys for different meshes. This allows a single organization to use one master secret across multiple deployments.
@@ -199,7 +199,7 @@ hkdf.expand(b"ECHE-BTLE-mesh-encryption-v1", &mut key);
 ```rust
 // PeerManager tracks discovered nodes
 struct PeerManager {
-    peers: BTreeMap<NodeId, EchePeer>,      // Known peers
+    peers: BTreeMap<NodeId, PeatPeer>,      // Known peers
     identifier_map: BTreeMap<String, NodeId>, // BLE ID → NodeId
     sync_history: BTreeMap<NodeId, u64>,     // Last sync timestamps
 }
@@ -274,7 +274,7 @@ cleanup_stale() → Remove after peer_timeout_ms (default: 45s)
 ```rust
 // Bind session key to both parties (prevents key confusion)
 let info = format!(
-    "ECHE-peer-session-{:08X}-{:08X}",
+    "PEAT-peer-session-{:08X}-{:08X}",
     min(our_id, peer_id),
     max(our_id, peer_id)
 );
@@ -325,7 +325,7 @@ This enables:
 **Mitigation**: Enable strict encryption mode to reject unencrypted documents:
 
 ```rust
-let config = EcheMeshConfig::new(node_id, callsign, mesh_id)
+let config = PeatMeshConfig::new(node_id, callsign, mesh_id)
     .with_encryption(secret)
     .with_strict_encryption();  // Reject unencrypted
 ```

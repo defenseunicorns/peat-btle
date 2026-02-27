@@ -2,7 +2,7 @@
 
 ## Overview
 
-WearOS aggressively manages power, which causes several issues with continuous BLE operations required for mesh networking. This document captures the issues we've encountered and the workarounds implemented in eche-btle.
+WearOS aggressively manages power, which causes several issues with continuous BLE operations required for mesh networking. This document captures the issues we've encountered and the workarounds implemented in peat-btle.
 
 ---
 
@@ -23,8 +23,8 @@ WearOS power management silently terminates BLE scans to conserve battery. This 
 
 ### Evidence from Logs
 ```
-02-05 15:25:14.383 I EcheBtle: Started scanning for Eche devices (no UUID filter)
-02-05 15:30:14.109 D EcheBtle.ScanCallback: Scan result: 68:6D:2F:50:CF:30 (WEAROS-3301)
+02-05 15:25:14.383 I PeatBtle: Started scanning for Peat devices (no UUID filter)
+02-05 15:30:14.109 D PeatBtle.ScanCallback: Scan result: 68:6D:2F:50:CF:30 (WEAROS-3301)
 # ... no more scan results after this point ...
 # 25+ minutes of silence, no onScanFailed callback
 ```
@@ -89,7 +89,7 @@ WearOS aggressively puts WiFi to sleep and terminates debugging connections to s
 WearOS rotates BLE MAC addresses for privacy. The random address changes periodically.
 
 ### Workaround
-eche-btle tracks peers by `nodeId` (derived from service data) rather than BLE address:
+peat-btle tracks peers by `nodeId` (derived from service data) rather than BLE address:
 
 ```kotlin
 // Update address when peer is rediscovered with new address

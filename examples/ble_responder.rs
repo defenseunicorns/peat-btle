@@ -1,8 +1,8 @@
 //! BLE Responder - Functional test node for Raspberry Pi
 //!
-//! This binary runs on a Raspberry Pi and acts as an Eche mesh node that:
-//! 1. Advertises as an Eche device with GATT service
-//! 2. Accepts connections from other Eche nodes (e.g., Android)
+//! This binary runs on a Raspberry Pi and acts as an Peat mesh node that:
+//! 1. Advertises as an Peat device with GATT service
+//! 2. Accepts connections from other Peat nodes (e.g., Android)
 //! 3. Syncs mesh state with connected peers
 //! 4. Logs all activity for test verification
 //!
@@ -13,28 +13,20 @@
 //! Build for Pi:
 //!   cargo build --release --features linux --example ble_responder
 //!
-//! Build with CannedMessage support:
-//!   cargo build --release --features "linux,eche-lite-sync" --example ble_responder
-//!
 //! Run (requires root or bluetooth group):
 //!   sudo ./target/release/examples/ble_responder
 //!
 //! Loopback Test:
 //!   1. Run this on a Raspberry Pi
-//!   2. Connect with Android device running ATAK + eche-btle plugin
+//!   2. Connect with Android device running ATAK + peat-btle plugin
 //!   3. Verify mesh state syncs (counters, callsigns, etc.)
-//!
-//! CannedMessage Test (requires --encrypt and eche-lite-sync feature):
-//!   1. Run with `--encrypt` on responder Pi
-//!   2. Run ble_test_client with `--encrypt` on client Pi
-//!   3. Verify CannedMessage documents sync between nodes
 
 use base64::Engine;
-use eche_btle::{
+use peat_btle::{
     config::BleConfig,
     platform::{linux::BluerAdapter, BleAdapter, DiscoveredDevice},
     security::MeshGenesis,
-    EcheMesh, EcheMeshConfig, NodeId,
+    NodeId, PeatMesh, PeatMeshConfig,
 };
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -104,11 +96,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             MeshGenesis::decode(&genesis_bytes).expect("Failed to decode genesis (invalid format)");
         let mesh_id = genesis.mesh_id();
         let secret = genesis.encryption_secret();
-        let config = EcheMeshConfig::new(node_id, callsign, &mesh_id).with_encryption(secret);
+        let config = PeatMeshConfig::new(node_id, callsign, &mesh_id).with_encryption(secret);
         (mesh_id, true, config)
     } else {
         let mesh_id = mesh_id_arg.unwrap_or("TEST").to_string();
-        let mut config = EcheMeshConfig::new(node_id, callsign, &mesh_id);
+        let mut config = PeatMeshConfig::new(node_id, callsign, &mesh_id);
         if use_encryption {
             config = config.with_encryption(TEST_SECRET);
         }
@@ -116,7 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     log::info!("===========================================");
-    log::info!("Eche BLE Responder (Loopback Test Node)");
+    log::info!("Peat BLE Responder (Loopback Test Node)");
     log::info!("===========================================");
     log::info!("Node ID:  0x{:08X}", node_id.as_u32());
     log::info!("Callsign: {}", callsign);
@@ -127,28 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     log::info!("===========================================");
 
-    let mesh = Arc::new(RwLock::new(EcheMesh::new(mesh_config)));
-
-    // Store a CannedMessage at startup (when eche-lite-sync feature is enabled)
-    #[cfg(feature = "eche-lite-sync")]
-    if use_encryption {
-        use eche_btle::eche_lite_sync::CannedMessageDocument;
-        use eche_lite::{CannedMessage, CannedMessageAckEvent, NodeId as EcheLiteNodeId};
-
-        let event = CannedMessageAckEvent::new(
-            CannedMessage::CheckIn,
-            EcheLiteNodeId::new(node_id.as_u32()),
-            None,
-            now_ms(),
-        );
-        let mesh_guard = mesh.read().await;
-        let stored = mesh_guard.store_app_document(CannedMessageDocument::new(event));
-        log::info!(
-            "Stored CannedMessage (CheckIn): stored={}, app_doc_count={}",
-            stored,
-            mesh_guard.app_document_count()
-        );
-    }
+    let mesh = Arc::new(RwLock::new(PeatMesh::new(mesh_config)));
 
     log::info!("Mesh initialized, starting BLE adapter...");
 
@@ -168,9 +139,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Set up discovery callback (requires &mut self, so do before Arc)
     adapter.set_discovery_callback(Some(Arc::new(move |device: DiscoveredDevice| {
-        if device.is_hive_node {
+        if device.is_peat_node {
             log::info!(
-                "Discovered Eche node: {} ({})",
+                "Discovered Peat node: {} ({})",
                 device.name.as_deref().unwrap_or("unknown"),
                 device.address
             );
@@ -227,7 +198,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("===========================================");
     log::info!("Responder running. Press Ctrl+C to stop.");
-    log::info!("Advertising as: ECHE_{}-{:08X}", mesh_id, node_id.as_u32());
+    log::info!("Advertising as: PEAT_{}-{:08X}", mesh_id, node_id.as_u32());
     log::info!("Waiting for connections...");
     log::info!("===========================================");
 

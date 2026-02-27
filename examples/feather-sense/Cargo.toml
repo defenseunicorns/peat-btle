@@ -1,10 +1,10 @@
 [package]
-name = "feather-sense-eche"
+name = "feather-sense-peat"
 version = "0.1.0"
 edition = "2021"
 authors = ["(r)evolve - Revolve Team LLC"]
 license = "Apache-2.0"
-description = "Eche SOS beacon on Adafruit Feather nRF52840 Sense"
+description = "Peat SOS beacon on Adafruit Feather nRF52840 Sense"
 
 [features]
 default = ["pure"]
@@ -146,5 +146,5 @@ name = "ble_advertiser"
 path = "src/ble_advertiser.rs"
 
 [[bin]]
-name = "eche_node"
-path = "src/eche_node.rs"
+name = "peat_node"
+path = "src/peat_node.rs"

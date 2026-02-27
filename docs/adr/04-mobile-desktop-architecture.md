@@ -1,4 +1,4 @@
-# ADR-04: Eche Mesh Mobile & Desktop Application Architecture
+# ADR-04: Peat Mesh Mobile & Desktop Application Architecture
 
 **Organization:** (r)evolve - Revolve Team LLC  
 **URL:** https://revolveteam.com  
@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-This ADR defines the architecture for Eche Mesh mobile and desktop applications. We use **React Native with TypeScript** (bare workflow) as the cross-platform framework, targeting **iOS, Android, macOS, Windows, and Linux**. The architecture leverages existing UniFFI bindings to the eche-btle Rust core. This choice optimizes for community adoption, contributor accessibility, and long-term extensibility.
+This ADR defines the architecture for Peat Mesh mobile and desktop applications. We use **React Native with TypeScript** (bare workflow) as the cross-platform framework, targeting **iOS, Android, macOS, Windows, and Linux**. The architecture leverages existing UniFFI bindings to the peat-btle Rust core. This choice optimizes for community adoption, contributor accessibility, and long-term extensibility.
 
 ---
 
@@ -43,7 +43,7 @@ This ADR defines the architecture for Eche Mesh mobile and desktop applications.
 
 ### The Community Argument
 
-**Goal:** Maximize potential contributors to the Eche Mesh ecosystem.
+**Goal:** Maximize potential contributors to the Peat Mesh ecosystem.
 
 JavaScript/TypeScript is the largest developer community in the world. By choosing React Native:
 
@@ -62,7 +62,7 @@ JavaScript/TypeScript is the largest developer community in the world. By choosi
 | Discord | React Native | Massive cross-platform success |
 | Coinbase | React Native | High-security app, cross-platform |
 
-Eche can differentiate by being **more accessible to contributors** than BitChat or Briar.
+Peat can differentiate by being **more accessible to contributors** than BitChat or Briar.
 
 ---
 
@@ -85,7 +85,7 @@ Eche can differentiate by being **more accessible to contributors** than BitChat
 │  └───────────────────────────────────────────────────────────┘ │
 │  ┌───────────────────────────────────────────────────────────┐ │
 │  │  Native Bridge Layer                                       │ │
-│  │  └─ EcheMeshModule  (Turbo Module for Rust FFI)           │ │
+│  │  └─ PeatMeshModule  (Turbo Module for Rust FFI)           │ │
 │  └───────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────┬───────────────────────────────┘
                                   │
@@ -96,7 +96,7 @@ Eche can differentiate by being **more accessible to contributors** than BitChat
 │  iOS Native Module      │                 │  Android Native Module  │
 │  (Swift)                │                 │  (Kotlin)               │
 │  ┌───────────────────┐  │                 │  ┌───────────────────┐  │
-│  │ EcheMeshBridge    │  │                 │  │ EcheMeshBridge    │  │
+│  │ PeatMeshBridge    │  │                 │  │ PeatMeshBridge    │  │
 │  │ - Swift wrapper   │  │                 │  │ - Kotlin wrapper  │  │
 │  │ - Event emitters  │  │                 │  │ - Event emitters  │  │
 │  └─────────┬─────────┘  │                 │  └─────────┬─────────┘  │
@@ -112,7 +112,7 @@ Eche can differentiate by being **more accessible to contributors** than BitChat
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  eche-btle (Rust)                                                   │
+│  peat-btle (Rust)                                                   │
 │  ├─ src/lib.rs           Core library                               │
 │  ├─ src/crdt/            CRDT implementations                       │
 │  ├─ src/sync/            Sync protocol                              │
@@ -126,7 +126,7 @@ Eche can differentiate by being **more accessible to contributors** than BitChat
 ## Repository Structure
 
 ```
-eche-btle/
+peat-btle/
 ├── src/                          # Rust core
 │   ├── lib.rs
 │   ├── crdt/
@@ -146,9 +146,9 @@ eche-btle/
 ├── bindings/                     # FFI bindings
 │   ├── uniffi.toml
 │   ├── ios/                      # Generated Swift bindings
-│   │   └── EcheBtle/
+│   │   └── PeatBtle/
 │   ├── android/                  # Generated Kotlin bindings
-│   │   └── eche-btle/
+│   │   └── peat-btle/
 │   └── desktop/                  # Generated bindings for desktop
 │       ├── macos/                # Swift (shares with iOS)
 │       ├── windows/              # C++/WinRT
@@ -206,7 +206,7 @@ eche-btle/
 │   │   │   └── useTheme.ts       # Theme hook
 │   │   │
 │   │   ├── native/               # Native module interface
-│   │   │   ├── EcheMesh.ts
+│   │   │   ├── PeatMesh.ts
 │   │   │   └── types.ts
 │   │   │
 │   │   ├── theme/                # Theme system
@@ -239,32 +239,32 @@ eche-btle/
 │   │       └── accessibility.ts  # A11y helpers
 │   │
 │   ├── ios/                      # iOS native code
-│   │   ├── EcheMesh/
-│   │   │   ├── EcheMeshModule.swift
-│   │   │   ├── EcheMeshModule.mm
-│   │   │   └── EcheMeshEventEmitter.swift
+│   │   ├── PeatMesh/
+│   │   │   ├── PeatMeshModule.swift
+│   │   │   ├── PeatMeshModule.mm
+│   │   │   └── PeatMeshEventEmitter.swift
 │   │   └── Podfile
 │   │
 │   ├── android/                  # Android native code
 │   │   ├── app/
 │   │   │   └── src/main/java/com/hivemesh/
-│   │   │       ├── EcheMeshModule.kt
-│   │   │       ├── EcheMeshPackage.kt
-│   │   │       └── EcheMeshEventEmitter.kt
+│   │   │       ├── PeatMeshModule.kt
+│   │   │       ├── PeatMeshPackage.kt
+│   │   │       └── PeatMeshEventEmitter.kt
 │   │   └── build.gradle
 │   │
 │   ├── macos/                    # macOS native code
-│   │   ├── EcheMesh-macOS/
-│   │   │   ├── EcheMeshModule.swift
-│   │   │   └── EcheMeshEventEmitter.swift
+│   │   ├── PeatMesh-macOS/
+│   │   │   ├── PeatMeshModule.swift
+│   │   │   └── PeatMeshEventEmitter.swift
 │   │   └── Podfile
 │   │
 │   ├── windows/                  # Windows native code
-│   │   ├── EcheMesh/
-│   │   │   ├── EcheMeshModule.cpp
-│   │   │   ├── EcheMeshModule.h
-│   │   │   └── EcheMeshEventEmitter.cpp
-│   │   └── EcheMesh.sln
+│   │   ├── PeatMesh/
+│   │   │   ├── PeatMeshModule.cpp
+│   │   │   ├── PeatMeshModule.h
+│   │   │   └── PeatMeshEventEmitter.cpp
+│   │   └── PeatMesh.sln
 │   │
 │   └── __tests__/                # Jest tests
 │       ├── components/
@@ -633,7 +633,7 @@ React Native's New Architecture provides:
 
 ```
 ┌─────────────────────────────────────────┐
-│ ≡  Eche Mesh                    ⚡ 87%  │
+│ ≡  Peat Mesh                    ⚡ 87%  │
 ├─────────────────────────────────────────┤
 │                                         │
 │  ┌─────────────────────────────────┐   │
@@ -835,7 +835,7 @@ React Native's New Architecture provides:
 │  ABOUT                                  │
 │  ┌─────────────────────────────────┐   │
 │  │ Version             1.0.0       │   │
-│  │ eche-btle           0.1.0       │   │
+│  │ peat-btle           0.1.0       │   │
 │  └─────────────────────────────────┘   │
 │                                         │
 ├─────────────────────────────────────────┤
@@ -888,9 +888,9 @@ React Native's New Architecture provides:
 ### TypeScript Interface
 
 ```typescript
-// src/native/EcheMesh.ts
+// src/native/PeatMesh.ts
 
-export interface EcheMeshModule {
+export interface PeatMeshModule {
   // Lifecycle
   initialize(config: MeshConfig): Promise<void>;
   shutdown(): Promise<void>;
@@ -925,7 +925,7 @@ export interface EcheMeshModule {
 }
 
 // Event types emitted from native
-export type EcheMeshEvent = 
+export type PeatMeshEvent = 
   | { type: 'meshStatusChanged'; status: MeshStatus }
   | { type: 'messageReceived'; message: Message }
   | { type: 'alertReceived'; alert: Alert }
@@ -942,7 +942,7 @@ export type EcheMeshEvent =
 // src/stores/messageStore.ts
 
 import { create } from 'zustand';
-import { EcheMesh } from '../native/EcheMesh';
+import { PeatMesh } from '../native/PeatMesh';
 import type { Message, OutgoingMessage } from '../types';
 
 interface MessageState {
@@ -967,7 +967,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   loadMessages: async () => {
     set({ loading: true, error: null });
     try {
-      const messages = await EcheMesh.getMessages();
+      const messages = await PeatMesh.getMessages();
       set({ messages, loading: false });
     } catch (error) {
       set({ error: error.message, loading: false });
@@ -976,7 +976,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   
   sendMessage: async (message) => {
     try {
-      const id = await EcheMesh.sendMessage(message);
+      const id = await PeatMesh.sendMessage(message);
       // Optimistic update
       set(state => ({
         messages: [...state.messages, { ...message, id, status: 'sending' }]
@@ -987,7 +987,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
   
   markRead: async (messageId) => {
-    await EcheMesh.markMessageRead(messageId);
+    await PeatMesh.markMessageRead(messageId);
     set(state => ({
       messages: state.messages.map(m => 
         m.id === messageId ? { ...m, read: true } : m
@@ -1134,7 +1134,7 @@ export const useMessageStore = create<MessageState>((set, get) => ({
 | Question | Decision | Notes |
 |----------|----------|-------|
 | Expo or bare? | **Bare workflow** | Maximum native module control |
-| State persistence? | **Rust layer** | Single source of truth in eche-btle |
+| State persistence? | **Rust layer** | Single source of truth in peat-btle |
 | Push notifications? | **Local only** | No server, mesh-triggered local notifications |
 | Dark mode? | **Yes, default** | "Tactical" dark theme default, light available |
 | Accessibility? | **Yes, WCAG 2.1 AA** | From start, inclusive design |
@@ -1194,7 +1194,7 @@ Since we have no server component, notifications work as follows:
 
 ## References
 
-- ADR-01: eche-btle Capability Validation Plan
+- ADR-01: peat-btle Capability Validation Plan
 - ADR-02: Messaging App Feature Requirements
 - ADR-03: Embedded (M5Stack) Architecture
 - React Native New Architecture: https://reactnative.dev/docs/new-architecture-intro

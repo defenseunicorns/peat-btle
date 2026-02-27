@@ -15,7 +15,7 @@
 
 //! Linux BLE Scanner Example
 //!
-//! Demonstrates scanning for Eche BLE devices on Linux using BlueZ.
+//! Demonstrates scanning for Peat BLE devices on Linux using BlueZ.
 //! Requires the `linux` feature and a Bluetooth adapter.
 //!
 //! Run with: cargo run --example linux_scanner --features linux
@@ -24,29 +24,29 @@
 
 #[cfg(all(feature = "linux", target_os = "linux"))]
 mod scanner {
-    use eche_btle::observer::{EcheEvent, EcheObserver};
-    use eche_btle::{BleConfig, EcheMesh, EcheMeshConfig, NodeId, ECHE_SERVICE_UUID};
+    use peat_btle::observer::{PeatEvent, PeatObserver};
+    use peat_btle::{BleConfig, NodeId, PeatMesh, PeatMeshConfig, PEAT_SERVICE_UUID};
     use std::sync::Arc;
     use std::time::Duration;
 
     /// Observer for mesh events
     struct ScanObserver;
 
-    impl EcheObserver for ScanObserver {
-        fn on_event(&self, event: EcheEvent) {
+    impl PeatObserver for ScanObserver {
+        fn on_event(&self, event: PeatEvent) {
             match event {
-                EcheEvent::PeerDiscovered { peer } => {
+                PeatEvent::PeerDiscovered { peer } => {
                     println!(
-                        "Discovered Eche peer: {} (Node ID: {:08X}, RSSI: {} dBm)",
+                        "Discovered Peat peer: {} (Node ID: {:08X}, RSSI: {} dBm)",
                         peer.display_name(),
                         peer.node_id.as_u32(),
                         peer.rssi
                     );
                 }
-                EcheEvent::PeerConnected { node_id } => {
+                PeatEvent::PeerConnected { node_id } => {
                     println!("Connected to: {:08X}", node_id.as_u32());
                 }
-                EcheEvent::MeshStateChanged {
+                PeatEvent::MeshStateChanged {
                     peer_count,
                     connected_count,
                 } => {
@@ -61,11 +61,11 @@ mod scanner {
     }
 
     pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-        use eche_btle::platform::linux::BluerAdapter;
-        use eche_btle::platform::BleAdapter;
+        use peat_btle::platform::linux::BluerAdapter;
+        use peat_btle::platform::BleAdapter;
 
-        println!("=== ECHE-BTLE Linux Scanner ===\n");
-        println!("Eche Service UUID: {}", ECHE_SERVICE_UUID);
+        println!("=== PEAT-BTLE Linux Scanner ===\n");
+        println!("Peat Service UUID: {}", PEAT_SERVICE_UUID);
         println!();
 
         // Generate a node ID from timestamp (in production, use MAC address)
@@ -78,7 +78,7 @@ mod scanner {
         println!("Our Node ID: {:08X}", node_id.as_u32());
 
         // Create BLE configuration
-        let config = BleConfig::hive_lite(node_id);
+        let config = BleConfig::peat_lite(node_id);
         println!("Power profile: {:?}", config.power_profile);
         println!();
 
@@ -97,20 +97,20 @@ mod scanner {
         println!();
 
         // Create mesh for state management
-        let mesh_config = EcheMeshConfig::new(node_id, "SCANNER", "DEMO");
-        let mesh = Arc::new(EcheMesh::new(mesh_config));
+        let mesh_config = PeatMeshConfig::new(node_id, "SCANNER", "DEMO");
+        let mesh = Arc::new(PeatMesh::new(mesh_config));
         mesh.add_observer(Arc::new(ScanObserver));
 
         // Set discovery callback
         let mesh_clone = mesh.clone();
         adapter.set_discovery_callback(Some(Arc::new(
-            move |device: eche_btle::DiscoveredDevice| {
+            move |device: peat_btle::DiscoveredDevice| {
                 let now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_millis() as u64;
 
-                if device.is_hive_node {
+                if device.is_peat_node {
                     mesh_clone.on_ble_discovered(
                         &device.address,
                         device.name.as_deref(),
@@ -119,9 +119,9 @@ mod scanner {
                         now_ms,
                     );
                 } else {
-                    // Non-Eche device
+                    // Non-Peat device
                     if let Some(name) = &device.name {
-                        println!("Non-Eche device: {} ({})", name, device.address);
+                        println!("Non-Peat device: {} ({})", name, device.address);
                     }
                 }
             },

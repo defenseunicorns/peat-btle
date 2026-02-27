@@ -45,7 +45,7 @@ MOUNT_POINT := $(shell \
 	elif [ -d "/mnt/FTHRSNSBOOT" ]; then echo "/mnt/FTHRSNSBOOT"; \
 	fi)
 
-.PHONY: build build-sd build-ble build-hive probe run ble hive flash-sd uf2 uf2-sd clean info help
+.PHONY: build build-sd build-ble build-peat probe run ble peat flash-sd uf2 uf2-sd clean info help
 
 # =============================================================================
 # Pure Rust Targets (recommended)
@@ -78,13 +78,13 @@ build-ble:
 ble: build-ble
 	probe-rs run --chip $(CHIP) $(RELEASE_DIR)/ble_advertiser
 
-# Build Eche mesh node (full GATT server for WearTAK)
-build-eche:
-	cargo build --release --no-default-features --features trouble --bin eche_node
+# Build Peat mesh node (full GATT server for WearTAK)
+build-peat:
+	cargo build --release --no-default-features --features trouble --bin peat_node
 
-# Flash Eche mesh node
-eche: build-eche
-	probe-rs run --chip $(CHIP) $(RELEASE_DIR)/eche_node
+# Flash Peat mesh node
+peat: build-peat
+	probe-rs run --chip $(CHIP) $(RELEASE_DIR)/peat_node
 
 # Just attach to RTT (board already running)
 attach:
@@ -143,13 +143,13 @@ info:
 	@echo "  pure_blinky  - Embassy async blinky, no SoftDevice"
 	@echo ""
 	@echo "=== BLE Binaries (nrf-sdc, requires arm-none-eabi-gcc) ==="
-	@echo "  make ble   - BLE advertising as ECHE-xxxx"
-	@echo "  make eche  - Eche GATT server for WearTAK (recommended)"
+	@echo "  make ble   - BLE advertising as PEAT-xxxx"
+	@echo "  make peat  - Peat GATT server for WearTAK (recommended)"
 	@echo ""
 	@echo "=== SoftDevice Binaries (use with: make flash-sd BIN=xxx) ==="
 	@echo "  sd_minimal   - Minimal SoftDevice + embassy blinky"
 	@echo "  blinky       - SoftDevice blinky test"
-	@echo "  main (default binary) - Full Eche SOS beacon"
+	@echo "  main (default binary) - Full Peat SOS beacon"
 	@echo ""
 	@echo "Current: BIN=$(BIN)"
 	@echo "Target:  $(TARGET)"
@@ -164,7 +164,7 @@ help:
 	@echo "  make erase                 - Erase chip (removes SoftDevice)"
 	@echo ""
 	@echo "BLE (requires arm-none-eabi-gcc for nrf-sdc):"
-	@echo "  make eche                  - Flash Eche GATT server (WearTAK)"
+	@echo "  make peat                  - Flash Peat GATT server (WearTAK)"
 	@echo "  make ble                   - Flash BLE advertiser only"
 	@echo ""
 	@echo "SOFTDEVICE (UF2 bootloader - currently broken):"

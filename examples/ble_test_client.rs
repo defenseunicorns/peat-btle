@@ -1,7 +1,7 @@
 //! BLE Test Client - Connects to ble_responder for automated testing
 //!
 //! This binary runs alongside ble_responder to perform automated loopback tests.
-//! It connects to an Eche node, syncs mesh state, and verifies the exchange.
+//! It connects to an Peat node, syncs mesh state, and verifies the exchange.
 //!
 //! Usage:
 //!   ./ble_test_client [--adapter hci1] [--mesh-id TEST] [--timeout 30] [--encrypt]
@@ -10,26 +10,20 @@
 //! Build:
 //!   cargo build --release --features linux --example ble_test_client
 //!
-//! Build with CannedMessage support:
-//!   cargo build --release --features "linux,eche-lite-sync" --example ble_test_client
-//!
 //! Run (requires root or bluetooth group):
 //!   sudo ./target/release/examples/ble_test_client --adapter hci1
-//!
-//! CannedMessage test (requires --encrypt and eche-lite-sync feature):
-//!   sudo ./target/release/examples/ble_test_client --adapter hci0 --encrypt
 //!
 //! Exit codes:
 //!   0 = Test passed (connected, synced, verified)
 //!   1 = Test failed (timeout, no sync, verification failed)
 
 use base64::Engine;
-use eche_btle::{
+use peat_btle::{
     config::BleConfig,
-    gatt::EcheCharacteristicUuids,
+    gatt::PeatCharacteristicUuids,
     platform::{linux::BluerAdapter, BleAdapter, DiscoveredDevice},
     security::MeshGenesis,
-    EcheMesh, EcheMeshConfig, NodeId, ECHE_SERVICE_UUID,
+    NodeId, PeatMesh, PeatMeshConfig, PEAT_SERVICE_UUID,
 };
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
@@ -97,11 +91,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             MeshGenesis::decode(&genesis_bytes).expect("Failed to decode genesis (invalid format)");
         let mesh_id = genesis.mesh_id();
         let secret = genesis.encryption_secret();
-        let config = EcheMeshConfig::new(node_id, callsign, &mesh_id).with_encryption(secret);
+        let config = PeatMeshConfig::new(node_id, callsign, &mesh_id).with_encryption(secret);
         (mesh_id, true, config)
     } else {
         let mesh_id = mesh_id_arg.unwrap_or("TEST").to_string();
-        let mut config = EcheMeshConfig::new(node_id, callsign, &mesh_id);
+        let mut config = PeatMeshConfig::new(node_id, callsign, &mesh_id);
         if use_encryption_flag {
             config = config.with_encryption(TEST_SECRET);
         }
@@ -109,7 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     log::info!("===========================================");
-    log::info!("Eche BLE Test Client");
+    log::info!("Peat BLE Test Client");
     log::info!("===========================================");
     log::info!("Adapter:  {}", adapter_name);
     log::info!("Node ID:  0x{:08X}", node_id.as_u32());
@@ -122,28 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     log::info!("===========================================");
 
-    let mesh = Arc::new(RwLock::new(EcheMesh::new(mesh_config)));
-
-    // Store a CannedMessage at startup (when eche-lite-sync feature is enabled)
-    #[cfg(feature = "eche-lite-sync")]
-    if use_encryption {
-        use eche_btle::eche_lite_sync::CannedMessageDocument;
-        use eche_lite::{CannedMessage, CannedMessageAckEvent, NodeId as EcheLiteNodeId};
-
-        let event = CannedMessageAckEvent::new(
-            CannedMessage::Moving,
-            EcheLiteNodeId::new(node_id.as_u32()),
-            None,
-            now_ms(),
-        );
-        let mesh_guard = mesh.read().await;
-        let stored = mesh_guard.store_app_document(CannedMessageDocument::new(event));
-        log::info!(
-            "Stored CannedMessage (Moving): stored={}, app_doc_count={}",
-            stored,
-            mesh_guard.app_document_count()
-        );
-    }
+    let mesh = Arc::new(RwLock::new(PeatMesh::new(mesh_config)));
 
     // Create BLE adapter on specified interface
     let adapter = BluerAdapter::with_adapter_name(adapter_name).await?;
@@ -165,23 +138,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let peer_callsign = Arc::new(RwLock::new(String::new()));
 
     // Set up discovery callback
-    // Filter by mesh ID prefix in device name (e.g., "ECHE_CITEST-...")
+    // Filter by mesh ID prefix in device name (e.g., "PEAT_CITEST-...")
     let found_peer_cb = found_peer.clone();
     let peer_node_id_cb = peer_node_id.clone();
-    let mesh_id_prefix = format!("ECHE_{}-", mesh_id);
+    let mesh_id_prefix = format!("PEAT_{}-", mesh_id);
     adapter.set_discovery_callback(Some(Arc::new(move |device: DiscoveredDevice| {
-        if device.is_hive_node {
+        if device.is_peat_node {
             let name = device.name.as_deref().unwrap_or("unknown");
             log::info!(
-                "Found Eche node: {} ({}) RSSI={}",
+                "Found Peat node: {} ({}) RSSI={}",
                 name,
                 device.address,
                 device.rssi
             );
-            // Accept both new format (ECHE_CITEST-...) and legacy (HIVE-...)
-            let matches_mesh = name.starts_with(&mesh_id_prefix) || name.starts_with("ECHE-");
+            // Accept both new format (PEAT_CITEST-...) and legacy (HIVE-...)
+            let matches_mesh = name.starts_with(&mesh_id_prefix) || name.starts_with("PEAT-");
             if !matches_mesh {
-                log::debug!("Skipping non-Eche peer: {}", name);
+                log::debug!("Skipping non-Peat peer: {}", name);
                 return;
             }
             if let Some(pid) = device.node_id {
@@ -230,7 +203,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Start scanning (no advertising - we're the client)
     adapter.start().await?;
-    log::info!("Scanning for Eche nodes...");
+    log::info!("Scanning for Peat nodes...");
 
     // Test loop with timeout
     let start = Instant::now();
@@ -292,8 +265,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             adapter.update_sync_state(&doc).await;
             match conn
                 .write_characteristic(
-                    ECHE_SERVICE_UUID,
-                    EcheCharacteristicUuids::sync_data(),
+                    PEAT_SERVICE_UUID,
+                    PeatCharacteristicUuids::sync_data(),
                     &doc,
                 )
                 .await
@@ -307,7 +280,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Read peer's sync_state characteristic
             match conn
-                .read_characteristic(ECHE_SERVICE_UUID, EcheCharacteristicUuids::sync_state())
+                .read_characteristic(PEAT_SERVICE_UUID, PeatCharacteristicUuids::sync_state())
                 .await
             {
                 Ok(data) if !data.is_empty() => {
@@ -340,46 +313,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let total = mesh_guard.total_count();
             let app_docs = mesh_guard.app_document_count();
             let peer_cs = peer_callsign.read().await;
-
-            // When running with --encrypt and eche-lite-sync, verify CannedMessage round-trip
-            #[cfg(feature = "eche-lite-sync")]
-            if use_encryption {
-                use eche_btle::eche_lite_sync::CannedMessageDocument;
-
-                let canned_docs =
-                    mesh_guard.get_all_app_documents_of_type::<CannedMessageDocument>();
-                // We should have our own (Moving) + responder's (CheckIn) = 2
-                // But at minimum the responder's should have arrived
-                let remote_count = canned_docs
-                    .iter()
-                    .filter(|d| d.source_node() != node_id.as_u32())
-                    .count();
-
-                if remote_count == 0 {
-                    log::warn!("No remote CannedMessages received yet, continuing...");
-                    drop(mesh_guard);
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                    continue;
-                }
-
-                log::info!("===========================================");
-                log::info!("CANNED MESSAGE VERIFICATION");
-                log::info!("===========================================");
-                for doc in &canned_docs {
-                    log::info!(
-                        "  CannedMsg: source=0x{:08X} code=0x{:02X} ts={} acks={}",
-                        doc.source_node(),
-                        doc.message_code(),
-                        doc.timestamp(),
-                        doc.ack_count()
-                    );
-                }
-                log::info!(
-                    "  Total CannedMessages: {} (local=1, remote={})",
-                    canned_docs.len(),
-                    remote_count
-                );
-            }
 
             log::info!("===========================================");
             log::info!("TEST PASSED!");
