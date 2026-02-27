@@ -1,11 +1,11 @@
-# Pure-Rust Architecture for eche-btle on nRF52840
+# Pure-Rust Architecture for peat-btle on nRF52840
 
 > Reference document for Codex and contributors working on the embedded Rust
-> implementation of eche-btle targeting Nordic nRF52840 hardware.
+> implementation of peat-btle targeting Nordic nRF52840 hardware.
 
 ## Why Pure Rust
 
-The CircuitPython and SoftDevice paths on nRF52840 are dead ends for Eche:
+The CircuitPython and SoftDevice paths on nRF52840 are dead ends for Peat:
 
 - **SoftDevice** is Nordic's proprietary binary blob that owns the BLE radio, highest-priority
   interrupts, and the hardware crypto peripherals (AES-CCM, AES-ECB). It prevents application
@@ -69,7 +69,7 @@ Two options, both available without SoftDevice:
 - **Hardware AES-CCM** via `nrf52840-hal::Ccm` — uses the on-chip crypto accelerator directly
 - **`chacha20poly1305`** crate — pure Rust AEAD, no hardware dependency
 
-Eche minimum encryption requirement: AES-128-CCM or ChaCha20-Poly1305.
+Peat minimum encryption requirement: AES-128-CCM or ChaCha20-Poly1305.
 
 ## Target Hardware
 
@@ -95,7 +95,7 @@ All share the same nRF52840 SoC. Code targeting `nrf52840-hal` + TrouBLE runs on
 - **SparkFun:** US company (Boulder, CO). NDAA-friendly board assembly.
 - **ESP32 (Espressif):** Shanghai-based. Chinese sourced. **Not NDAA-compliant.**
 
-The nRF52840 is a strong foundation for a custom Eche board with a trusted supply chain.
+The nRF52840 is a strong foundation for a custom Peat board with a trusted supply chain.
 
 ## Development Environment
 
@@ -147,7 +147,7 @@ silently.
 
 Minimum viable proof-of-concept — two BlueFruit boards, no SoftDevice, pure Rust:
 
-1. **Board A** advertises an Eche beacon with a payload
+1. **Board A** advertises an Peat beacon with a payload
 2. **Board B** scans, discovers Board A, establishes a BLE connection
 3. They exchange an encrypted message using hardware AES-CCM
 4. LED blink or serial output confirms success
@@ -165,12 +165,12 @@ real hardware.
 3. BLE scanning on Board B
 4. Connection establishment between boards
 5. Encrypted message exchange via hardware AES-CCM
-6. Eche mesh protocol framing on top
+6. Peat mesh protocol framing on top
 
 ## Project Location
 
 ```
-eche-btle/
+peat-btle/
   examples/
     rust-nrf52840/       # ← this PoC lives here
       Cargo.toml
@@ -180,7 +180,7 @@ eche-btle/
       .cargo/config.toml # target + runner config
 ```
 
-This is a reference implementation / example within eche-btle, not a separate project.
+This is a reference implementation / example within peat-btle, not a separate project.
 
 ## Known Pain Points
 
@@ -211,7 +211,7 @@ This pure-Rust architecture solves every problem encountered with CircuitPython/
 
 ### Long-Term Vision
 
-eche-btle is a **protocol spec with reference implementations**, not a single codebase:
+peat-btle is a **protocol spec with reference implementations**, not a single codebase:
 
 - **ESP32 / Arduino** — "get started in an afternoon" tier (mbedtls for crypto)
 - **MicroPython** — Python accessibility tier (ucryptolib for AES)
@@ -219,7 +219,7 @@ eche-btle is a **protocol spec with reference implementations**, not a single co
 - **CircuitPython** — education/maker tier (unencrypted demo mesh only)
 
 The Rust implementation on nRF52840 is the **production reference** — no proprietary blobs,
-hardware crypto, memory safety, NDAA-compliant silicon. This is what ships on custom Eche
+hardware crypto, memory safety, NDAA-compliant silicon. This is what ships on custom Peat
 hardware and what defense customers audit.
 
 ## References

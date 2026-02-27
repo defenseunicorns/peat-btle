@@ -53,8 +53,8 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::platform::apple::CoreBluetoothAdapter;
-//! use eche_btle::{BleConfig, NodeId};
+//! use peat_btle::platform::apple::CoreBluetoothAdapter;
+//! use peat_btle::{BleConfig, NodeId};
 //!
 //! let config = BleConfig::new(NodeId::new(0x12345678));
 //! let mut adapter = CoreBluetoothAdapter::new()?;
@@ -80,7 +80,7 @@
 //!     <string>bluetooth-peripheral</string>
 //! </array>
 //! <key>NSBluetoothAlwaysUsageDescription</key>
-//! <string>Eche uses Bluetooth to sync data with nearby devices</string>
+//! <string>Peat uses Bluetooth to sync data with nearby devices</string>
 //! ```
 
 mod adapter;

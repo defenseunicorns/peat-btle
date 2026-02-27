@@ -1,6 +1,6 @@
 //! BLE advertiser using nrf-sdc (Nordic SoftDevice Controller)
 //!
-//! Advertises as "ECHE-xxxx" where xxxx is derived from device ID.
+//! Advertises as "PEAT-xxxx" where xxxx is derived from device ID.
 //! Watch for it with nRF Connect on your phone.
 
 #![no_std]
@@ -127,7 +127,7 @@ async fn main(spawner: Spawner) {
 
     // Build device name
     let name = build_device_name();
-    let name_str = core::str::from_utf8(&name).unwrap_or("ECHE");
+    let name_str = core::str::from_utf8(&name).unwrap_or("PEAT");
     info!("Device name: {}", name_str);
 
     // Set advertising parameters

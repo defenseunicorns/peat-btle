@@ -16,15 +16,15 @@
 //! Android BLE connection stub
 //!
 //! This module provides a stub `AndroidConnection`. The actual BLE connections
-//! are managed by the Kotlin EcheBtle class using Android BluetoothGatt APIs.
+//! are managed by the Kotlin PeatBtle class using Android BluetoothGatt APIs.
 //!
 //! On Android, connection lifecycle is:
-//! 1. Kotlin EcheBtle discovers devices via BluetoothLeScanner
+//! 1. Kotlin PeatBtle discovers devices via BluetoothLeScanner
 //! 2. Kotlin connects via BluetoothDevice.connectGatt()
-//! 3. Kotlin calls EcheMesh.onBleConnected() via UniFFI
+//! 3. Kotlin calls PeatMesh.onBleConnected() via UniFFI
 //! 4. Kotlin reads/writes GATT characteristics
-//! 5. Kotlin calls EcheMesh.onBleDataReceived() via UniFFI
-//! 6. On disconnect, Kotlin calls EcheMesh.onBleDisconnected() via UniFFI
+//! 5. Kotlin calls PeatMesh.onBleDataReceived() via UniFFI
+//! 6. On disconnect, Kotlin calls PeatMesh.onBleDisconnected() via UniFFI
 
 use std::time::Duration;
 

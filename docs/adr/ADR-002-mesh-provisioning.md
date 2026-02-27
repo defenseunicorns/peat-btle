@@ -16,11 +16,11 @@
 
 ## Executive Summary
 
-This ADR defines how eche-btle meshes are created, how nodes are provisioned to join, and how trust is established.
+This ADR defines how peat-btle meshes are created, how nodes are provisioned to join, and how trust is established.
 
-**Key Architectural Principle**: eche-btle is **fully self-sufficient**. It has complete, independent security - identity, provisioning, key management, membership control. It does NOT depend on HIVE or any external system.
+**Key Architectural Principle**: peat-btle is **fully self-sufficient**. It has complete, independent security - identity, provisioning, key management, membership control. It does NOT depend on HIVE or any external system.
 
-HIVE (the larger framework) may **consume** eche-btle as a BLE transport, but eche-btle never defers to or requires HIVE.
+HIVE (the larger framework) may **consume** peat-btle as a BLE transport, but peat-btle never defers to or requires HIVE.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -28,7 +28,7 @@ HIVE (the larger framework) may **consume** eche-btle as a BLE transport, but ec
 │                                                                 │
 │  ADR-006 Security │ ADR-044 MLS Keys │ Cell Management         │
 │                                                                 │
-│  HIVE consumes eche-btle as a transport layer.                 │
+│  HIVE consumes peat-btle as a transport layer.                 │
 │  HIVE may inject its own keys/credentials via config.          │
 │                                                                 │
 │                          │                                      │
@@ -37,7 +37,7 @@ HIVE (the larger framework) may **consume** eche-btle as a BLE transport, but ec
                            │
 ┌──────────────────────────┼──────────────────────────────────────┐
 │                          ▼                                      │
-│                     ECHE-BTLE                                   │
+│                     PEAT-BTLE                                   │
 │         ┌─────────────────────────────────────┐                │
 │         │     FULLY INDEPENDENT OPERATION      │                │
 │         │                                      │                │
@@ -53,7 +53,7 @@ HIVE (the larger framework) may **consume** eche-btle as a BLE transport, but ec
 │  • Pre-shared mesh secrets                                      │
 │  • Membership rosters                                           │
 │                                                                 │
-│  But eche-btle owns and manages all of this itself.            │
+│  But peat-btle owns and manages all of this itself.            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -61,27 +61,27 @@ HIVE (the larger framework) may **consume** eche-btle as a BLE transport, but ec
 
 ## Design Principle: Self-Sufficient, Consumable
 
-eche-btle must work in these scenarios:
+peat-btle must work in these scenarios:
 
 | Scenario | Description |
 |----------|-------------|
-| **Pure Standalone** | eche-btle only, no HIVE framework. Sensors + phones form mesh. |
-| **HIVE Transport** | HIVE uses eche-btle for BLE comms, may provide keys via config. |
-| **Mixed Deployment** | Some nodes HIVE-managed, some standalone eche-btle only. |
+| **Pure Standalone** | peat-btle only, no HIVE framework. Sensors + phones form mesh. |
+| **HIVE Transport** | HIVE uses peat-btle for BLE comms, may provide keys via config. |
+| **Mixed Deployment** | Some nodes HIVE-managed, some standalone peat-btle only. |
 
-In ALL cases, eche-btle:
+In ALL cases, peat-btle:
 - Generates/manages its own device identity
 - Creates/joins meshes independently
 - Handles provisioning of new nodes
 - Manages membership and revocation
 - Rotates keys when needed
 
-When HIVE consumes eche-btle, it may:
-- Provide pre-generated identity via `EcheMeshConfig`
+When HIVE consumes peat-btle, it may:
+- Provide pre-generated identity via `PeatMeshConfig`
 - Provide mesh secrets derived from HIVE's MLS
-- Sync membership rosters via eche-btle's API
+- Sync membership rosters via peat-btle's API
 
-But eche-btle never "asks" HIVE for anything. It's a library, not a client.
+But peat-btle never "asks" HIVE for anything. It's a library, not a client.
 
 ---
 
@@ -89,10 +89,10 @@ But eche-btle never "asks" HIVE for anything. It's a library, not a client.
 
 ### Current State
 
-Today, configuring a eche-btle node requires manually providing:
+Today, configuring a peat-btle node requires manually providing:
 
 ```kotlin
-val config = EcheMeshConfig(
+val config = PeatMeshConfig(
     nodeId = NodeId.fromMacAddress(bluetoothAdapter.address),
     callsign = "ALPHA-1",
     meshId = "DEMO",
@@ -219,12 +219,12 @@ impl MeshGenesis {
 
     /// Derive the encryption secret
     pub fn encryption_secret(&self) -> [u8; 32] {
-        blake3::derive_key("ECHE-mesh-encryption-v1", &self.mesh_seed)
+        blake3::derive_key("PEAT-mesh-encryption-v1", &self.mesh_seed)
     }
 
     /// Derive the beacon key base
     pub fn beacon_key_base(&self) -> [u8; 32] {
-        blake3::derive_key("ECHE-beacon-key-v1", &self.mesh_seed)
+        blake3::derive_key("PEAT-beacon-key-v1", &self.mesh_seed)
     }
 }
 ```
@@ -295,8 +295,8 @@ pub struct EnrollmentToken {
 impl EnrollmentToken {
     /// Generate QR code content
     pub fn to_qr(&self) -> String {
-        // Format: ECHE://enroll/v1/<base64url-encoded-token>
-        format!("ECHE://enroll/v1/{}", base64url::encode(&self.encode()))
+        // Format: PEAT://enroll/v1/<base64url-encoded-token>
+        format!("PEAT://enroll/v1/{}", base64url::encode(&self.encode()))
     }
 }
 ```
@@ -304,7 +304,7 @@ impl EnrollmentToken {
 **QR Content** (fits in QR code < 500 bytes):
 
 ```
-ECHE://enroll/v1/eyJtIjoiQUxQSEEiLCJlIjoiYmFzZTY0Li4uIiwiayI6IjAxMjM0NTY3ODlhYmNkZWYuLi4iLCJ4IjoxNzA1NjgwMDAwLCJzIjoiYmFzZTY0Li4uIn0
+PEAT://enroll/v1/eyJtIjoiQUxQSEEiLCJlIjoiYmFzZTY0Li4uIiwiayI6IjAxMjM0NTY3ODlhYmNkZWYuLi4iLCJ4IjoxNzA1NjgwMDAwLCJzIjoiYmFzZTY0Li4uIn0
 ```
 
 **Enrollment Flow:**
@@ -606,7 +606,7 @@ If a device that provisioned others is revoked:
 
 ```rust
 // Mesh creation (Controller only)
-impl EcheMesh {
+impl PeatMesh {
     /// Create a new mesh as founder
     pub fn create_mesh(name: &str, policy: MembershipPolicy) -> Result<MeshGenesis, Error>;
 
@@ -615,7 +615,7 @@ impl EcheMesh {
 }
 
 // Enrollment (Controller/Authority only)
-impl EcheMesh {
+impl PeatMesh {
     /// Generate QR enrollment token
     pub fn generate_enrollment_qr(&self, duration_secs: u64) -> Result<String, Error>;
 
@@ -630,7 +630,7 @@ impl EcheMesh {
 }
 
 // Status
-impl EcheMesh {
+impl PeatMesh {
     /// Check if we are the mesh creator
     pub fn is_mesh_creator(&self) -> bool;
 

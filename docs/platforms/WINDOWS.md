@@ -1,6 +1,6 @@
 # Windows Platform Integration Guide
 
-This guide covers integrating `eche-btle` into Windows applications using the WinRT Bluetooth APIs.
+This guide covers integrating `peat-btle` into Windows applications using the WinRT Bluetooth APIs.
 
 ## Requirements
 
@@ -28,7 +28,7 @@ This guide covers integrating `eche-btle` into Windows applications using the Wi
 │   (scanning)     │    (advertising)     │
 ├─────────────────────────────────────────┤
 │  GattClient      │    GattServer        │
-│  (connecting,    │   (hosting Eche      │
+│  (connecting,    │   (hosting Peat      │
 │   reading)       │    service)          │
 ├─────────────────────────────────────────┤
 │           WinRT Bluetooth APIs          │
@@ -41,7 +41,7 @@ This guide covers integrating `eche-btle` into Windows applications using the Wi
 
 ```toml
 [dependencies]
-eche-btle = { version = "0.1", features = ["windows"] }
+peat-btle = { version = "0.1", features = ["windows"] }
 windows = { version = "0.54", features = [
     "Devices_Bluetooth",
     "Devices_Bluetooth_Advertisement",
@@ -58,8 +58,8 @@ log = "0.4"
 ### Basic Usage
 
 ```rust
-use eche_btle::platform::windows::WinRtBleAdapter;
-use eche_btle::{BleConfig, NodeId, MeshTransport};
+use peat_btle::platform::windows::WinRtBleAdapter;
+use peat_btle::{BleConfig, NodeId, MeshTransport};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start operations
     adapter.start().await?;
 
-    println!("Eche BLE running on Windows...");
+    println!("Peat BLE running on Windows...");
     println!("Address: {:?}", adapter.address());
 
     // Keep running
@@ -96,11 +96,11 @@ let watcher = BluetoothLEAdvertisementWatcher::new()?;
 // Configure scan settings
 watcher.SetScanningMode(BluetoothLEScanningMode::Active)?;
 
-// Set filter for Eche service UUID
+// Set filter for Peat service UUID
 let filter = BluetoothLEAdvertisementFilter::new()?;
 let advertisement = BluetoothLEAdvertisement::new()?;
 let service_uuids = advertisement.ServiceUuids()?;
-service_uuids.Append(ECHE_SERVICE_GUID)?;
+service_uuids.Append(PEAT_SERVICE_GUID)?;
 filter.SetAdvertisement(&advertisement)?;
 watcher.SetAdvertisementFilter(&filter)?;
 
@@ -133,18 +133,18 @@ let publisher = BluetoothLEAdvertisementPublisher::new()?;
 
 // Build advertisement data
 let advertisement = BluetoothLEAdvertisement::new()?;
-advertisement.SetLocalName(&HSTRING::from("ECHE_DEMO-12345678"))?;
+advertisement.SetLocalName(&HSTRING::from("PEAT_DEMO-12345678"))?;
 
 // Add service UUID
 let service_uuids = advertisement.ServiceUuids()?;
-service_uuids.Append(ECHE_SERVICE_GUID)?;
+service_uuids.Append(PEAT_SERVICE_GUID)?;
 
 // Add service data
 let data_section = BluetoothLEAdvertisementDataSection::new()?;
 data_section.SetDataType(0x16)?; // Service Data - 16-bit UUID
 
 let writer = DataWriter::new()?;
-writer.WriteUInt16(ECHE_SERVICE_UUID_16BIT)?;
+writer.WriteUInt16(PEAT_SERVICE_UUID_16BIT)?;
 writer.WriteBytes(&beacon_data)?;
 data_section.SetData(&writer.DetachBuffer()?)?;
 
@@ -167,8 +167,8 @@ async fn connect_to_device(address: u64) -> Result<(), Box<dyn std::error::Error
     // Get device from address
     let device = BluetoothLEDevice::FromBluetoothAddressAsync(address)?.await?;
 
-    // Get Eche service
-    let services = device.GetGattServicesForUuidAsync(ECHE_SERVICE_GUID)?.await?;
+    // Get Peat service
+    let services = device.GetGattServicesForUuidAsync(PEAT_SERVICE_GUID)?.await?;
     let service = services.Services()?.GetAt(0)?;
 
     // Get document characteristic
@@ -215,7 +215,7 @@ async fn create_gatt_server() -> Result<(), Box<dyn std::error::Error>> {
     service_params.SetWriteProtectionLevel(GattProtectionLevel::Plain)?;
 
     // Create service provider
-    let result = GattServiceProvider::CreateAsync(ECHE_SERVICE_GUID)?.await?;
+    let result = GattServiceProvider::CreateAsync(PEAT_SERVICE_GUID)?.await?;
     let provider = result.ServiceProvider()?;
 
     // Add document characteristic
@@ -270,23 +270,23 @@ async fn create_gatt_server() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## High-Level Integration with EcheMesh
+## High-Level Integration with PeatMesh
 
 ```rust
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
-use eche_btle::observer::{EcheEvent, EcheObserver};
+use peat_btle::{PeatMesh, PeatMeshConfig, NodeId};
+use peat_btle::observer::{PeatEvent, PeatObserver};
 use std::sync::Arc;
 
 struct WindowsObserver;
 
-impl EcheObserver for WindowsObserver {
-    fn on_event(&self, event: EcheEvent) {
+impl PeatObserver for WindowsObserver {
+    fn on_event(&self, event: PeatEvent) {
         match event {
-            EcheEvent::EmergencyReceived { from_node } => {
+            PeatEvent::EmergencyReceived { from_node } => {
                 println!("EMERGENCY from {:08X}!", from_node.as_u32());
                 // Show Windows notification
             }
-            EcheEvent::PeerDiscovered { peer } => {
+            PeatEvent::PeerDiscovered { peer } => {
                 println!("Discovered: {}", peer.display_name());
             }
             _ => {}
@@ -297,12 +297,12 @@ impl EcheObserver for WindowsObserver {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create mesh
-    let config = EcheMeshConfig::new(
+    let config = PeatMeshConfig::new(
         NodeId::new(0x12345678),
         "WIN-1",
         "DEMO",
     );
-    let mesh = Arc::new(EcheMesh::new(config));
+    let mesh = Arc::new(PeatMesh::new(config));
 
     // Add observer
     mesh.add_observer(Arc::new(WindowsObserver));
@@ -366,7 +366,7 @@ use env_logger::Builder;
 fn setup_logging() {
     Builder::new()
         .filter_level(LevelFilter::Debug)
-        .filter_module("eche_btle", LevelFilter::Trace)
+        .filter_module("peat_btle", LevelFilter::Trace)
         .init();
 }
 ```

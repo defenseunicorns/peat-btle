@@ -13,17 +13,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Eche Beacon Advertiser
+//! Peat Beacon Advertiser
 //!
-//! Builds and manages BLE advertising packets containing Eche beacons.
+//! Builds and manages BLE advertising packets containing Peat beacons.
 
 #[cfg(not(feature = "std"))]
 use alloc::{string::String, vec::Vec};
 
 use crate::config::DiscoveryConfig;
-use crate::{HierarchyLevel, NodeId, ECHE_SERVICE_UUID_16BIT};
+use crate::{HierarchyLevel, NodeId, PEAT_SERVICE_UUID_16BIT};
 
-use super::beacon::{EcheBeacon, BEACON_COMPACT_SIZE};
+use super::beacon::{PeatBeacon, BEACON_COMPACT_SIZE};
 use super::encrypted_beacon::{
     BeaconKey, EncryptedBeacon, ENCRYPTED_BEACON_SIZE, ENCRYPTED_DEVICE_NAME,
 };
@@ -104,15 +104,15 @@ pub enum AdvertisingMode {
     Encrypted,
 }
 
-/// Eche Beacon Advertiser
+/// Peat Beacon Advertiser
 ///
-/// Manages building and updating BLE advertisements containing Eche beacons.
+/// Manages building and updating BLE advertisements containing Peat beacons.
 pub struct Advertiser {
     /// Configuration (will be used for PHY/power management)
     #[allow(dead_code)]
     config: DiscoveryConfig,
     /// Current beacon
-    beacon: EcheBeacon,
+    beacon: PeatBeacon,
     /// Current state
     state: AdvertiserState,
     /// When advertising started (monotonic ms timestamp)
@@ -140,7 +140,7 @@ pub struct Advertiser {
 impl Advertiser {
     /// Create a new advertiser with the given configuration and node ID
     pub fn new(config: DiscoveryConfig, node_id: NodeId) -> Self {
-        let beacon = EcheBeacon::new(node_id);
+        let beacon = PeatBeacon::new(node_id);
         Self {
             config,
             beacon,
@@ -158,9 +158,9 @@ impl Advertiser {
         }
     }
 
-    /// Create an advertiser for a Eche-Lite node
-    pub fn eche_lite(config: DiscoveryConfig, node_id: NodeId) -> Self {
-        let beacon = EcheBeacon::eche_lite(node_id);
+    /// Create an advertiser for a Peat-Lite node
+    pub fn peat_lite(config: DiscoveryConfig, node_id: NodeId) -> Self {
+        let beacon = PeatBeacon::peat_lite(node_id);
         Self {
             config,
             beacon,
@@ -208,7 +208,7 @@ impl Advertiser {
     ///
     /// In encrypted mode:
     /// - Beacon identity (mesh_id + node_id) is encrypted
-    /// - Device name becomes generic "ECHE"
+    /// - Device name becomes generic "PEAT"
     /// - Only mesh members with the beacon key can identify the node
     ///
     /// # Arguments
@@ -247,12 +247,12 @@ impl Advertiser {
     }
 
     /// Get the current beacon
-    pub fn beacon(&self) -> &EcheBeacon {
+    pub fn beacon(&self) -> &PeatBeacon {
         &self.beacon
     }
 
     /// Get mutable access to the beacon
-    pub fn beacon_mut(&mut self) -> &mut EcheBeacon {
+    pub fn beacon_mut(&mut self) -> &mut PeatBeacon {
         self.cache_dirty = true;
         &mut self.beacon
     }
@@ -348,8 +348,8 @@ impl Advertiser {
         // Service UUID (4 bytes for 16-bit UUID)
         adv_data.push(3); // Length
         adv_data.push(AD_TYPE_SERVICE_UUID_16);
-        adv_data.push((ECHE_SERVICE_UUID_16BIT & 0xFF) as u8);
-        adv_data.push((ECHE_SERVICE_UUID_16BIT >> 8) as u8);
+        adv_data.push((PEAT_SERVICE_UUID_16BIT & 0xFF) as u8);
+        adv_data.push((PEAT_SERVICE_UUID_16BIT >> 8) as u8);
 
         // Service Data with beacon - format depends on mode
         match self.mode {
@@ -358,8 +358,8 @@ impl Advertiser {
                 let beacon_data = self.beacon.encode_compact();
                 adv_data.push((2 + BEACON_COMPACT_SIZE) as u8); // Length
                 adv_data.push(AD_TYPE_SERVICE_DATA_16);
-                adv_data.push((ECHE_SERVICE_UUID_16BIT & 0xFF) as u8);
-                adv_data.push((ECHE_SERVICE_UUID_16BIT >> 8) as u8);
+                adv_data.push((PEAT_SERVICE_UUID_16BIT & 0xFF) as u8);
+                adv_data.push((PEAT_SERVICE_UUID_16BIT >> 8) as u8);
                 adv_data.extend_from_slice(&beacon_data);
             }
             AdvertisingMode::Encrypted => {
@@ -374,16 +374,16 @@ impl Advertiser {
                     let beacon_data = encrypted_beacon.encrypt(key, mesh_id_bytes);
                     adv_data.push((2 + ENCRYPTED_BEACON_SIZE) as u8); // Length
                     adv_data.push(AD_TYPE_SERVICE_DATA_16);
-                    adv_data.push((ECHE_SERVICE_UUID_16BIT & 0xFF) as u8);
-                    adv_data.push((ECHE_SERVICE_UUID_16BIT >> 8) as u8);
+                    adv_data.push((PEAT_SERVICE_UUID_16BIT & 0xFF) as u8);
+                    adv_data.push((PEAT_SERVICE_UUID_16BIT >> 8) as u8);
                     adv_data.extend_from_slice(&beacon_data);
                 } else {
                     // Fallback to plaintext if encryption not configured
                     let beacon_data = self.beacon.encode_compact();
                     adv_data.push((2 + BEACON_COMPACT_SIZE) as u8);
                     adv_data.push(AD_TYPE_SERVICE_DATA_16);
-                    adv_data.push((ECHE_SERVICE_UUID_16BIT & 0xFF) as u8);
-                    adv_data.push((ECHE_SERVICE_UUID_16BIT >> 8) as u8);
+                    adv_data.push((PEAT_SERVICE_UUID_16BIT & 0xFF) as u8);
+                    adv_data.push((PEAT_SERVICE_UUID_16BIT >> 8) as u8);
                     adv_data.extend_from_slice(&beacon_data);
                 }
             }
@@ -463,10 +463,10 @@ mod tests {
     }
 
     #[test]
-    fn test_advertiser_eche_lite() {
+    fn test_advertiser_peat_lite() {
         let config = DiscoveryConfig::default();
         let node_id = NodeId::new(0xCAFEBABE);
-        let advertiser = Advertiser::eche_lite(config, node_id);
+        let advertiser = Advertiser::peat_lite(config, node_id);
 
         assert!(advertiser.beacon().is_lite_node());
     }
@@ -512,7 +512,7 @@ mod tests {
     fn test_build_packet_with_name() {
         let config = DiscoveryConfig::default();
         let mut advertiser =
-            Advertiser::new(config, NodeId::new(0x12345678)).with_name("ECHE-12345678".to_string());
+            Advertiser::new(config, NodeId::new(0x12345678)).with_name("PEAT-12345678".to_string());
 
         let packet = advertiser.build_packet();
         assert!(packet.scan_rsp.is_some());
@@ -602,9 +602,9 @@ mod tests {
         // This exceeds 31-byte legacy limit, so extended advertising is enabled
         assert!(packet.extended || packet.adv_data.len() > LEGACY_ADV_MAX);
 
-        // Scan response should have generic "ECHE" name
+        // Scan response should have generic "PEAT" name
         let scan_rsp = packet.scan_rsp.as_ref().unwrap();
-        assert!(scan_rsp.windows(4).any(|w| w == b"ECHE"));
+        assert!(scan_rsp.windows(4).any(|w| w == b"PEAT"));
     }
 
     #[test]

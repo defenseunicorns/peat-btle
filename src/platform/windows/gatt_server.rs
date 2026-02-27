@@ -15,7 +15,7 @@
 
 //! GATT server for Windows
 //!
-//! Hosts the Eche BLE service using `GattServiceProvider`.
+//! Hosts the Peat BLE service using `GattServiceProvider`.
 //! Requires Windows 10 version 1803 or later.
 
 use std::sync::{Arc, Mutex};
@@ -31,8 +31,8 @@ use windows::Foundation::TypedEventHandler;
 use crate::error::{BleError, Result};
 use crate::NodeId;
 
-/// Eche Service UUID
-const ECHE_SERVICE_UUID: GUID = GUID::from_values(
+/// Peat Service UUID
+const PEAT_SERVICE_UUID: GUID = GUID::from_values(
     0xf47ac10b,
     0x58cc,
     0x4372,
@@ -73,7 +73,7 @@ struct GattServerState {
     write_callback: Option<Box<dyn Fn(Vec<u8>) + Send + Sync>>,
 }
 
-/// GATT server hosting the Eche service
+/// GATT server hosting the Peat service
 pub struct GattServer {
     /// Service provider (owns the service)
     provider: Option<GattServiceProvider>,
@@ -115,7 +115,7 @@ impl GattServer {
     /// Requires Windows 10 1803+.
     pub fn init_sync(&mut self) -> Result<()> {
         // Create the service provider
-        let create_op = GattServiceProvider::CreateAsync(ECHE_SERVICE_UUID).map_err(|e| {
+        let create_op = GattServiceProvider::CreateAsync(PEAT_SERVICE_UUID).map_err(|e| {
             BleError::GattError(format!("Failed to create service provider: {}", e))
         })?;
 

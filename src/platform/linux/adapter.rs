@@ -31,13 +31,13 @@ use tokio::sync::{broadcast, Mutex, RwLock};
 
 use crate::config::{BleConfig, DiscoveryConfig};
 use crate::error::{BleError, Result};
-use crate::gatt::EcheCharacteristicUuids;
+use crate::gatt::PeatCharacteristicUuids;
 use crate::platform::{
     BleAdapter, ConnectionCallback, ConnectionEvent, DisconnectReason, DiscoveredDevice,
     DiscoveryCallback,
 };
 use crate::transport::BleConnection;
-use crate::{NodeId, ECHE_SERVICE_UUID};
+use crate::{NodeId, PEAT_SERVICE_UUID};
 
 use super::BluerConnection;
 
@@ -252,10 +252,10 @@ impl BluerAdapter {
         self.adapter.name()
     }
 
-    /// Build Eche advertisement
+    /// Build Peat advertisement
     ///
     /// Matches Android's advertisement format for maximum compatibility:
-    /// - 16-bit Eche service UUID alias (0xF47A)
+    /// - 16-bit Peat service UUID alias (0xF47A)
     /// - Service data with [nodeId:4 bytes BE][meshId:4 bytes BE]
     /// - Device name goes in scan response (handled by BlueZ via adapter alias)
     ///
@@ -298,7 +298,7 @@ impl BluerAdapter {
 
         // Device name - include in advertisement for maximum compatibility
         // (some scanners need the name in the main advertisement)
-        let device_name = format!("ECHE-{:08X}", config.node_id.as_u32());
+        let device_name = format!("PEAT-{:08X}", config.node_id.as_u32());
 
         Advertisement {
             advertisement_type: bluer::adv::Type::Peripheral,
@@ -320,10 +320,10 @@ impl BluerAdapter {
             .map_err(|e| BleError::PlatformError(format!("Failed to set adapter alias: {}", e)))
     }
 
-    /// Parse Eche beacon from advertising data
+    /// Parse Peat beacon from advertising data
     /// TODO: Use this method instead of inline parsing in discovery loop
     #[allow(dead_code)]
-    fn parse_eche_beacon(
+    fn parse_peat_beacon(
         &self,
         address: Address,
         name: Option<String>,
@@ -331,20 +331,20 @@ impl BluerAdapter {
         service_data: &HashMap<bluer::Uuid, Vec<u8>>,
         _manufacturer_data: &HashMap<u16, Vec<u8>>,
     ) -> Option<DiscoveredDevice> {
-        // Check if this is a Eche node by looking for our service UUID
-        let is_eche = service_data.contains_key(&ECHE_SERVICE_UUID);
+        // Check if this is a Peat node by looking for our service UUID
+        let is_peat = service_data.contains_key(&PEAT_SERVICE_UUID);
 
-        // Try to extract node ID from name (ECHE-XXXXXXXX format)
+        // Try to extract node ID from name (PEAT-XXXXXXXX format)
         let node_id = name
             .as_ref()
-            .and_then(|n| n.strip_prefix("ECHE-"))
+            .and_then(|n| n.strip_prefix("PEAT-"))
             .and_then(NodeId::parse);
 
         Some(DiscoveredDevice {
             address: address.to_string(),
             name,
             rssi: rssi as i8,
-            is_eche_node: is_eche || node_id.is_some(),
+            is_peat_node: is_peat || node_id.is_some(),
             node_id,
             adv_data: Vec::new(), // TODO: serialize full adv data
         })
@@ -375,7 +375,7 @@ impl BluerAdapter {
     /// Set callback for when sync data is received from a connected peer
     ///
     /// This is invoked when a remote device writes to the sync_data characteristic.
-    /// Use this to feed received documents into `EcheMesh::on_ble_data_received_anonymous`.
+    /// Use this to feed received documents into `PeatMesh::on_ble_data_received_anonymous`.
     pub async fn set_sync_data_callback<F>(&self, callback: F)
     where
         F: Fn(Vec<u8>) + Send + Sync + 'static,
@@ -390,7 +390,7 @@ impl BluerAdapter {
 
     /// Update the sync state data that connected peers can read
     ///
-    /// Call this with the output of `EcheMesh::tick()` or `EcheMesh::build_document()`
+    /// Call this with the output of `PeatMesh::tick()` or `PeatMesh::build_document()`
     /// to make the current mesh state available to connected peers.
     pub async fn update_sync_state(&self, data: &[u8]) {
         *self.gatt_state.sync_state.lock().await = data.to_vec();
@@ -601,21 +601,21 @@ impl BleAdapter for BluerAdapter {
                                     let service_uuid_16bit =
                                         uuid::Uuid::parse_str("0000F47A-0000-1000-8000-00805F9B34FB").unwrap();
 
-                                    // Check if Eche service UUID is present in advertisement
+                                    // Check if Peat service UUID is present in advertisement
                                     // Check both the full UUID and the 16-bit alias
-                                    let has_eche_service = service_data.contains_key(&ECHE_SERVICE_UUID)
+                                    let has_peat_service = service_data.contains_key(&PEAT_SERVICE_UUID)
                                         || service_data.contains_key(&service_uuid_16bit);
 
-                                    // Check if name indicates Eche node (fallback)
+                                    // Check if name indicates Peat node (fallback)
                                     // Supports both formats:
-                                    // - New: ECHE_<MESH>-<NODE_ID> (e.g., "ECHE_WEARTAK-8DD4")
-                                    // - Legacy: ECHE-<NODE_ID> (e.g., "ECHE-12345678")
-                                    let name_indicates_eche = name.as_ref().map(|n| {
-                                        n.starts_with("ECHE_") || n.starts_with("ECHE-")
+                                    // - New: PEAT_<MESH>-<NODE_ID> (e.g., "PEAT_WEARTAK-8DD4")
+                                    // - Legacy: PEAT-<NODE_ID> (e.g., "PEAT-12345678")
+                                    let name_indicates_peat = name.as_ref().map(|n| {
+                                        n.starts_with("PEAT_") || n.starts_with("PEAT-")
                                     }).unwrap_or(false);
 
-                                    // Eche node detection: prefer service UUID, fallback to name
-                                    let is_eche_node = has_eche_service || name_indicates_eche;
+                                    // Peat node detection: prefer service UUID, fallback to name
+                                    let is_peat_node = has_peat_service || name_indicates_peat;
 
                                     // Parse node ID from name (supports both formats)
                                     let mut node_id = name.as_ref().and_then(|n| {
@@ -627,7 +627,7 @@ impl BleAdapter for BluerAdapter {
                                     // Service data format: [nodeId:4 bytes BE][meshId:UTF-8]
                                     if node_id.is_none() {
                                         if let Some(data) = service_data.get(&service_uuid_16bit)
-                                            .or_else(|| service_data.get(&ECHE_SERVICE_UUID))
+                                            .or_else(|| service_data.get(&PEAT_SERVICE_UUID))
                                         {
                                             if data.len() >= 4 {
                                                 let id = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
@@ -640,7 +640,7 @@ impl BleAdapter for BluerAdapter {
                                         address: addr.to_string(),
                                         name: name.clone(),
                                         rssi: rssi as i8,
-                                        is_eche_node,
+                                        is_peat_node,
                                         node_id,
                                         adv_data: Vec::new(),
                                     };
@@ -653,8 +653,8 @@ impl BleAdapter for BluerAdapter {
                                     }
 
                                     log::debug!(
-                                        "Discovered device: {} (Eche: {}, service_uuid: {}, name: {})",
-                                        discovered.address, is_eche_node, has_eche_service, name_indicates_eche
+                                        "Discovered device: {} (Peat: {}, service_uuid: {}, name: {})",
+                                        discovered.address, is_peat_node, has_peat_service, name_indicates_peat
                                     );
 
                                     if let Some(ref cb) = callback {
@@ -700,7 +700,7 @@ impl BleAdapter for BluerAdapter {
         *self.adv_handle.write().await = Some(handle);
 
         log::info!(
-            "BLE advertising started for Eche-{:08X}",
+            "BLE advertising started for Peat-{:08X}",
             ble_config.node_id.as_u32()
         );
         Ok(())
@@ -871,15 +871,15 @@ impl BleAdapter for BluerAdapter {
         let state_write_sync = state.clone();
         let state_write_cmd = state.clone();
 
-        // Build GATT application with Eche service
+        // Build GATT application with Peat service
         let app = Application {
             services: vec![Service {
-                uuid: ECHE_SERVICE_UUID,
+                uuid: PEAT_SERVICE_UUID,
                 primary: true,
                 characteristics: vec![
                     // Node Info characteristic (0001) - READ
                     Characteristic {
-                        uuid: EcheCharacteristicUuids::node_info(),
+                        uuid: PeatCharacteristicUuids::node_info(),
                         read: Some(CharacteristicRead {
                             read: true,
                             fun: Box::new(move |req| {
@@ -903,7 +903,7 @@ impl BleAdapter for BluerAdapter {
                     },
                     // Sync State characteristic (0002) - READ, NOTIFY
                     Characteristic {
-                        uuid: EcheCharacteristicUuids::sync_state(),
+                        uuid: PeatCharacteristicUuids::sync_state(),
                         read: Some(CharacteristicRead {
                             read: true,
                             fun: Box::new(move |req| {
@@ -932,7 +932,7 @@ impl BleAdapter for BluerAdapter {
                     },
                     // Sync Data characteristic (0003) - WRITE, INDICATE
                     Characteristic {
-                        uuid: EcheCharacteristicUuids::sync_data(),
+                        uuid: PeatCharacteristicUuids::sync_data(),
                         write: Some(CharacteristicWrite {
                             write: true,
                             method: CharacteristicWriteMethod::Fun(Box::new(move |data, req| {
@@ -964,7 +964,7 @@ impl BleAdapter for BluerAdapter {
                     },
                     // Command characteristic (0004) - WRITE
                     Characteristic {
-                        uuid: EcheCharacteristicUuids::command(),
+                        uuid: PeatCharacteristicUuids::command(),
                         write: Some(CharacteristicWrite {
                             write: true,
                             write_without_response: true,
@@ -992,7 +992,7 @@ impl BleAdapter for BluerAdapter {
                     },
                     // Status characteristic (0005) - READ, NOTIFY
                     Characteristic {
-                        uuid: EcheCharacteristicUuids::status(),
+                        uuid: PeatCharacteristicUuids::status(),
                         read: Some(CharacteristicRead {
                             read: true,
                             fun: Box::new(move |req| {

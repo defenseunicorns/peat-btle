@@ -26,9 +26,9 @@
 
 #![cfg(all(target_os = "macos", feature = "macos"))]
 
-use eche_btle::config::BleConfig;
-use eche_btle::platform::BleAdapter;
-use eche_btle::NodeId;
+use peat_btle::config::BleConfig;
+use peat_btle::platform::BleAdapter;
+use peat_btle::NodeId;
 
 /// Test that CoreBluetoothAdapter can be created without crashing
 ///
@@ -36,7 +36,7 @@ use eche_btle::NodeId;
 /// and memory management are working correctly.
 #[test]
 fn test_adapter_creation() {
-    use eche_btle::platform::apple::CoreBluetoothAdapter;
+    use peat_btle::platform::apple::CoreBluetoothAdapter;
 
     // Creating the adapter should not crash
     let result = CoreBluetoothAdapter::new();
@@ -61,7 +61,7 @@ fn test_adapter_creation() {
 /// due to incorrect autoreleased object handling.
 #[tokio::test]
 async fn test_adapter_init_no_segfault() {
-    use eche_btle::platform::apple::CoreBluetoothAdapter;
+    use peat_btle::platform::apple::CoreBluetoothAdapter;
 
     let result = CoreBluetoothAdapter::new();
     let Ok(mut adapter) = result else {
@@ -87,11 +87,11 @@ async fn test_adapter_init_no_segfault() {
 /// doesn't cause a segfault
 ///
 /// This is the key test for issue 80ff45 - the segfault was occurring
-/// when registering the Eche GATT service due to incorrect memory management
+/// when registering the Peat GATT service due to incorrect memory management
 /// in the `start_advertising` method.
 #[tokio::test]
 async fn test_adapter_start_no_segfault() {
-    use eche_btle::platform::apple::CoreBluetoothAdapter;
+    use peat_btle::platform::apple::CoreBluetoothAdapter;
 
     let result = CoreBluetoothAdapter::new();
     let Ok(mut adapter) = result else {
@@ -139,7 +139,7 @@ async fn test_adapter_start_no_segfault() {
 /// due to double-free or use-after-free issues.
 #[tokio::test]
 async fn test_repeated_start_stop_no_crash() {
-    use eche_btle::platform::apple::CoreBluetoothAdapter;
+    use peat_btle::platform::apple::CoreBluetoothAdapter;
 
     let result = CoreBluetoothAdapter::new();
     let Ok(mut adapter) = result else {
@@ -183,8 +183,8 @@ async fn test_repeated_start_stop_no_crash() {
 /// without causing memory issues.
 #[tokio::test]
 async fn test_advertising_memory_safety() {
-    use eche_btle::config::DiscoveryConfig;
-    use eche_btle::platform::apple::CoreBluetoothAdapter;
+    use peat_btle::config::DiscoveryConfig;
+    use peat_btle::platform::apple::CoreBluetoothAdapter;
 
     let result = CoreBluetoothAdapter::new();
     let Ok(mut adapter) = result else {

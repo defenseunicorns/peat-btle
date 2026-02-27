@@ -79,9 +79,9 @@ pub struct PeripheralInfo {
     pub name: Option<String>,
     /// Last seen RSSI
     pub rssi: i8,
-    /// Is this a Eche node
-    pub is_eche_node: bool,
-    /// Node ID if Eche node
+    /// Is this a Peat node
+    pub is_peat_node: bool,
+    /// Node ID if Peat node
     pub node_id: Option<NodeId>,
     /// Whether currently connected
     pub connected: bool,
@@ -524,12 +524,12 @@ impl CentralManager {
         peripherals.values().cloned().collect()
     }
 
-    /// Get all Eche node peripherals
-    pub(super) async fn get_eche_peripherals(&self) -> Vec<PeripheralInfo> {
+    /// Get all Peat node peripherals
+    pub(super) async fn get_peat_peripherals(&self) -> Vec<PeripheralInfo> {
         let peripherals = self.peripherals.read().await;
         peripherals
             .values()
-            .filter(|p| p.is_eche_node)
+            .filter(|p| p.is_peat_node)
             .cloned()
             .collect()
     }
@@ -565,7 +565,7 @@ impl CentralManager {
                     identifier,
                     name,
                     rssi,
-                    is_eche_node,
+                    is_peat_node,
                     node_id,
                     ..
                 } => {
@@ -576,7 +576,7 @@ impl CentralManager {
                             identifier,
                             name,
                             rssi,
-                            is_eche_node,
+                            is_peat_node,
                             node_id,
                             connected: false,
                         },
@@ -620,14 +620,14 @@ mod tests {
     fn test_peripheral_info() {
         let info = PeripheralInfo {
             identifier: "12345678-1234-1234-1234-123456789ABC".to_string(),
-            name: Some("ECHE-DEADBEEF".to_string()),
+            name: Some("PEAT-DEADBEEF".to_string()),
             rssi: -65,
-            is_eche_node: true,
+            is_peat_node: true,
             node_id: Some(NodeId::new(0xDEADBEEF)),
             connected: false,
         };
 
-        assert!(info.is_eche_node);
+        assert!(info.is_peat_node);
         assert!(!info.connected);
         assert_eq!(info.rssi, -65);
     }

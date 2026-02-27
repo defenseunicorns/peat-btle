@@ -48,26 +48,26 @@ import java.util.concurrent.atomic.AtomicLong
 import android.os.Handler
 import android.os.Looper
 
-// UniFFI-generated bindings for Rust EcheMesh
-import uniffi.eche_btle.EcheMesh
-import uniffi.eche_btle.DeviceIdentity
-import uniffi.eche_btle.MeshGenesis
-import uniffi.eche_btle.IdentityAttestation
-import uniffi.eche_btle.PeripheralType
-import uniffi.eche_btle.EventType
-import uniffi.eche_btle.DisconnectReason
-import uniffi.eche_btle.ConnectionState
-import uniffi.eche_btle.PeerConnectionState
-import uniffi.eche_btle.StateCountSummary
-import uniffi.eche_btle.FullStateCountSummary
-import uniffi.eche_btle.IndirectPeer
-import uniffi.eche_btle.ViaPeerRoute
-import uniffi.eche_btle.CannedMessageInfo
-import uniffi.eche_btle.deriveNodeIdFromMac
-import uniffi.eche_btle.ReconnectionManager as RustReconnectionManager
-import uniffi.eche_btle.ReconnectionConfig as RustReconnectionConfig
-import uniffi.eche_btle.PeerLifetimeManager as RustPeerLifetimeManager
-import uniffi.eche_btle.PeerLifetimeConfig as RustPeerLifetimeConfig
+// UniFFI-generated bindings for Rust PeatMesh
+import uniffi.peat_btle.PeatMesh
+import uniffi.peat_btle.DeviceIdentity
+import uniffi.peat_btle.MeshGenesis
+import uniffi.peat_btle.IdentityAttestation
+import uniffi.peat_btle.PeripheralType
+import uniffi.peat_btle.EventType
+import uniffi.peat_btle.DisconnectReason
+import uniffi.peat_btle.ConnectionState
+import uniffi.peat_btle.PeerConnectionState
+import uniffi.peat_btle.StateCountSummary
+import uniffi.peat_btle.FullStateCountSummary
+import uniffi.peat_btle.IndirectPeer
+import uniffi.peat_btle.ViaPeerRoute
+import uniffi.peat_btle.CannedMessageInfo
+import uniffi.peat_btle.deriveNodeIdFromMac
+import uniffi.peat_btle.ReconnectionManager as RustReconnectionManager
+import uniffi.peat_btle.ReconnectionConfig as RustReconnectionConfig
+import uniffi.peat_btle.PeerLifetimeManager as RustPeerLifetimeManager
+import uniffi.peat_btle.PeerLifetimeConfig as RustPeerLifetimeConfig
 
 /**
  * Configuration for high-priority sync mode.
@@ -94,11 +94,11 @@ data class HighPriorityConfig(
 }
 
 /**
- * Main entry point for Eche BLE operations on Android.
+ * Main entry point for Peat BLE operations on Android.
  *
  * This class provides a high-level API for BLE scanning, advertising, and
  * GATT connections, bridging Android's Bluetooth APIs with the native
- * eche-btle Rust implementation.
+ * peat-btle Rust implementation.
  *
  * ## Permissions
  *
@@ -110,7 +110,7 @@ data class HighPriorityConfig(
  *
  * ### Basic (Unencrypted)
  * ```kotlin
- * val hiveBtle = EcheBtle(context, nodeId = 0x12345678)
+ * val hiveBtle = PeatBtle(context, nodeId = 0x12345678)
  * hiveBtle.init()
  * ```
  *
@@ -123,7 +123,7 @@ data class HighPriorityConfig(
  * val genesis = MeshGenesis.create("ALPHA-TEAM", identity, MembershipPolicy.CONTROLLED)
  *
  * // Create encrypted mesh
- * val hiveBtle = EcheBtle(
+ * val hiveBtle = PeatBtle(
  *     context = context,
  *     identity = identity,
  *     genesis = genesis
@@ -135,9 +135,9 @@ data class HighPriorityConfig(
  *
  * ### Scanning & Advertising
  * ```kotlin
- * // Start scanning for Eche nodes
+ * // Start scanning for Peat nodes
  * hiveBtle.startScan { device ->
- *     Log.d("ECHE", "Found: ${device.address}")
+ *     Log.d("PEAT", "Found: ${device.address}")
  * }
  *
  * // Connect to a device
@@ -148,12 +148,12 @@ data class HighPriorityConfig(
  * ```
  *
  * @param context Android context (Activity, Service, or Application)
- * @param nodeId This node's Eche ID (32-bit unsigned). If null, auto-generated from Bluetooth MAC address.
+ * @param nodeId This node's Peat ID (32-bit unsigned). If null, auto-generated from Bluetooth MAC address.
  * @param meshId Mesh identifier for mesh isolation (e.g., "DEMO", "ALFA"). Defaults to "DEMO".
  * @param identity Optional DeviceIdentity for cryptographic operations. Required for encrypted mesh.
  * @param genesis Optional MeshGenesis for encrypted mesh. When provided with identity, enables encryption.
  */
-class EcheBtle(
+class PeatBtle(
     private val context: Context,
     private var _nodeId: Long? = null,
     private val meshId: String = DEFAULT_MESH_ID,
@@ -161,7 +161,7 @@ class EcheBtle(
     private val genesis: MeshGenesis? = null
 ) {
     /**
-     * This node's Eche ID. Auto-generated from Bluetooth MAC address if not specified.
+     * This node's Peat ID. Auto-generated from Bluetooth MAC address if not specified.
      * Available after init() is called.
      */
     val nodeId: Long
@@ -190,58 +190,58 @@ class EcheBtle(
     fun getGenesis(): MeshGenesis? = genesis
 
     companion object {
-        private const val TAG = "EcheBtle"
+        private const val TAG = "PeatBtle"
 
         /** Wire marker for app-layer messages (0xAF) - passed to onDecryptedData for apps to handle */
         private const val APP_LAYER_MARKER: Byte = 0xAF.toByte()
 
         /**
-         * Eche BLE Service UUID (canonical: f47ac10b-58cc-4372-a567-0e02b2c3d479)
+         * Peat BLE Service UUID (canonical: f47ac10b-58cc-4372-a567-0e02b2c3d479)
          *
-         * This is the canonical Eche service UUID used across all platforms.
+         * This is the canonical Peat service UUID used across all platforms.
          */
-        val ECHE_SERVICE_UUID: UUID = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479")
+        val PEAT_SERVICE_UUID: UUID = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
         /**
-         * Eche BLE Service UUID - 16-bit alias (0xF47A) for space-constrained advertising
+         * Peat BLE Service UUID - 16-bit alias (0xF47A) for space-constrained advertising
          *
          * Used by ESP32/Core2 devices to fit service UUID in BLE advertising payload.
          * Expands to standard Bluetooth SIG base: 0000f47a-0000-1000-8000-00805f9b34fb
          */
-        val ECHE_SERVICE_UUID_16: UUID = UUID.fromString("0000f47a-0000-1000-8000-00805f9b34fb")
+        val PEAT_SERVICE_UUID_16: UUID = UUID.fromString("0000f47a-0000-1000-8000-00805f9b34fb")
 
         /**
-         * Eche Document Characteristic UUID (canonical: f47a0003-58cc-4372-a567-0e02b2c3d479)
+         * Peat Document Characteristic UUID (canonical: f47a0003-58cc-4372-a567-0e02b2c3d479)
          *
          * Used for exchanging CRDT document data between peers.
          * Supports read, write, and notify operations.
          * Maps to CHAR_SYNC_DATA in the canonical protocol.
          */
-        val ECHE_CHAR_DOCUMENT: UUID = UUID.fromString("f47a0003-58cc-4372-a567-0e02b2c3d479")
+        val PEAT_CHAR_DOCUMENT: UUID = UUID.fromString("f47a0003-58cc-4372-a567-0e02b2c3d479")
 
-        /** Eche Node Info Characteristic UUID (canonical) */
-        val ECHE_CHAR_NODE_INFO: UUID = UUID.fromString("f47a0001-58cc-4372-a567-0e02b2c3d479")
+        /** Peat Node Info Characteristic UUID (canonical) */
+        val PEAT_CHAR_NODE_INFO: UUID = UUID.fromString("f47a0001-58cc-4372-a567-0e02b2c3d479")
 
-        /** Eche Sync State Characteristic UUID (canonical) */
-        val ECHE_CHAR_SYNC_STATE: UUID = UUID.fromString("f47a0002-58cc-4372-a567-0e02b2c3d479")
+        /** Peat Sync State Characteristic UUID (canonical) */
+        val PEAT_CHAR_SYNC_STATE: UUID = UUID.fromString("f47a0002-58cc-4372-a567-0e02b2c3d479")
 
-        /** Eche Sync Data Characteristic UUID (canonical) - same as ECHE_CHAR_DOCUMENT */
-        val ECHE_CHAR_SYNC_DATA: UUID = UUID.fromString("f47a0003-58cc-4372-a567-0e02b2c3d479")
+        /** Peat Sync Data Characteristic UUID (canonical) - same as PEAT_CHAR_DOCUMENT */
+        val PEAT_CHAR_SYNC_DATA: UUID = UUID.fromString("f47a0003-58cc-4372-a567-0e02b2c3d479")
 
-        /** Eche Command Characteristic UUID (canonical) */
-        val ECHE_CHAR_COMMAND: UUID = UUID.fromString("f47a0004-58cc-4372-a567-0e02b2c3d479")
+        /** Peat Command Characteristic UUID (canonical) */
+        val PEAT_CHAR_COMMAND: UUID = UUID.fromString("f47a0004-58cc-4372-a567-0e02b2c3d479")
 
-        /** Eche Status Characteristic UUID (canonical) */
-        val ECHE_CHAR_STATUS: UUID = UUID.fromString("f47a0005-58cc-4372-a567-0e02b2c3d479")
+        /** Peat Status Characteristic UUID (canonical) */
+        val PEAT_CHAR_STATUS: UUID = UUID.fromString("f47a0005-58cc-4372-a567-0e02b2c3d479")
 
         /** Client Characteristic Configuration Descriptor UUID */
         val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
 
-        /** Eche device name prefix (legacy format) */
-        const val ECHE_NAME_PREFIX = "ECHE-"
+        /** Peat device name prefix (legacy format) */
+        const val PEAT_NAME_PREFIX = "PEAT-"
 
-        /** Eche device name prefix with mesh ID (new format) */
-        const val ECHE_MESH_PREFIX = "ECHE_"
+        /** Peat device name prefix with mesh ID (new format) */
+        const val PEAT_MESH_PREFIX = "PEAT_"
 
         /** Default mesh ID for demos and testing */
         const val DEFAULT_MESH_ID = "DEMO"
@@ -257,7 +257,7 @@ class EcheBtle(
          * - If app_id is 8 chars or less, use it directly (uppercased)
          * - Otherwise, use first 4 chars of a hash (uppercased hex)
          *
-         * @param appId The application/formation ID (e.g., from ECHE_APP_ID env var)
+         * @param appId The application/formation ID (e.g., from PEAT_APP_ID env var)
          * @return A short mesh ID suitable for BLE device names
          */
         @JvmStatic
@@ -277,8 +277,8 @@ class EcheBtle(
          * Checks in order:
          * 1. System property "hive.mesh_id"
          * 2. System property "hive.app_id" (derives mesh ID from it)
-         * 3. Environment variable "ECHE_MESH_ID"
-         * 4. Environment variable "ECHE_APP_ID" (derives mesh ID from it)
+         * 3. Environment variable "PEAT_MESH_ID"
+         * 4. Environment variable "PEAT_APP_ID" (derives mesh ID from it)
          * 5. Falls back to DEFAULT_MESH_ID ("DEMO")
          *
          * @return The mesh ID to use for this node
@@ -287,33 +287,33 @@ class EcheBtle(
         fun getMeshIdFromEnvironment(): String {
             // Direct mesh ID takes priority
             System.getProperty("hive.mesh_id")?.let { return it }
-            System.getenv("ECHE_MESH_ID")?.let { return it }
+            System.getenv("PEAT_MESH_ID")?.let { return it }
 
             // Derive from app ID if available
             System.getProperty("hive.app_id")?.let { return deriveMeshId(it) }
-            System.getenv("ECHE_APP_ID")?.let { return deriveMeshId(it) }
+            System.getenv("PEAT_APP_ID")?.let { return deriveMeshId(it) }
 
             return DEFAULT_MESH_ID
         }
 
         /**
-         * Generate a device name in the new mesh format: ECHE_<MESH_ID>-<NODE_ID>
+         * Generate a device name in the new mesh format: PEAT_<MESH_ID>-<NODE_ID>
          *
          * @param meshId Mesh identifier (e.g., "DEMO", "ALFA")
          * @param nodeId Node ID as 32-bit unsigned long
-         * @return Device name string (e.g., "ECHE_DEMO-12345678")
+         * @return Device name string (e.g., "PEAT_DEMO-12345678")
          */
         @JvmStatic
         fun generateDeviceName(meshId: String, nodeId: Long): String {
-            return "ECHE_${meshId}-${String.format("%08X", nodeId)}"
+            return "PEAT_${meshId}-${String.format("%08X", nodeId)}"
         }
 
         /**
          * Parse mesh ID and node ID from a device name.
          *
          * Supports both formats:
-         * - New: ECHE_<MESH_ID>-<NODE_ID> (e.g., "ECHE_DEMO-12345678")
-         * - Legacy: ECHE-<NODE_ID> (e.g., "ECHE-12345678") - returns null meshId
+         * - New: PEAT_<MESH_ID>-<NODE_ID> (e.g., "PEAT_DEMO-12345678")
+         * - Legacy: PEAT-<NODE_ID> (e.g., "PEAT-12345678") - returns null meshId
          *
          * @param name Device name to parse
          * @return Pair of (meshId, nodeId) or null if parsing fails
@@ -321,9 +321,9 @@ class EcheBtle(
         @JvmStatic
         fun parseDeviceName(name: String): Pair<String?, Long>? {
             return when {
-                name.startsWith(ECHE_MESH_PREFIX) -> {
-                    // New format: ECHE_MESHID-NODEID
-                    val rest = name.removePrefix(ECHE_MESH_PREFIX)
+                name.startsWith(PEAT_MESH_PREFIX) -> {
+                    // New format: PEAT_MESHID-NODEID
+                    val rest = name.removePrefix(PEAT_MESH_PREFIX)
                     val dashIndex = rest.indexOf('-')
                     if (dashIndex <= 0) return null
                     val meshId = rest.substring(0, dashIndex)
@@ -335,9 +335,9 @@ class EcheBtle(
                         null
                     }
                 }
-                name.startsWith(ECHE_NAME_PREFIX) -> {
-                    // Legacy format: ECHE-NODEID (no mesh ID)
-                    val nodeIdStr = name.removePrefix(ECHE_NAME_PREFIX)
+                name.startsWith(PEAT_NAME_PREFIX) -> {
+                    // Legacy format: PEAT-NODEID (no mesh ID)
+                    val nodeIdStr = name.removePrefix(PEAT_NAME_PREFIX)
                     try {
                         val nodeId = nodeIdStr.toLong(16)
                         Pair(null, nodeId)
@@ -384,25 +384,25 @@ class EcheBtle(
          *
          * Set via environment variable when building:
          * ```
-         * ECHE_ENCRYPTION_SECRET=0102030405060708091011121314151617181920212223242526272829303132 \
+         * PEAT_ENCRYPTION_SECRET=0102030405060708091011121314151617181920212223242526272829303132 \
          *   ./gradlew assembleRelease
          * ```
          *
          * Or override in downstream project's build.gradle.kts:
          * ```
-         * buildConfigField("String", "ECHE_ENCRYPTION_SECRET", "\"<64-char-hex>\"")
+         * buildConfigField("String", "PEAT_ENCRYPTION_SECRET", "\"<64-char-hex>\"")
          * ```
          *
          * @return 32-byte secret array, or null if not configured or invalid
          */
         @JvmStatic
         fun getEmbeddedEncryptionSecret(): ByteArray? {
-            val hex = BuildConfig.ECHE_ENCRYPTION_SECRET
+            val hex = BuildConfig.PEAT_ENCRYPTION_SECRET
             if (hex.isNullOrEmpty() || hex.length != 64) return null
             return try {
                 hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
             } catch (e: NumberFormatException) {
-                Log.w(TAG, "Invalid ECHE_ENCRYPTION_SECRET format: $e")
+                Log.w(TAG, "Invalid PEAT_ENCRYPTION_SECRET format: $e")
                 null
             }
         }
@@ -412,14 +412,14 @@ class EcheBtle(
          *
          * Set via environment variable when building:
          * ```
-         * ECHE_MESH_ID=ALPHA ./gradlew assembleRelease
+         * PEAT_MESH_ID=ALPHA ./gradlew assembleRelease
          * ```
          *
          * @return Mesh ID string, or null if not configured
          */
         @JvmStatic
         fun getEmbeddedMeshId(): String? {
-            val meshId = BuildConfig.ECHE_MESH_ID
+            val meshId = BuildConfig.PEAT_MESH_ID
             return if (meshId.isNullOrEmpty()) null else meshId
         }
 
@@ -435,7 +435,7 @@ class EcheBtle(
          * Get effective mesh ID, checking embedded config first, then environment.
          *
          * Priority:
-         * 1. Build-time ECHE_MESH_ID
+         * 1. Build-time PEAT_MESH_ID
          * 2. Runtime environment/system property
          * 3. DEFAULT_MESH_ID ("DEMO")
          */
@@ -487,7 +487,7 @@ class EcheBtle(
 
     // Pairing request cancellation receiver
     // Cancels unwanted pairing requests that some Android devices (e.g., Samsung) trigger
-    // when connecting to BLE GATT servers. Eche uses application-layer encryption,
+    // when connecting to BLE GATT servers. Peat uses application-layer encryption,
     // not BLE pairing, so these prompts are unnecessary and disruptive.
     private val pairingRequestReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -501,11 +501,11 @@ class EcheBtle(
                 val deviceName = device?.name ?: "unknown"
                 val deviceAddress = device?.address ?: "unknown"
 
-                // Check if this is a Eche device (by name pattern)
-                val isEcheDevice = deviceName.startsWith("ECHE_") || deviceName.startsWith("ECHE-")
+                // Check if this is a Peat device (by name pattern)
+                val isPeatDevice = deviceName.startsWith("PEAT_") || deviceName.startsWith("PEAT-")
 
-                if (isEcheDevice) {
-                    Log.i(TAG, "Cancelling pairing request for Eche device: $deviceName ($deviceAddress)")
+                if (isPeatDevice) {
+                    Log.i(TAG, "Cancelling pairing request for Peat device: $deviceName ($deviceAddress)")
                     // Cancel the pairing by aborting the broadcast
                     abortBroadcast()
                     // Also try to cancel via the device API
@@ -522,7 +522,7 @@ class EcheBtle(
                         Log.d(TAG, "cancelBondProcess not available: ${e.message}")
                     }
                 } else {
-                    Log.d(TAG, "Allowing pairing request for non-Eche device: $deviceName")
+                    Log.d(TAG, "Allowing pairing request for non-Peat device: $deviceName")
                 }
             }
         }
@@ -532,11 +532,11 @@ class EcheBtle(
     private var isAdvertising = false
     private var isMeshRunning = false
 
-    // EcheMesh instance for ConnectionStateGraph API
-    private var _mesh: EcheMesh? = null
+    // PeatMesh instance for ConnectionStateGraph API
+    private var _mesh: PeatMesh? = null
 
     /**
-     * The EcheMesh instance for accessing ConnectionStateGraph API.
+     * The PeatMesh instance for accessing ConnectionStateGraph API.
      *
      * Available after init() is called. Provides methods for querying peer
      * connection states:
@@ -553,21 +553,21 @@ class EcheBtle(
      * }
      * ```
      */
-    val mesh: EcheMesh?
+    val mesh: PeatMesh?
         get() = _mesh
 
     // Mesh management
-    private val peers = ConcurrentHashMap<Long, EchePeer>() // nodeId -> peer
+    private val peers = ConcurrentHashMap<Long, PeatPeer>() // nodeId -> peer
     private val addressToNodeId = ConcurrentHashMap<String, Long>() // address -> nodeId
     private val nameToNodeId = ConcurrentHashMap<String, Long>() // device name -> nodeId (for address rotation dedup)
     private val callsignToNodeId = ConcurrentHashMap<String, Long>() // callsign -> nodeId (for identity resolution)
     private val nodeIdToCallsign = ConcurrentHashMap<Long, String>() // nodeId -> callsign (reverse lookup, persisted)
     private val peerSyncState = ConcurrentHashMap<Long, PeerSyncState>() // nodeId -> sync state for delta tracking
     // Track processed chat messages to avoid duplicate notifications (key = "originNode:timestamp")
-    private var meshListener: EcheMeshListener? = null
+    private var meshListener: PeatMeshListener? = null
     private val handler = Handler(Looper.getMainLooper())
-    private var localDocument: EcheDocument? = null
-    private var localPeripheral: EchePeripheral? = null  // Persistent peripheral state (location, health, etc.)
+    private var localDocument: PeatDocument? = null
+    private var localPeripheral: PeatPeripheral? = null  // Persistent peripheral state (location, health, etc.)
     private var localCounter = mutableListOf<GCounterEntry>()
 
     // High-priority sync mode configuration
@@ -704,7 +704,7 @@ class EcheBtle(
     }
 
     /**
-     * Initialize the Eche BLE adapter.
+     * Initialize the Peat BLE adapter.
      *
      * Must be called before any other operations. Checks for Bluetooth
      * availability and required permissions.
@@ -747,14 +747,14 @@ class EcheBtle(
             Log.i(TAG, "Auto-generated nodeId from adapter: ${String.format("%08X", nodeId)}")
         }
 
-        // Create EcheMesh for ConnectionStateGraph API
+        // Create PeatMesh for ConnectionStateGraph API
         // Use encrypted mesh if identity and genesis are provided
         _mesh = if (identity != null && genesis != null) {
             Log.i(TAG, "Creating encrypted mesh from genesis")
-            EcheMesh.newFromGenesis("ANDROID", identity, genesis)
+            PeatMesh.newFromGenesis("ANDROID", identity, genesis)
         } else {
             Log.i(TAG, "Creating unencrypted mesh")
-            EcheMesh.newWithPeripheral(
+            PeatMesh.newWithPeripheral(
                 nodeId.toUInt(),
                 "ANDROID",
                 meshId,
@@ -767,7 +767,7 @@ class EcheBtle(
 
         // Register pairing request receiver to cancel unwanted pairing dialogs
         // Samsung and some other Android devices prompt for pairing on BLE connections
-        // Eche doesn't need BLE pairing (uses app-layer encryption), so we cancel these
+        // Peat doesn't need BLE pairing (uses app-layer encryption), so we cancel these
         if (!pairingReceiverRegistered) {
             try {
                 val filter = IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST)
@@ -833,12 +833,12 @@ class EcheBtle(
     }
 
     /**
-     * Start scanning for Eche BLE devices.
+     * Start scanning for Peat BLE devices.
      *
-     * Scans for devices advertising the Eche service UUID or with names
-     * matching the ECHE-XXXXXXXX pattern.
+     * Scans for devices advertising the Peat service UUID or with names
+     * matching the PEAT-XXXXXXXX pattern.
      *
-     * @param onDeviceFound Callback invoked when a Eche device is discovered
+     * @param onDeviceFound Callback invoked when a Peat device is discovered
      */
     fun startScan(onDeviceFound: ((DiscoveredDevice) -> Unit)? = null) {
         checkInitialized()
@@ -874,7 +874,7 @@ class EcheBtle(
         try {
             scanner.startScan(filters, settings, scanCallback)
             isScanning = true
-            Log.i(TAG, "Started scanning for Eche devices (no UUID filter)")
+            Log.i(TAG, "Started scanning for Peat devices (no UUID filter)")
         } catch (e: SecurityException) {
             Log.e(TAG, "Missing BLUETOOTH_SCAN permission", e)
             throw e
@@ -901,9 +901,9 @@ class EcheBtle(
     }
 
     /**
-     * Start advertising as a Eche node.
+     * Start advertising as a Peat node.
      *
-     * Advertises the Eche service UUID with this node's ID in the
+     * Advertises the Peat service UUID with this node's ID in the
      * service data.
      *
      * @param mode Advertising mode (default: balanced)
@@ -945,8 +945,8 @@ class EcheBtle(
         // Device name goes in scan response to stay within 31-byte advertising limit
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
-            .addServiceUuid(ParcelUuid(ECHE_SERVICE_UUID_16))
-            .addServiceData(ParcelUuid(ECHE_SERVICE_UUID_16), serviceDataBytes)
+            .addServiceUuid(ParcelUuid(PEAT_SERVICE_UUID_16))
+            .addServiceData(ParcelUuid(PEAT_SERVICE_UUID_16), serviceDataBytes)
             .build()
 
         // Scan response with device name
@@ -994,7 +994,7 @@ class EcheBtle(
      * Start the GATT server to accept incoming connections.
      *
      * This allows iOS and other devices to connect to this Android device
-     * and read/write the Eche document characteristic.
+     * and read/write the Peat document characteristic.
      *
      * The GATT server is persistent across mesh restarts to avoid Android
      * Bluetooth stack leaks where closed servers don't immediately release
@@ -1018,15 +1018,15 @@ class EcheBtle(
                 return
             }
 
-            // Create the Eche service
+            // Create the Peat service
             val service = BluetoothGattService(
-                ECHE_SERVICE_UUID,
+                PEAT_SERVICE_UUID,
                 BluetoothGattService.SERVICE_TYPE_PRIMARY
             )
 
             // Create the sync data characteristic with read, write, notify properties
             syncDataCharacteristic = BluetoothGattCharacteristic(
-                ECHE_CHAR_DOCUMENT,
+                PEAT_CHAR_DOCUMENT,
                 BluetoothGattCharacteristic.PROPERTY_READ or
                         BluetoothGattCharacteristic.PROPERTY_WRITE or
                         BluetoothGattCharacteristic.PROPERTY_NOTIFY,
@@ -1046,9 +1046,9 @@ class EcheBtle(
             // Add the service to the server
             val added = gattServer?.addService(service) ?: false
             if (added) {
-                Log.i(TAG, "GATT server started with Eche service")
+                Log.i(TAG, "GATT server started with Peat service")
             } else {
-                Log.e(TAG, "Failed to add Eche service to GATT server")
+                Log.e(TAG, "Failed to add Peat service to GATT server")
             }
 
         } catch (e: SecurityException) {
@@ -1070,7 +1070,7 @@ class EcheBtle(
     /**
      * Close the GATT server permanently (only called from shutdown).
      *
-     * This should only be called when the EcheBtle instance is being destroyed.
+     * This should only be called when the PeatBtle instance is being destroyed.
      * Calling this during mesh stop/restart causes GATT server registration leaks
      * on Android where closed servers don't immediately release their registration.
      */
@@ -1145,7 +1145,7 @@ class EcheBtle(
                             deduplicateConnectedCentrals(address, nodeId)
                             notifyPeerConnected(peer)
                         }
-                        // Update EcheMesh ConnectionStateGraph
+                        // Update PeatMesh ConnectionStateGraph
                         // For incoming peripheral connections, use onIncomingConnection()
                         // which creates the peer in Rust if it doesn't exist yet
                         val now = System.currentTimeMillis().toULong()
@@ -1170,7 +1170,7 @@ class EcheBtle(
                         }
                         peerLifetimeManager?.onPeerDisconnected(address)
                         reconnectionManager?.trackDisconnection(address)
-                        // Update EcheMesh ConnectionStateGraph
+                        // Update PeatMesh ConnectionStateGraph
                         _mesh?.onBleDisconnected(address, DisconnectReason.REMOTE_REQUEST)
                         notifyMeshUpdated()
                     }
@@ -1190,7 +1190,7 @@ class EcheBtle(
                 val address = device.address
                 Log.d(TAG, "Read request from $address for ${characteristic.uuid}")
 
-                if (characteristic.uuid == ECHE_CHAR_DOCUMENT) {
+                if (characteristic.uuid == PEAT_CHAR_DOCUMENT) {
                     // Return current document state
                     // When encryption is enabled, use native mesh to get properly encrypted document
                     val documentBytes = if (isEncryptionEnabled() && _mesh != null) {
@@ -1199,7 +1199,7 @@ class EcheBtle(
                         Log.d(TAG, "[ENCRYPTED] Read request: using native buildDocument")
                         _mesh!!.buildDocument()
                     } else {
-                        EcheDocument.encode(nodeId, localCounter, localPeripheral)
+                        PeatDocument.encode(nodeId, localCounter, localPeripheral)
                     }
                     val response = if (offset > documentBytes.size) {
                         ByteArray(0)
@@ -1243,7 +1243,7 @@ class EcheBtle(
                 val dataSize = value?.size ?: 0
                 Log.i(TAG, "Write request from $address: $dataSize bytes")
 
-                if (characteristic.uuid == ECHE_CHAR_DOCUMENT && value != null) {
+                if (characteristic.uuid == PEAT_CHAR_DOCUMENT && value != null) {
                     // Log raw data for debugging
                     val hexData = value.joinToString(" ") { String.format("%02X", it) }
                     Log.d(TAG, "Received data: $hexData")
@@ -1251,7 +1251,7 @@ class EcheBtle(
                     // Check for special document markers first
                     if (value.isNotEmpty() && value[0] == CHAT_SECTION_MARKER) {
                         // Chat document (0xAD) - find/create peer and handle
-                        val chat = EcheChat.decode(value)
+                        val chat = PeatChat.decode(value)
                         if (chat != null) {
                             val sourceNodeId = chat.originNode
                             if (sourceNodeId != nodeId && sourceNodeId != 0L) {
@@ -1260,7 +1260,7 @@ class EcheBtle(
                                     ?: run {
                                         // Create peer for incoming chat
                                         val now = System.currentTimeMillis()
-                                        val newPeer = EchePeer(
+                                        val newPeer = PeatPeer(
                                             nodeId = sourceNodeId,
                                             address = address,
                                             name = generateDeviceName(meshId, sourceNodeId),
@@ -1301,7 +1301,7 @@ class EcheBtle(
                         return
                     }
 
-                    if (EcheDeltaDocument.isDeltaDocument(value)) {
+                    if (PeatDeltaDocument.isDeltaDocument(value)) {
                         // Delta document (0xB2) - find peer by address, fall back to nodeId mapping
                         var peer = peers.values.find { it.address == address }
                         if (peer == null) {
@@ -1323,7 +1323,7 @@ class EcheBtle(
                     if (value.isNotEmpty() && value[0] == APP_LAYER_MARKER) {
                         // app-layer message (0xAF) - hive-lite tactical messaging
                         val peer = peers.values.find { it.address == address }
-                            ?: EchePeer(
+                            ?: PeatPeer(
                                 nodeId = 0,
                                 address = address,
                                 name = "Unknown",
@@ -1340,8 +1340,8 @@ class EcheBtle(
                         return
                     }
 
-                    // Parse the document (regular EcheDocument format)
-                    val document = EcheDocument.decode(value)
+                    // Parse the document (regular PeatDocument format)
+                    val document = PeatDocument.decode(value)
                     if (document != null) {
                         Log.i(TAG, "Received document from ${String.format("%08X", document.nodeId)}, event=${document.currentEventType()}")
 
@@ -1360,7 +1360,7 @@ class EcheBtle(
                                 // Set lastDocument = null so the first event triggers onPeerEvent
                                 val peerName = generateDeviceName(meshId, sourceNodeId)
                                 val now = System.currentTimeMillis()
-                                peer = EchePeer(
+                                peer = PeatPeer(
                                     nodeId = sourceNodeId,
                                     address = address,
                                     name = peerName,
@@ -1375,7 +1375,7 @@ class EcheBtle(
                                 peerLifetimeManager?.onPeerActivity(address, true)
                                 Log.i(TAG, "Added peer from GATT write: ${peer.displayName()}")
 
-                                // Update EcheMesh — use onIncomingConnection() which creates
+                                // Update PeatMesh — use onIncomingConnection() which creates
                                 // the peer and marks it connected in one atomic call
                                 _mesh?.onIncomingConnection(address, sourceNodeId.toUInt(), now.toULong())
                             } else {
@@ -1392,7 +1392,7 @@ class EcheBtle(
                                 // address than scan address due to BLE address randomization
                                 addressToNodeId[address] = sourceNodeId
 
-                                // Update EcheMesh — onIncomingConnection() creates the peer if
+                                // Update PeatMesh — onIncomingConnection() creates the peer if
                                 // needed (e.g. after mesh recreation) and marks it connected
                                 _mesh?.onIncomingConnection(address, sourceNodeId.toUInt(), now.toULong())
                                 Log.d(TAG, "[GATT-SERVER] Registered incoming peer: ${peer.displayName()}")
@@ -1423,7 +1423,7 @@ class EcheBtle(
                                 if (peer == null) {
                                     // New peer discovered through encrypted document
                                     val peerName = generateDeviceName(meshId, sourceNodeId)
-                                    peer = EchePeer(
+                                    peer = PeatPeer(
                                         nodeId = sourceNodeId,
                                         address = address,
                                         name = peerName,
@@ -1453,7 +1453,7 @@ class EcheBtle(
                                 }
 
                                 // Check for relayData containing app-layer message (0xAF marker)
-                                // app-layer messages are app-layer protocol; eche-btle just transports them
+                                // app-layer messages are app-layer protocol; peat-btle just transports them
                                 val relay = result.relayData
                                 if (relay != null && relay.isNotEmpty() && relay[0] == APP_LAYER_MARKER) {
                                     Log.i(TAG, "[ENCRYPTED-CANNED] app-layer message ${relay.size} bytes from ${peer.displayName()}")
@@ -1465,38 +1465,38 @@ class EcheBtle(
                                 if (result.isAck || result.eventType == EventType.ACK) {
                                     Log.i(TAG, "[ENCRYPTED-SERVER] ACK received from ${peer.displayName()} (isAck=${result.isAck}, eventType=${result.eventType})")
                                     handler.post {
-                                        meshListener?.onPeerEvent(peer, EcheEventType.ACK)
+                                        meshListener?.onPeerEvent(peer, PeatEventType.ACK)
                                     }
                                 }
                                 if (result.isEmergency || result.eventType == EventType.EMERGENCY) {
                                     Log.i(TAG, "[ENCRYPTED-SERVER] EMERGENCY from ${peer.displayName()} (isEmergency=${result.isEmergency}, eventType=${result.eventType})")
                                     handler.post {
-                                        meshListener?.onPeerEvent(peer, EcheEventType.EMERGENCY)
+                                        meshListener?.onPeerEvent(peer, PeatEventType.EMERGENCY)
                                         onPeerEmergencyDetected(peer)
                                     }
                                 }
 
                                 // Notify document synced callback with peripheral data from result
-                                // Build EchePeripheral from DataReceivedResult fields
-                                val eventType = result.eventType?.let { EcheEventType.fromEventType(it) } ?: EcheEventType.NONE
+                                // Build PeatPeripheral from DataReceivedResult fields
+                                val eventType = result.eventType?.let { PeatEventType.fromEventType(it) } ?: PeatEventType.NONE
                                 val lat = result.latitude
                                 val lon = result.longitude
                                 val alt = result.altitude
-                                val peerPeripheral = EchePeripheral(
+                                val peerPeripheral = PeatPeripheral(
                                     id = sourceNodeId,
                                     parentNode = sourceNodeId,
-                                    peripheralType = EchePeripheralType.SOLDIER_SENSOR,
+                                    peripheralType = PeatPeripheralType.SOLDIER_SENSOR,
                                     callsign = result.callsign ?: "",
-                                    health = EcheHealthStatus(
+                                    health = PeatHealthStatus(
                                         batteryPercent = result.batteryPercent?.toInt() ?: 0,
                                         heartRate = result.heartRate?.toInt(),
                                         activityLevel = 0,
                                         alerts = 0
                                     ),
-                                    lastEvent = if (eventType != EcheEventType.NONE)
-                                        EchePeripheralEvent(eventType, System.currentTimeMillis()) else null,
+                                    lastEvent = if (eventType != PeatEventType.NONE)
+                                        PeatPeripheralEvent(eventType, System.currentTimeMillis()) else null,
                                     location = if (lat != null && lon != null)
-                                        EcheLocation(lat, lon, alt ?: 0f) else null,
+                                        PeatLocation(lat, lon, alt ?: 0f) else null,
                                     timestamp = System.currentTimeMillis()
                                 )
                                 // Update callsign cache if we received a valid callsign
@@ -1508,7 +1508,7 @@ class EcheBtle(
                                     result.batteryPercent != null ||
                                     result.heartRate != null ||
                                     result.eventType != null
-                                val syntheticDoc = EcheDocument(
+                                val syntheticDoc = PeatDocument(
                                     version = 1,
                                     nodeId = sourceNodeId,
                                     counter = emptyList(),
@@ -1615,13 +1615,13 @@ class EcheBtle(
     }
 
     /**
-     * Connect to a Eche device by address.
+     * Connect to a Peat device by address.
      *
      * @param address Bluetooth device address (MAC)
      * @param autoConnect Use autoConnect mode (reconnect automatically)
      * @return Connection handle, or null if connection failed
      */
-    fun connect(address: String, autoConnect: Boolean = false): EcheConnection? {
+    fun connect(address: String, autoConnect: Boolean = false): PeatConnection? {
         checkInitialized()
 
         if (connections.containsKey(address)) {
@@ -1647,7 +1647,7 @@ class EcheBtle(
                 connections[address] = gatt
                 gattCallbacks[address] = callback
                 Log.i(TAG, "Connecting to $address")
-                return EcheConnection(address, gatt, callback)
+                return PeatConnection(address, gatt, callback)
             }
         } catch (e: SecurityException) {
             Log.e(TAG, "Missing BLUETOOTH_CONNECT permission", e)
@@ -1682,15 +1682,15 @@ class EcheBtle(
     // ==================== Mesh Management API ====================
 
     /**
-     * Start the Eche mesh network.
+     * Start the Peat mesh network.
      *
      * This starts scanning, advertising, and automatically manages
-     * connections to discovered Eche peers. The mesh handles document
+     * connections to discovered Peat peers. The mesh handles document
      * synchronization automatically.
      *
      * @param listener Callback for mesh events (peer updates, events)
      */
-    fun startMesh(listener: EcheMeshListener) {
+    fun startMesh(listener: PeatMeshListener) {
         checkInitialized()
 
         if (isMeshRunning) {
@@ -1742,11 +1742,11 @@ class EcheBtle(
             Log.i(TAG, "RSSI polling enabled: interval=${RSSI_POLLING_INTERVAL_MS}ms")
         }
 
-        Log.i(TAG, "Mesh started for ECHE-${String.format("%08X", nodeId)} with GATT server")
+        Log.i(TAG, "Mesh started for PEAT-${String.format("%08X", nodeId)} with GATT server")
     }
 
     /**
-     * Stop the Eche mesh network.
+     * Stop the Peat mesh network.
      */
     fun stopMesh() {
         if (!isMeshRunning) return
@@ -1885,7 +1885,7 @@ class EcheBtle(
      * Called when a peer enters emergency state.
      * Auto-enables high-priority mode if configured.
      */
-    internal fun onPeerEmergencyDetected(peer: EchePeer) {
+    internal fun onPeerEmergencyDetected(peer: PeatPeer) {
         if (_highPriorityConfig.autoEnableOnEmergency && !_highPriorityConfig.enabled) {
             Log.w(TAG, "[HIGH-PRIORITY] Auto-enabling due to peer emergency: ${peer.displayName()}")
             setHighPriorityMode(true, "peer emergency: ${peer.displayName()}")
@@ -2020,16 +2020,16 @@ class EcheBtle(
         callsign: String = "ANDROID",
         batteryPercent: Int = 100,
         heartRate: Int? = null,
-        location: EcheLocation? = null,
-        eventType: EcheEventType? = null
+        location: PeatLocation? = null,
+        eventType: PeatEventType? = null
     ) {
-        val peripheral = EchePeripheral(
+        val peripheral = PeatPeripheral(
             id = nodeId,
             parentNode = 0,
-            peripheralType = EchePeripheralType.SOLDIER_SENSOR,
+            peripheralType = PeatPeripheralType.SOLDIER_SENSOR,
             callsign = callsign.take(12),
-            health = EcheHealthStatus(batteryPercent, heartRate, 0, 0),
-            lastEvent = eventType?.let { EchePeripheralEvent(it, System.currentTimeMillis()) },
+            health = PeatHealthStatus(batteryPercent, heartRate, 0, 0),
+            lastEvent = eventType?.let { PeatPeripheralEvent(it, System.currentTimeMillis()) },
             location = location,
             timestamp = System.currentTimeMillis()
         )
@@ -2050,8 +2050,8 @@ class EcheBtle(
      * @param heartRate Optional heart rate
      */
     fun sendEvent(
-        eventType: EcheEventType,
-        location: EcheLocation? = null,
+        eventType: PeatEventType,
+        location: PeatLocation? = null,
         callsign: String = "ANDROID",
         battery: Int = 100,
         heartRate: Int? = null
@@ -2061,7 +2061,7 @@ class EcheBtle(
             return
         }
 
-        val isEmergency = eventType == EcheEventType.EMERGENCY || eventType == EcheEventType.ACK
+        val isEmergency = eventType == PeatEventType.EMERGENCY || eventType == PeatEventType.ACK
         Log.i(TAG, "Broadcasting event: $eventType to ${connections.size} peripherals and ${connectedCentrals.size} centrals" +
                 (location?.let { " with location (${it.latitude}, ${it.longitude})" } ?: "") +
                 if (isEmergency) " [EMERGENCY - FULL DOCUMENT]" else "")
@@ -2070,13 +2070,13 @@ class EcheBtle(
         incrementLocalCounter()
 
         // Create peripheral with current state and store it for future sync cycles
-        val peripheral = EchePeripheral(
+        val peripheral = PeatPeripheral(
             id = nodeId,
             parentNode = 0,
-            peripheralType = EchePeripheralType.SOLDIER_SENSOR,
+            peripheralType = PeatPeripheralType.SOLDIER_SENSOR,
             callsign = callsign.take(12),
-            health = EcheHealthStatus(battery, heartRate, 0, 0),
-            lastEvent = EchePeripheralEvent(eventType, System.currentTimeMillis()),
+            health = PeatHealthStatus(battery, heartRate, 0, 0),
+            lastEvent = PeatPeripheralEvent(eventType, System.currentTimeMillis()),
             location = location,
             timestamp = System.currentTimeMillis()
         )
@@ -2097,18 +2097,18 @@ class EcheBtle(
             val mesh = _mesh
             if (mesh == null) {
                 Log.w(TAG, "Encryption enabled but mesh not initialized, using unencrypted encoding")
-                EcheDocument.encode(nodeId, localCounter, peripheral)
+                PeatDocument.encode(nodeId, localCounter, peripheral)
             } else {
                 // Update native peripheral state BEFORE building document
                 // This ensures location, callsign, and other state is included in encrypted docs
                 val nativeEventType: EventType? = when (eventType) {
-                    EcheEventType.NONE -> EventType.NONE
-                    EcheEventType.PING -> EventType.PING
-                    EcheEventType.NEED_ASSIST -> EventType.NEED_ASSIST
-                    EcheEventType.EMERGENCY -> EventType.EMERGENCY
-                    EcheEventType.MOVING -> EventType.MOVING
-                    EcheEventType.IN_POSITION -> EventType.IN_POSITION
-                    EcheEventType.ACK -> EventType.ACK
+                    PeatEventType.NONE -> EventType.NONE
+                    PeatEventType.PING -> EventType.PING
+                    PeatEventType.NEED_ASSIST -> EventType.NEED_ASSIST
+                    PeatEventType.EMERGENCY -> EventType.EMERGENCY
+                    PeatEventType.MOVING -> EventType.MOVING
+                    PeatEventType.IN_POSITION -> EventType.IN_POSITION
+                    PeatEventType.ACK -> EventType.ACK
                 }
                 mesh.updatePeripheralState(
                     callsign = callsign.take(12),
@@ -2123,11 +2123,11 @@ class EcheBtle(
                 Log.d(TAG, "[ENCRYPTED] Updated native peripheral state: location=${location != null}, callsign=$callsign")
 
                 when (eventType) {
-                    EcheEventType.EMERGENCY -> {
+                    PeatEventType.EMERGENCY -> {
                         Log.d(TAG, "[ENCRYPTED] Using native sendEmergency")
                         mesh.sendEmergency(System.currentTimeMillis().toULong())
                     }
-                    EcheEventType.ACK -> {
+                    PeatEventType.ACK -> {
                         Log.d(TAG, "[ENCRYPTED] Using native sendAck")
                         mesh.sendAck(System.currentTimeMillis().toULong())
                     }
@@ -2139,7 +2139,7 @@ class EcheBtle(
                 }
             }
         } else {
-            EcheDocument.encode(nodeId, localCounter, peripheral)
+            PeatDocument.encode(nodeId, localCounter, peripheral)
         }
 
         // Send to all connected peripherals (devices we connected to as Central)
@@ -2160,7 +2160,7 @@ class EcheBtle(
      *
      * @param marker The marker to send
      */
-    fun sendMarker(marker: EcheMarker) {
+    fun sendMarker(marker: PeatMarker) {
         if (!isMeshRunning) {
             Log.w(TAG, "Mesh not running, cannot send marker")
             return
@@ -2169,7 +2169,7 @@ class EcheBtle(
         Log.i(TAG, "Broadcasting marker: uid=${marker.uid}, callsign=${marker.callsign} to ${connections.size} peripherals and ${connectedCentrals.size} centrals")
 
         // Encode marker document: 0xAC marker + nodeId(4) + count(2) + marker data
-        val markerBytes = EcheMarker.encode(marker)
+        val markerBytes = PeatMarker.encode(marker)
         val documentBytes = ByteArray(1 + 4 + 2 + markerBytes.size)
         var offset = 0
 
@@ -2305,12 +2305,12 @@ class EcheBtle(
     /**
      * Get the current list of peers in the mesh.
      */
-    fun getPeers(): List<EchePeer> = peers.values.toList()
+    fun getPeers(): List<PeatPeer> = peers.values.toList()
 
     /**
      * Get a specific peer by node ID.
      */
-    fun getPeer(nodeId: Long): EchePeer? = peers[nodeId]
+    fun getPeer(nodeId: Long): PeatPeer? = peers[nodeId]
 
     /**
      * Check if the mesh is running.
@@ -2320,7 +2320,7 @@ class EcheBtle(
     // ==================== Internal Mesh Methods ====================
 
     private fun onDeviceDiscovered(device: DiscoveredDevice) {
-        if (!device.isEcheDevice) return
+        if (!device.isPeatDevice) return
 
         // Check if we already know this address (peer might have been renamed by document)
         val knownNodeId = addressToNodeId[device.address]
@@ -2343,7 +2343,7 @@ class EcheBtle(
 
         // Handle BLE address rotation for ALL devices with stable names
         // This prevents duplicate peers when the same device advertises from a new MAC address
-        // Works for: WearTAK (WEAROS-*), Eche devices (ECHE_*), and any device with consistent naming
+        // Works for: WearTAK (WEAROS-*), Peat devices (PEAT_*), and any device with consistent naming
         if (device.name.isNotEmpty()) {
             // O(1) lookup using nameToNodeId map
             val existingNodeId = nameToNodeId[device.name]
@@ -2434,7 +2434,7 @@ class EcheBtle(
         // Use cached callsign if available, otherwise BLE name, otherwise generate
         val peerName = nodeIdToCallsign[peerNodeId]
             ?: device.name.ifEmpty { generateDeviceName(device.meshId ?: meshId, peerNodeId) }
-        val peer = EchePeer(
+        val peer = PeatPeer(
             nodeId = peerNodeId,
             address = device.address,
             name = peerName,
@@ -2459,7 +2459,7 @@ class EcheBtle(
         // Auto-connect to new peer
         connectToPeer(peer)
 
-        // Update EcheMesh ConnectionStateGraph
+        // Update PeatMesh ConnectionStateGraph
         _mesh?.onBleDiscovered(
             identifier = device.address,
             name = device.name.ifEmpty { null },
@@ -2471,7 +2471,7 @@ class EcheBtle(
         notifyMeshUpdated()
     }
 
-    private fun connectToPeer(peer: EchePeer) {
+    private fun connectToPeer(peer: PeatPeer) {
         if (connections.containsKey(peer.address)) {
             Log.d(TAG, "Already connected to ${peer.displayName()}")
             return
@@ -2487,7 +2487,7 @@ class EcheBtle(
             val callback = GattCallbackProxy(connectionId)
 
             // Set up document listener
-            callback.documentListener = object : EcheDocumentListener {
+            callback.documentListener = object : PeatDocumentListener {
                 override fun onDocumentReceived(data: ByteArray) {
                     handlePeerDocument(peer, data)
                 }
@@ -2526,14 +2526,14 @@ class EcheBtle(
                         }
                     }
                     if (connected) {
-                        // Update EcheMesh ConnectionStateGraph
+                        // Update PeatMesh ConnectionStateGraph
                         _mesh?.onBleConnected(peer.address, System.currentTimeMillis().toULong())
                         // Notify listener of peer connection for immediate UI update
                         currentPeer?.let { notifyPeerConnected(it) }
                         // Reset reconnection tracking on successful connection
                         resetReconnectTracking(peer.address)
                     } else {
-                        // Update EcheMesh ConnectionStateGraph
+                        // Update PeatMesh ConnectionStateGraph
                         _mesh?.onBleDisconnected(peer.address, DisconnectReason.LINK_LOSS)
                         // Notify listener of peer disconnection for immediate UI update
                         currentPeer?.let { notifyPeerDisconnected(it) }
@@ -2598,7 +2598,7 @@ class EcheBtle(
         }
     }
 
-    private fun handlePeerDocument(peer: EchePeer, data: ByteArray) {
+    private fun handlePeerDocument(peer: PeatPeer, data: ByteArray) {
         val firstByte = if (data.isNotEmpty()) String.format("0x%02X", data[0]) else "empty"
         Log.i(TAG, "[DOC-RX] From ${peer.displayName()}: ${data.size} bytes, first=$firstByte")
 
@@ -2621,7 +2621,7 @@ class EcheBtle(
         }
 
         // Check for delta document marker (0xB2)
-        if (EcheDeltaDocument.isDeltaDocument(data)) {
+        if (PeatDeltaDocument.isDeltaDocument(data)) {
             handlePeerDeltaDocument(peer, data)
             return
         }
@@ -2632,7 +2632,7 @@ class EcheBtle(
             return
         }
 
-        val document = EcheDocument.decode(data) ?: return
+        val document = PeatDocument.decode(data) ?: return
         val docNodeId = document.nodeId
 
         Log.d(TAG, "Received document from ${peer.displayName()} (docNodeId=${String.format("%08X", docNodeId)}): event=${document.currentEventType()}")
@@ -2652,7 +2652,7 @@ class EcheBtle(
             var originatingPeer = peers[docNodeId]
             if (originatingPeer == null) {
                 // Create a virtual peer for the relayed node (we don't have direct connection)
-                originatingPeer = EchePeer(
+                originatingPeer = PeatPeer(
                     nodeId = docNodeId,
                     address = "", // No direct address - relayed via mesh
                     name = generateDeviceName(meshId, docNodeId),
@@ -2670,7 +2670,7 @@ class EcheBtle(
             handlePeerDocumentInternal(originatingPeer, document, data, peer.address)
         } else {
             // Fallback: peer not in our list yet, use document nodeId
-            val newPeer = peers[docNodeId] ?: EchePeer(
+            val newPeer = peers[docNodeId] ?: PeatPeer(
                 nodeId = docNodeId,
                 address = peer.address,
                 name = peer.name.ifEmpty { generateDeviceName(meshId, docNodeId) },
@@ -2693,14 +2693,14 @@ class EcheBtle(
      * @param sourceAddress The BLE address of the peer we received this from (to exclude from forwarding)
      */
     private fun handlePeerDocumentInternal(
-        peer: EchePeer,
-        document: EcheDocument,
+        peer: PeatPeer,
+        document: PeatDocument,
         rawBytes: ByteArray? = null,
         sourceAddress: String? = null
     ) {
         // Store last document
         val previousEvent = peer.lastDocument?.peripheral?.lastEvent
-        val previousEventType = previousEvent?.eventType ?: EcheEventType.NONE
+        val previousEventType = previousEvent?.eventType ?: PeatEventType.NONE
         val previousEventTimestamp = previousEvent?.timestamp ?: 0L
         peer.lastDocument = document
         peer.lastSeen = System.currentTimeMillis()
@@ -2737,9 +2737,9 @@ class EcheBtle(
 
         // Check for new events - trigger if event type changed OR same type with newer timestamp
         val currentEvent = document.peripheral?.lastEvent
-        val eventType = currentEvent?.eventType ?: EcheEventType.NONE
+        val eventType = currentEvent?.eventType ?: PeatEventType.NONE
         val eventTimestamp = currentEvent?.timestamp ?: 0L
-        val isNewEvent = eventType != EcheEventType.NONE && (
+        val isNewEvent = eventType != PeatEventType.NONE && (
             eventType != previousEventType ||
             (eventType == previousEventType && eventTimestamp > previousEventTimestamp)
         )
@@ -2839,7 +2839,7 @@ class EcheBtle(
      * Handle an incoming marker document from a peer.
      * Decodes markers, notifies listener, and forwards to other peers.
      */
-    private fun handlePeerMarkerDocument(peer: EchePeer, data: ByteArray) {
+    private fun handlePeerMarkerDocument(peer: PeatPeer, data: ByteArray) {
         // Marker document format: marker(1) + nodeId(4) + count(2) + markers...
         if (data.size < 7) {
             Log.e(TAG, "Marker document too short: ${data.size} bytes")
@@ -2870,7 +2870,7 @@ class EcheBtle(
 
         // Decode and notify for each marker
         for (i in 0 until markerCount) {
-            val (marker, newOffset) = EcheMarker.decode(data, offset)
+            val (marker, newOffset) = PeatMarker.decode(data, offset)
             if (marker != null) {
                 Log.d(TAG, "[MARKER-RX] Marker #$i: uid=${marker.uid}, type=${marker.type}, callsign=${marker.callsign}")
                 handler.post {
@@ -2892,8 +2892,8 @@ class EcheBtle(
      * Decodes the chat message, notifies listener, and forwards to other peers.
      * Uses deduplication to prevent displaying/forwarding the same message twice.
      */
-    private fun handlePeerChatDocument(peer: EchePeer, data: ByteArray) {
-        val chat = EcheChat.decode(data) ?: run {
+    private fun handlePeerChatDocument(peer: PeatPeer, data: ByteArray) {
+        val chat = PeatChat.decode(data) ?: run {
             Log.e(TAG, "[CHAT-RX] Failed to decode chat message")
             return
         }
@@ -2961,10 +2961,10 @@ class EcheBtle(
     /**
      * Handle an incoming app-layer message (0xAF marker) from a peer.
      *
-     * eche-btle is transport-only: we pass raw bytes to the app via onDecryptedData
+     * peat-btle is transport-only: we pass raw bytes to the app via onDecryptedData
      * and relay to other connected peers. Apps use hive-lite to decode the content.
      */
-    private fun handleAppLayerMessage(peer: EchePeer, data: ByteArray) {
+    private fun handleAppLayerMessage(peer: PeatPeer, data: ByteArray) {
         Log.d(TAG, "[APP-LAYER] Received ${data.size} byte app-layer message from ${peer.displayName()}")
 
         // Pass raw bytes to app - apps use hive-lite to decode
@@ -2980,7 +2980,7 @@ class EcheBtle(
      * Relay data to all connected peers except the source.
      */
     private fun relayToOtherPeers(rawBytes: ByteArray, sourceAddress: String?) {
-        // Deduplication: Use Rust-side deduplication via EcheMesh.
+        // Deduplication: Use Rust-side deduplication via PeatMesh.
         // This prevents broadcast storms when relaying CannedMessages.
         //
         // CannedMessage wire format: 0xAF marker, msg_code, source_node (4B LE), target (4B), timestamp (8B LE)
@@ -3000,7 +3000,7 @@ class EcheBtle(
                 ((rawBytes[16].toLong() and 0xFF) shl 48) or
                 ((rawBytes[17].toLong() and 0xFF) shl 56)
 
-            // Use Rust-side deduplication (centralizes logic in EcheMesh)
+            // Use Rust-side deduplication (centralizes logic in PeatMesh)
             val mesh = _mesh
             if (mesh != null) {
                 val isNew = mesh.checkCannedMessage(sourceNode.toUInt(), timestamp.toULong(), 30_000UL)
@@ -3058,7 +3058,7 @@ class EcheBtle(
      * Decrypts and passes raw bytes to app via onDecryptedData callback,
      * then continues with legacy parsing for backward compatibility.
      */
-    private fun handlePeerEncryptedDocument(peer: EchePeer, data: ByteArray) {
+    private fun handlePeerEncryptedDocument(peer: PeatPeer, data: ByteArray) {
         val headerHex = data.take(16).joinToString(" ") { String.format("%02X", it) }
         Log.d(TAG, "[ENCRYPTED-NOTIFY] Received ${data.size} byte encrypted document from ${peer.displayName()}, header: $headerHex")
 
@@ -3095,7 +3095,7 @@ class EcheBtle(
                 var sourcePeer = peers[sourceNodeId]
                 if (sourcePeer == null) {
                     val peerName = generateDeviceName(meshId, sourceNodeId)
-                    sourcePeer = EchePeer(
+                    sourcePeer = PeatPeer(
                         nodeId = sourceNodeId,
                         address = address,
                         name = peerName,
@@ -3120,13 +3120,13 @@ class EcheBtle(
                 if (result.isAck || result.eventType == EventType.ACK) {
                     Log.i(TAG, "[ENCRYPTED-NOTIFY] ACK received from ${sourcePeer.displayName()} (isAck=${result.isAck}, eventType=${result.eventType})")
                     handler.post {
-                        meshListener?.onPeerEvent(sourcePeer, EcheEventType.ACK)
+                        meshListener?.onPeerEvent(sourcePeer, PeatEventType.ACK)
                     }
                 }
                 if (result.isEmergency || result.eventType == EventType.EMERGENCY) {
                     Log.i(TAG, "[ENCRYPTED-NOTIFY] EMERGENCY from ${sourcePeer.displayName()} (isEmergency=${result.isEmergency}, eventType=${result.eventType})")
                     handler.post {
-                        meshListener?.onPeerEvent(sourcePeer, EcheEventType.EMERGENCY)
+                        meshListener?.onPeerEvent(sourcePeer, PeatEventType.EMERGENCY)
                         onPeerEmergencyDetected(sourcePeer)
                     }
                 }
@@ -3135,7 +3135,7 @@ class EcheBtle(
                 result.callsign?.let { updateCallsignForNode(sourceNodeId, it) }
 
                 // Build and notify document synced
-                val eventType = result.eventType?.let { EcheEventType.fromEventType(it) } ?: EcheEventType.NONE
+                val eventType = result.eventType?.let { PeatEventType.fromEventType(it) } ?: PeatEventType.NONE
                 val hasPeripheralData = result.callsign != null ||
                     result.latitude != null ||
                     result.batteryPercent != null ||
@@ -3146,24 +3146,24 @@ class EcheBtle(
                     val lat = result.latitude
                     val lon = result.longitude
                     val alt = result.altitude
-                    val peerPeripheral = EchePeripheral(
+                    val peerPeripheral = PeatPeripheral(
                         id = sourceNodeId,
                         parentNode = sourceNodeId,
-                        peripheralType = EchePeripheralType.SOLDIER_SENSOR,
+                        peripheralType = PeatPeripheralType.SOLDIER_SENSOR,
                         callsign = result.callsign ?: "",
-                        health = EcheHealthStatus(
+                        health = PeatHealthStatus(
                             batteryPercent = result.batteryPercent?.toInt() ?: 0,
                             heartRate = result.heartRate?.toInt(),
                             activityLevel = 0,
                             alerts = 0
                         ),
-                        lastEvent = if (eventType != EcheEventType.NONE)
-                            EchePeripheralEvent(eventType, now) else null,
+                        lastEvent = if (eventType != PeatEventType.NONE)
+                            PeatPeripheralEvent(eventType, now) else null,
                         location = if (lat != null && lon != null)
-                            EcheLocation(lat, lon, alt ?: 0f) else null,
+                            PeatLocation(lat, lon, alt ?: 0f) else null,
                         timestamp = now
                     )
-                    val syntheticDoc = EcheDocument(
+                    val syntheticDoc = PeatDocument(
                         version = 1,
                         nodeId = sourceNodeId,
                         counter = emptyList(),
@@ -3188,8 +3188,8 @@ class EcheBtle(
      * Handle an incoming delta document from a peer.
      * Applies operations incrementally to local state.
      */
-    private fun handlePeerDeltaDocument(peer: EchePeer, data: ByteArray) {
-        val deltaDoc = EcheDeltaDocument.decode(data) ?: return
+    private fun handlePeerDeltaDocument(peer: PeatPeer, data: ByteArray) {
+        val deltaDoc = PeatDeltaDocument.decode(data) ?: return
         val docNodeId = deltaDoc.originNode
 
         Log.d(TAG, "[DELTA-RX] From ${peer.displayName()} (origin=${String.format("%08X", docNodeId)}): ${deltaDoc.operations.size} ops")
@@ -3201,7 +3201,7 @@ class EcheBtle(
         val targetPeer = peers[docNodeId] ?: peer.also {
             if (docNodeId != peer.nodeId) {
                 // This is a relayed delta - create virtual peer for origin
-                val newPeer = EchePeer(
+                val newPeer = PeatPeer(
                     nodeId = docNodeId,
                     address = "",
                     name = generateDeviceName(meshId, docNodeId),
@@ -3245,11 +3245,11 @@ class EcheBtle(
                     val currentPeer = peers[docNodeId]
                     if (currentPeer != null) {
                         val previousEvent = currentPeer.lastDocument?.peripheral?.lastEvent
-                        val previousEventType = previousEvent?.eventType ?: EcheEventType.NONE
+                        val previousEventType = previousEvent?.eventType ?: PeatEventType.NONE
                         val previousEventTimestamp = previousEvent?.timestamp ?: 0L
 
                         // Create a synthetic document with the updated peripheral
-                        val syntheticDoc = EcheDocument(
+                        val syntheticDoc = PeatDocument(
                             version = 1,
                             nodeId = docNodeId,
                             counter = localCounter.toList(),
@@ -3259,9 +3259,9 @@ class EcheBtle(
 
                         // Check for new events
                         val currentEvent = op.peripheral.lastEvent
-                        val eventType = currentEvent?.eventType ?: EcheEventType.NONE
+                        val eventType = currentEvent?.eventType ?: PeatEventType.NONE
                         val eventTimestamp = currentEvent?.timestamp ?: 0L
-                        val isNewEvent = eventType != EcheEventType.NONE && (
+                        val isNewEvent = eventType != PeatEventType.NONE && (
                             eventType != previousEventType ||
                             (eventType == previousEventType && eventTimestamp > previousEventTimestamp)
                         )
@@ -3284,7 +3284,7 @@ class EcheBtle(
                     Log.i(TAG, "  - SetEmergency: source=${String.format("%08X", op.sourceNode.toLong())}")
                     peers[op.sourceNode]?.let { emergencyPeer ->
                         handler.post {
-                            meshListener?.onPeerEvent(emergencyPeer, EcheEventType.EMERGENCY)
+                            meshListener?.onPeerEvent(emergencyPeer, PeatEventType.EMERGENCY)
                             onPeerEmergencyDetected(emergencyPeer)
                         }
                     }
@@ -3294,7 +3294,7 @@ class EcheBtle(
                     Log.i(TAG, "  - AckEmergency: from=${String.format("%08X", op.nodeId.toLong())}")
                     peers[op.nodeId]?.let { ackPeer ->
                         handler.post {
-                            meshListener?.onPeerEvent(ackPeer, EcheEventType.ACK)
+                            meshListener?.onPeerEvent(ackPeer, PeatEventType.ACK)
                         }
                     }
                 }
@@ -3309,23 +3309,23 @@ class EcheBtle(
                     val currentPeer = peers[docNodeId]
                     if (currentPeer != null) {
                         val existingPeripheral = currentPeer.lastDocument?.peripheral
-                        val updatedLocation = EcheLocation(
+                        val updatedLocation = PeatLocation(
                             latitude = op.latitude,
                             longitude = op.longitude,
                             altitude = op.altitude
                         )
                         val updatedPeripheral = existingPeripheral?.copy(location = updatedLocation)
-                            ?: EchePeripheral(
+                            ?: PeatPeripheral(
                                 id = docNodeId,
                                 parentNode = docNodeId,
-                                peripheralType = EchePeripheralType.SOLDIER_SENSOR,
+                                peripheralType = PeatPeripheralType.SOLDIER_SENSOR,
                                 callsign = "",
-                                health = EcheHealthStatus(0, null, 0, 0),
+                                health = PeatHealthStatus(0, null, 0, 0),
                                 lastEvent = null,
                                 location = updatedLocation,
                                 timestamp = deltaDoc.timestampMs
                             )
-                        val syntheticDoc = EcheDocument(
+                        val syntheticDoc = PeatDocument(
                             version = 1,
                             nodeId = docNodeId,
                             counter = localCounter.toList(),
@@ -3342,24 +3342,24 @@ class EcheBtle(
                     val currentPeer = peers[docNodeId]
                     if (currentPeer != null) {
                         val existingPeripheral = currentPeer.lastDocument?.peripheral
-                        val updatedHealth = EcheHealthStatus(
+                        val updatedHealth = PeatHealthStatus(
                             batteryPercent = op.batteryPercent,
                             heartRate = op.heartRate,
                             activityLevel = op.activityLevel,
                             alerts = op.alerts
                         )
                         val updatedPeripheral = existingPeripheral?.copy(health = updatedHealth)
-                            ?: EchePeripheral(
+                            ?: PeatPeripheral(
                                 id = docNodeId,
                                 parentNode = docNodeId,
-                                peripheralType = EchePeripheralType.SOLDIER_SENSOR,
+                                peripheralType = PeatPeripheralType.SOLDIER_SENSOR,
                                 callsign = "",
                                 health = updatedHealth,
                                 lastEvent = null,
                                 location = null,
                                 timestamp = deltaDoc.timestampMs
                             )
-                        val syntheticDoc = EcheDocument(
+                        val syntheticDoc = PeatDocument(
                             version = 1,
                             nodeId = docNodeId,
                             counter = localCounter.toList(),
@@ -3380,17 +3380,17 @@ class EcheBtle(
                     if (currentPeer != null) {
                         val existingPeripheral = currentPeer.lastDocument?.peripheral
                         val updatedPeripheral = existingPeripheral?.copy(callsign = op.callsign)
-                            ?: EchePeripheral(
+                            ?: PeatPeripheral(
                                 id = docNodeId,
                                 parentNode = docNodeId,
-                                peripheralType = EchePeripheralType.SOLDIER_SENSOR,
+                                peripheralType = PeatPeripheralType.SOLDIER_SENSOR,
                                 callsign = op.callsign,
-                                health = EcheHealthStatus(0, null, 0, 0),
+                                health = PeatHealthStatus(0, null, 0, 0),
                                 lastEvent = null,
                                 location = null,
                                 timestamp = deltaDoc.timestampMs
                             )
-                        val syntheticDoc = EcheDocument(
+                        val syntheticDoc = PeatDocument(
                             version = 1,
                             nodeId = docNodeId,
                             counter = localCounter.toList(),
@@ -3408,22 +3408,22 @@ class EcheBtle(
                     if (currentPeer != null) {
                         val existingPeripheral = currentPeer.lastDocument?.peripheral
                         val previousEvent = existingPeripheral?.lastEvent
-                        val previousEventType = previousEvent?.eventType ?: EcheEventType.NONE
+                        val previousEventType = previousEvent?.eventType ?: PeatEventType.NONE
                         val previousEventTimestamp = previousEvent?.timestamp ?: 0L
 
-                        val updatedEvent = EchePeripheralEvent(op.eventType, op.timestamp)
+                        val updatedEvent = PeatPeripheralEvent(op.eventType, op.timestamp)
                         val updatedPeripheral = existingPeripheral?.copy(lastEvent = updatedEvent)
-                            ?: EchePeripheral(
+                            ?: PeatPeripheral(
                                 id = docNodeId,
                                 parentNode = docNodeId,
-                                peripheralType = EchePeripheralType.SOLDIER_SENSOR,
+                                peripheralType = PeatPeripheralType.SOLDIER_SENSOR,
                                 callsign = "",
-                                health = EcheHealthStatus(0, null, 0, 0),
+                                health = PeatHealthStatus(0, null, 0, 0),
                                 lastEvent = updatedEvent,
                                 location = null,
                                 timestamp = deltaDoc.timestampMs
                             )
-                        val syntheticDoc = EcheDocument(
+                        val syntheticDoc = PeatDocument(
                             version = 1,
                             nodeId = docNodeId,
                             counter = localCounter.toList(),
@@ -3432,7 +3432,7 @@ class EcheBtle(
                         currentPeer.lastDocument = syntheticDoc
 
                         // Check for new events - trigger callback
-                        val isNewEvent = op.eventType != EcheEventType.NONE && (
+                        val isNewEvent = op.eventType != PeatEventType.NONE && (
                             op.eventType != previousEventType ||
                             (op.eventType == previousEventType && op.timestamp > previousEventTimestamp)
                         )
@@ -3478,7 +3478,7 @@ class EcheBtle(
     }
 
     /**
-     * Sync localPeripheral state to native EcheMesh.
+     * Sync localPeripheral state to native PeatMesh.
      *
      * This ensures that when buildDocument() is called on the native side,
      * it includes the current location, callsign, health, and event data.
@@ -3491,13 +3491,13 @@ class EcheBtle(
         // Map Kotlin event type to native event type
         val nativeEventType: EventType? = peripheral.lastEvent?.let { event ->
             when (event.eventType) {
-                EcheEventType.NONE -> EventType.NONE
-                EcheEventType.PING -> EventType.PING
-                EcheEventType.NEED_ASSIST -> EventType.NEED_ASSIST
-                EcheEventType.EMERGENCY -> EventType.EMERGENCY
-                EcheEventType.MOVING -> EventType.MOVING
-                EcheEventType.IN_POSITION -> EventType.IN_POSITION
-                EcheEventType.ACK -> EventType.ACK
+                PeatEventType.NONE -> EventType.NONE
+                PeatEventType.PING -> EventType.PING
+                PeatEventType.NEED_ASSIST -> EventType.NEED_ASSIST
+                PeatEventType.EMERGENCY -> EventType.EMERGENCY
+                PeatEventType.MOVING -> EventType.MOVING
+                PeatEventType.IN_POSITION -> EventType.IN_POSITION
+                PeatEventType.ACK -> EventType.ACK
             }
         }
 
@@ -3593,7 +3593,7 @@ class EcheBtle(
     /**
      * Check if peripheral state has meaningfully changed.
      */
-    private fun peripheralChanged(current: EchePeripheral?, last: EchePeripheral?): Boolean {
+    private fun peripheralChanged(current: PeatPeripheral?, last: PeatPeripheral?): Boolean {
         if (current == null && last == null) return false
         if (current == null || last == null) return true
 
@@ -3620,8 +3620,8 @@ class EcheBtle(
     private fun notifyCentral(address: String, documentBytes: ByteArray) {
         val device = connectedCentrals[address] ?: return
         val gattServer = this.gattServer ?: return
-        val service = gattServer.getService(ECHE_SERVICE_UUID) ?: return
-        val characteristic = service.getCharacteristic(ECHE_CHAR_DOCUMENT) ?: return
+        val service = gattServer.getService(PEAT_SERVICE_UUID) ?: return
+        val characteristic = service.getCharacteristic(PEAT_CHAR_DOCUMENT) ?: return
 
         // BLE notifications have max size (typically 512 bytes, can be higher with MTU negotiation)
         // Skip notification if document is too large to prevent crash
@@ -3725,7 +3725,7 @@ class EcheBtle(
         reconnectionManager?.onConnectionSuccess(address)
     }
 
-    private fun startReconnectGrace(peer: EchePeer) {
+    private fun startReconnectGrace(peer: PeatPeer) {
         reconnectGraceRunnables.remove(peer.address)?.let { handler.removeCallbacks(it) }
         peer.isReconnecting = true
         val address = peer.address
@@ -3738,7 +3738,7 @@ class EcheBtle(
         handler.postDelayed(runnable, RECONNECT_GRACE_MS)
     }
 
-    private fun cancelReconnectGrace(peer: EchePeer) {
+    private fun cancelReconnectGrace(peer: PeatPeer) {
         peer.isReconnecting = false
         reconnectGraceRunnables.remove(peer.address)?.let { handler.removeCallbacks(it) }
     }
@@ -3764,13 +3764,13 @@ class EcheBtle(
         }
     }
 
-    private fun notifyPeerConnected(peer: EchePeer) {
+    private fun notifyPeerConnected(peer: PeatPeer) {
         handler.post {
             meshListener?.onPeerConnected(peer)
         }
     }
 
-    private fun notifyPeerDisconnected(peer: EchePeer) {
+    private fun notifyPeerDisconnected(peer: PeatPeer) {
         handler.post {
             meshListener?.onPeerDisconnected(peer)
         }
@@ -3783,7 +3783,7 @@ class EcheBtle(
      */
     @Suppress("MissingPermission")
     private fun generateNodeIdFromAdapter(): Long {
-        val prefs = context.getSharedPreferences("eche_btle", Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences("peat_btle", Context.MODE_PRIVATE)
         val savedNodeId = prefs.getLong("node_id", 0L)
 
         // Return saved nodeId if we have one
@@ -3860,7 +3860,7 @@ class EcheBtle(
      */
     private fun loadCallsignCache() {
         try {
-            val prefs = context.getSharedPreferences("eche_btle_callsigns", Context.MODE_PRIVATE)
+            val prefs = context.getSharedPreferences("peat_btle_callsigns", Context.MODE_PRIVATE)
             val mappingsJson = prefs.getString("callsign_mappings", null)
             if (mappingsJson != null) {
                 val mappings = org.json.JSONObject(mappingsJson)
@@ -3888,7 +3888,7 @@ class EcheBtle(
             for ((nodeId, callsign) in nodeIdToCallsign) {
                 mappings.put(nodeId.toString(), callsign)
             }
-            val prefs = context.getSharedPreferences("eche_btle_callsigns", Context.MODE_PRIVATE)
+            val prefs = context.getSharedPreferences("peat_btle_callsigns", Context.MODE_PRIVATE)
             prefs.edit().putString("callsign_mappings", mappings.toString()).apply()
             Log.d(TAG, "Saved ${nodeIdToCallsign.size} callsign mappings to cache")
         } catch (e: Exception) {
@@ -3898,7 +3898,7 @@ class EcheBtle(
 
     /**
      * Update the callsign for a nodeId.
-     * Updates both the cache and any existing EchePeer with matching nodeId.
+     * Updates both the cache and any existing PeatPeer with matching nodeId.
      *
      * @param nodeId The node ID
      * @param callsign The callsign (ignored if blank or "ANDROID")
@@ -3986,15 +3986,15 @@ class EcheBtle(
         writeInProgress[address] = true
 
         try {
-            val service = gatt.getService(ECHE_SERVICE_UUID)
+            val service = gatt.getService(PEAT_SERVICE_UUID)
             if (service == null) {
-                Log.w(TAG, "[WRITE-QUEUE] No Eche service for $address, dropping write")
+                Log.w(TAG, "[WRITE-QUEUE] No Peat service for $address, dropping write")
                 writeInProgress[address] = false
                 processWriteQueue(address, gatt)  // Try next item
                 return
             }
 
-            val char = service.getCharacteristic(ECHE_CHAR_DOCUMENT)
+            val char = service.getCharacteristic(PEAT_CHAR_DOCUMENT)
             if (char == null) {
                 Log.w(TAG, "[WRITE-QUEUE] No document characteristic for $address, dropping write")
                 writeInProgress[address] = false
@@ -4033,8 +4033,8 @@ class EcheBtle(
 
     private fun readDocumentFromGatt(gatt: BluetoothGatt) {
         try {
-            val service = gatt.getService(ECHE_SERVICE_UUID) ?: return
-            val char = service.getCharacteristic(ECHE_CHAR_DOCUMENT) ?: return
+            val service = gatt.getService(PEAT_SERVICE_UUID) ?: return
+            val char = service.getCharacteristic(PEAT_CHAR_DOCUMENT) ?: return
             gatt.readCharacteristic(char)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read document", e)
@@ -4043,8 +4043,8 @@ class EcheBtle(
 
     private fun enableNotificationsForGatt(gatt: BluetoothGatt) {
         try {
-            val service = gatt.getService(ECHE_SERVICE_UUID) ?: return
-            val char = service.getCharacteristic(ECHE_CHAR_DOCUMENT) ?: return
+            val service = gatt.getService(PEAT_SERVICE_UUID) ?: return
+            val char = service.getCharacteristic(PEAT_CHAR_DOCUMENT) ?: return
 
             gatt.setCharacteristicNotification(char, true)
 
@@ -4091,7 +4091,7 @@ class EcheBtle(
             }
         }
 
-        // Destroy EcheMesh (UniFFI handles resource cleanup)
+        // Destroy PeatMesh (UniFFI handles resource cleanup)
         _mesh?.destroy()
         _mesh = null
 
@@ -4131,14 +4131,14 @@ class EcheBtle(
 
     private fun checkInitialized() {
         if (!isInitialized) {
-            throw IllegalStateException("EcheBtle not initialized. Call init() first.")
+            throw IllegalStateException("PeatBtle not initialized. Call init() first.")
         }
     }
 
 }
 
 /**
- * Represents a discovered Eche BLE device.
+ * Represents a discovered Peat BLE device.
  */
 data class DiscoveredDevice(
     val address: String,
@@ -4147,13 +4147,13 @@ data class DiscoveredDevice(
     val nodeId: Long?,
     val meshId: String?,
     val timestampNanos: Long,
-    val isEcheDevice: Boolean = false
+    val isPeatDevice: Boolean = false
 )
 
 /**
- * Represents a peer in the Eche mesh network.
+ * Represents a peer in the Peat mesh network.
  */
-data class EchePeer(
+data class PeatPeer(
     val nodeId: Long,
     var address: String,  // Mutable to support BLE address rotation
     var name: String,     // Mutable to update when callsign is received
@@ -4161,12 +4161,12 @@ data class EchePeer(
     var rssi: Int,
     var isConnected: Boolean,
     var isReconnecting: Boolean = false,
-    var lastDocument: EcheDocument?,
+    var lastDocument: PeatDocument?,
     var lastSeen: Long
 ) {
     /**
      * Get the display name for this peer.
-     * Priority: 1) callsign from document, 2) BLE device name, 3) Eche format with nodeId
+     * Priority: 1) callsign from document, 2) BLE device name, 3) Peat format with nodeId
      */
     fun displayName(): String {
         // First: try callsign from received document (most user-friendly)
@@ -4180,91 +4180,91 @@ data class EchePeer(
             return name.removePrefix("WT-")  // Normalize to "WEAROS-XXXX"
         }
 
-        // Third: fall back to Eche format
+        // Third: fall back to Peat format
         return if (meshId != null) {
-            "ECHE_${meshId}-${String.format("%08X", nodeId)}"
+            "PEAT_${meshId}-${String.format("%08X", nodeId)}"
         } else {
-            "ECHE-${String.format("%08X", nodeId)}"
+            "PEAT-${String.format("%08X", nodeId)}"
         }
     }
 
     /**
      * Get the current event type from this peer's last document.
      */
-    fun currentEventType(): EcheEventType = lastDocument?.currentEventType() ?: EcheEventType.NONE
+    fun currentEventType(): PeatEventType = lastDocument?.currentEventType() ?: PeatEventType.NONE
 }
 
 /**
- * Listener interface for Eche mesh events.
+ * Listener interface for Peat mesh events.
  */
-interface EcheMeshListener {
+interface PeatMeshListener {
     /**
      * Called when the mesh state changes (peers added/removed/updated).
      * @param peers Current list of all known peers
      */
-    fun onMeshUpdated(peers: List<EchePeer>)
+    fun onMeshUpdated(peers: List<PeatPeer>)
 
     /**
      * Called when a peer sends an event (Emergency, ACK, etc.).
      * @param peer The peer that sent the event
      * @param eventType The event type
      */
-    fun onPeerEvent(peer: EchePeer, eventType: EcheEventType)
+    fun onPeerEvent(peer: PeatPeer, eventType: PeatEventType)
 
     /**
      * Called when mesh document is synced.
      * @param document The merged document state
      */
-    fun onDocumentSynced(document: EcheDocument) {}
+    fun onDocumentSynced(document: PeatDocument) {}
 
     /**
      * Called when a peer connection is established.
      * @param peer The connected peer
      */
-    fun onPeerConnected(peer: EchePeer) {}
+    fun onPeerConnected(peer: PeatPeer) {}
 
     /**
      * Called when a peer connection is lost.
      * Use this for immediate UI updates when a peer disconnects.
      * @param peer The disconnected peer
      */
-    fun onPeerDisconnected(peer: EchePeer) {}
+    fun onPeerDisconnected(peer: PeatPeer) {}
 
     /**
      * Called when a map marker is synced from a peer.
      * @param peer The peer that sent the marker
      * @param marker The marker data
      */
-    fun onMarkerSynced(peer: EchePeer, marker: EcheMarker) {}
+    fun onMarkerSynced(peer: PeatPeer, marker: PeatMarker) {}
 
     /**
      * Called when a chat message is received from a mesh peer.
      * @param chat The received chat message
      * @param fromPeer The peer that relayed this message (may differ from chat.originNode for multi-hop)
      */
-    fun onChatReceived(chat: EcheChat, fromPeer: EchePeer) {}
+    fun onChatReceived(chat: PeatChat, fromPeer: PeatPeer) {}
 
     /**
      * Called when decrypted data is received from a peer.
      *
-     * This is the raw transport callback - eche-btle only handles encryption/decryption,
+     * This is the raw transport callback - peat-btle only handles encryption/decryption,
      * the app is responsible for parsing message types using hive-lite or other libraries.
      *
      * Inspect data[0] to determine message type:
      * - 0xAF: app-layer message (use hive-lite app-layer messageEvent.decode())
-     * - 0xAA: EcheDocument (legacy standalone format)
+     * - 0xAA: PeatDocument (legacy standalone format)
      * - 0xB2: DeltaDocument (legacy delta sync)
      *
      * @param peer The peer that sent the data (null if from unknown/anonymous source)
      * @param data Raw decrypted bytes
      */
-    fun onDecryptedData(peer: EchePeer?, data: ByteArray) {}
+    fun onDecryptedData(peer: PeatPeer?, data: ByteArray) {}
 }
 
 /**
- * Represents an active GATT connection to a Eche device.
+ * Represents an active GATT connection to a Peat device.
  */
-class EcheConnection internal constructor(
+class PeatConnection internal constructor(
     val address: String,
     private val gatt: BluetoothGatt,
     private val callback: GattCallbackProxy
@@ -4272,7 +4272,7 @@ class EcheConnection internal constructor(
     /**
      * Set a listener for document events.
      */
-    fun setDocumentListener(listener: EcheDocumentListener?) {
+    fun setDocumentListener(listener: PeatDocumentListener?) {
         callback.documentListener = listener
     }
 
@@ -4286,7 +4286,7 @@ class EcheConnection internal constructor(
         return try {
             gatt.requestMtu(mtu)
         } catch (e: SecurityException) {
-            Log.e("EcheConnection", "Missing BLUETOOTH_CONNECT permission", e)
+            Log.e("PeatConnection", "Missing BLUETOOTH_CONNECT permission", e)
             false
         }
     }
@@ -4300,7 +4300,7 @@ class EcheConnection internal constructor(
         return try {
             gatt.discoverServices()
         } catch (e: SecurityException) {
-            Log.e("EcheConnection", "Missing BLUETOOTH_CONNECT permission", e)
+            Log.e("PeatConnection", "Missing BLUETOOTH_CONNECT permission", e)
             false
         }
     }
@@ -4314,51 +4314,51 @@ class EcheConnection internal constructor(
         return try {
             gatt.readRemoteRssi()
         } catch (e: SecurityException) {
-            Log.e("EcheConnection", "Missing BLUETOOTH_CONNECT permission", e)
+            Log.e("PeatConnection", "Missing BLUETOOTH_CONNECT permission", e)
             false
         }
     }
 
     /**
-     * Read the Eche document characteristic.
+     * Read the Peat document characteristic.
      *
      * @return true if read was initiated
      */
     fun readDocument(): Boolean {
         return try {
-            val service = gatt.getService(EcheBtle.ECHE_SERVICE_UUID)
+            val service = gatt.getService(PeatBtle.PEAT_SERVICE_UUID)
             if (service == null) {
-                Log.e("EcheConnection", "Eche service not found")
+                Log.e("PeatConnection", "Peat service not found")
                 return false
             }
-            val char = service.getCharacteristic(EcheBtle.ECHE_CHAR_DOCUMENT)
+            val char = service.getCharacteristic(PeatBtle.PEAT_CHAR_DOCUMENT)
             if (char == null) {
-                Log.e("EcheConnection", "Eche document characteristic not found")
+                Log.e("PeatConnection", "Peat document characteristic not found")
                 return false
             }
             gatt.readCharacteristic(char)
         } catch (e: SecurityException) {
-            Log.e("EcheConnection", "Missing BLUETOOTH_CONNECT permission", e)
+            Log.e("PeatConnection", "Missing BLUETOOTH_CONNECT permission", e)
             false
         }
     }
 
     /**
-     * Write data to the Eche document characteristic.
+     * Write data to the Peat document characteristic.
      *
      * @param data The document data to write
      * @return true if write was initiated
      */
     fun writeDocument(data: ByteArray): Boolean {
         return try {
-            val service = gatt.getService(EcheBtle.ECHE_SERVICE_UUID)
+            val service = gatt.getService(PeatBtle.PEAT_SERVICE_UUID)
             if (service == null) {
-                Log.e("EcheConnection", "Eche service not found")
+                Log.e("PeatConnection", "Peat service not found")
                 return false
             }
-            val char = service.getCharacteristic(EcheBtle.ECHE_CHAR_DOCUMENT)
+            val char = service.getCharacteristic(PeatBtle.PEAT_CHAR_DOCUMENT)
             if (char == null) {
-                Log.e("EcheConnection", "Eche document characteristic not found")
+                Log.e("PeatConnection", "Peat document characteristic not found")
                 return false
             }
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -4371,39 +4371,39 @@ class EcheConnection internal constructor(
             }
             true
         } catch (e: SecurityException) {
-            Log.e("EcheConnection", "Missing BLUETOOTH_CONNECT permission", e)
+            Log.e("PeatConnection", "Missing BLUETOOTH_CONNECT permission", e)
             false
         }
     }
 
     /**
-     * Enable notifications for the Eche document characteristic.
+     * Enable notifications for the Peat document characteristic.
      *
      * @return true if notification was enabled
      */
     fun enableDocumentNotifications(): Boolean {
         return try {
-            val service = gatt.getService(EcheBtle.ECHE_SERVICE_UUID)
+            val service = gatt.getService(PeatBtle.PEAT_SERVICE_UUID)
             if (service == null) {
-                Log.e("EcheConnection", "Eche service not found")
+                Log.e("PeatConnection", "Peat service not found")
                 return false
             }
-            val char = service.getCharacteristic(EcheBtle.ECHE_CHAR_DOCUMENT)
+            val char = service.getCharacteristic(PeatBtle.PEAT_CHAR_DOCUMENT)
             if (char == null) {
-                Log.e("EcheConnection", "Eche document characteristic not found")
+                Log.e("PeatConnection", "Peat document characteristic not found")
                 return false
             }
 
             // Enable local notifications
             if (!gatt.setCharacteristicNotification(char, true)) {
-                Log.e("EcheConnection", "Failed to enable local notifications")
+                Log.e("PeatConnection", "Failed to enable local notifications")
                 return false
             }
 
             // Write to CCCD to enable remote notifications
-            val descriptor = char.getDescriptor(EcheBtle.CCCD_UUID)
+            val descriptor = char.getDescriptor(PeatBtle.CCCD_UUID)
             if (descriptor == null) {
-                Log.w("EcheConnection", "CCCD descriptor not found, notifications may not work")
+                Log.w("PeatConnection", "CCCD descriptor not found, notifications may not work")
                 return true  // Local notifications are enabled at least
             }
 
@@ -4417,17 +4417,17 @@ class EcheConnection internal constructor(
             }
             true
         } catch (e: SecurityException) {
-            Log.e("EcheConnection", "Missing BLUETOOTH_CONNECT permission", e)
+            Log.e("PeatConnection", "Missing BLUETOOTH_CONNECT permission", e)
             false
         }
     }
 }
 
 /**
- * Eche document event types.
- * Values must match the Rust EventType enum in eche-btle/src/sync/crdt.rs
+ * Peat document event types.
+ * Values must match the Rust EventType enum in peat-btle/src/sync/crdt.rs
  */
-enum class EcheEventType(val value: Int) {
+enum class PeatEventType(val value: Int) {
     NONE(0),
     PING(1),
     NEED_ASSIST(2),
@@ -4437,10 +4437,10 @@ enum class EcheEventType(val value: Int) {
     ACK(6);
 
     companion object {
-        fun fromValue(v: Int): EcheEventType = entries.find { it.value == v } ?: NONE
+        fun fromValue(v: Int): PeatEventType = entries.find { it.value == v } ?: NONE
 
         /** Convert from UniFFI EventType enum */
-        fun fromEventType(et: EventType): EcheEventType = when (et) {
+        fun fromEventType(et: EventType): PeatEventType = when (et) {
             EventType.NONE -> NONE
             EventType.PING -> PING
             EventType.NEED_ASSIST -> NEED_ASSIST
@@ -4453,23 +4453,23 @@ enum class EcheEventType(val value: Int) {
 }
 
 /**
- * Eche Peripheral type.
+ * Peat Peripheral type.
  */
-enum class EchePeripheralType(val value: Int) {
+enum class PeatPeripheralType(val value: Int) {
     UNKNOWN(0),
     SOLDIER_SENSOR(1),
     VEHICLE(2),
     ASSET_TAG(3);
 
     companion object {
-        fun fromValue(v: Int): EchePeripheralType = entries.find { it.value == v } ?: UNKNOWN
+        fun fromValue(v: Int): PeatPeripheralType = entries.find { it.value == v } ?: UNKNOWN
     }
 }
 
 /**
- * Eche health status data.
+ * Peat health status data.
  */
-data class EcheHealthStatus(
+data class PeatHealthStatus(
     val batteryPercent: Int,
     val heartRate: Int?,
     val activityLevel: Int,
@@ -4481,13 +4481,13 @@ data class EcheHealthStatus(
         const val ALERT_GEOFENCE = 0x04
         const val ALERT_PANIC = 0x08
 
-        fun decode(data: ByteArray, offset: Int): EcheHealthStatus? {
+        fun decode(data: ByteArray, offset: Int): PeatHealthStatus? {
             if (data.size < offset + 4) return null
             val battery = data[offset].toInt() and 0xFF
             val hr = data[offset + 1].toInt() and 0xFF
             val activity = data[offset + 2].toInt() and 0xFF
             val alerts = data[offset + 3].toInt() and 0xFF
-            return EcheHealthStatus(
+            return PeatHealthStatus(
                 batteryPercent = battery,
                 heartRate = if (hr > 0) hr else null,
                 activityLevel = activity,
@@ -4495,7 +4495,7 @@ data class EcheHealthStatus(
             )
         }
 
-        fun encode(status: EcheHealthStatus): ByteArray {
+        fun encode(status: PeatHealthStatus): ByteArray {
             return byteArrayOf(
                 status.batteryPercent.toByte(),
                 (status.heartRate ?: 0).toByte(),
@@ -4509,23 +4509,23 @@ data class EcheHealthStatus(
 }
 
 /**
- * Eche peripheral event.
+ * Peat peripheral event.
  */
-data class EchePeripheralEvent(
-    val eventType: EcheEventType,
+data class PeatPeripheralEvent(
+    val eventType: PeatEventType,
     val timestamp: Long
 ) {
     companion object {
         private const val SIZE = 9
 
-        fun decode(data: ByteArray, offset: Int): EchePeripheralEvent? {
+        fun decode(data: ByteArray, offset: Int): PeatPeripheralEvent? {
             if (data.size < offset + SIZE) return null
-            val eventType = EcheEventType.fromValue(data[offset].toInt() and 0xFF)
+            val eventType = PeatEventType.fromValue(data[offset].toInt() and 0xFF)
             val timestamp = readU64LE(data, offset + 1)
-            return EchePeripheralEvent(eventType, timestamp)
+            return PeatPeripheralEvent(eventType, timestamp)
         }
 
-        fun encode(event: EchePeripheralEvent): ByteArray {
+        fun encode(event: PeatPeripheralEvent): ByteArray {
             val buf = ByteArray(SIZE)
             buf[0] = event.eventType.value.toByte()
             writeU64LE(buf, 1, event.timestamp)
@@ -4557,9 +4557,9 @@ data class EchePeripheralEvent(
 }
 
 /**
- * Eche location data.
+ * Peat location data.
  */
-data class EcheLocation(
+data class PeatLocation(
     val latitude: Float,
     val longitude: Float,
     val altitude: Float
@@ -4567,15 +4567,15 @@ data class EcheLocation(
     companion object {
         const val SIZE = 12  // 3 floats x 4 bytes
 
-        fun decode(data: ByteArray, offset: Int): EcheLocation? {
+        fun decode(data: ByteArray, offset: Int): PeatLocation? {
             if (data.size < offset + SIZE) return null
             val lat = bytesToFloat(data, offset)
             val lon = bytesToFloat(data, offset + 4)
             val alt = bytesToFloat(data, offset + 8)
-            return EcheLocation(lat, lon, alt)
+            return PeatLocation(lat, lon, alt)
         }
 
-        fun encode(location: EcheLocation): ByteArray {
+        fun encode(location: PeatLocation): ByteArray {
             val buf = ByteArray(SIZE)
             floatToBytes(location.latitude, buf, 0)
             floatToBytes(location.longitude, buf, 4)
@@ -4602,27 +4602,27 @@ data class EcheLocation(
 }
 
 /**
- * Eche Peripheral data structure.
+ * Peat Peripheral data structure.
  * Format: [id:4][parent:4][type:1][callsign:12][health:4][has_event:1][event:9?][has_location:1][location:12?][timestamp:8]
  */
-data class EchePeripheral(
+data class PeatPeripheral(
     val id: Long,
     val parentNode: Long,
-    val peripheralType: EchePeripheralType,
+    val peripheralType: PeatPeripheralType,
     val callsign: String,
-    val health: EcheHealthStatus,
-    val lastEvent: EchePeripheralEvent?,
-    val location: EcheLocation?,
+    val health: PeatHealthStatus,
+    val lastEvent: PeatPeripheralEvent?,
+    val location: PeatLocation?,
     val timestamp: Long
 ) {
     companion object {
-        private const val TAG = "EchePeripheral"
+        private const val TAG = "PeatPeripheral"
         private const val MIN_SIZE = 35  // Without event or location (added 1 byte for hasLocation flag)
         private const val SIZE_WITH_EVENT = 44  // With event, no location
         private const val SIZE_WITH_LOCATION = 47  // No event, with location
         private const val SIZE_WITH_BOTH = 56  // With event and location
 
-        fun decode(data: ByteArray, offset: Int = 0): EchePeripheral? {
+        fun decode(data: ByteArray, offset: Int = 0): PeatPeripheral? {
             if (data.size < offset + MIN_SIZE) {
                 Log.e(TAG, "Peripheral data too short: ${data.size - offset} bytes (need $MIN_SIZE)")
                 return null
@@ -4633,7 +4633,7 @@ data class EchePeripheral(
             pos += 4
             val parentNode = readU32LE(data, pos)
             pos += 4
-            val peripheralType = EchePeripheralType.fromValue(data[pos].toInt() and 0xFF)
+            val peripheralType = PeatPeripheralType.fromValue(data[pos].toInt() and 0xFF)
             pos += 1
 
             // Read callsign (12 bytes, null-terminated string)
@@ -4646,7 +4646,7 @@ data class EchePeripheral(
             }
             pos += 12
 
-            val health = EcheHealthStatus.decode(data, pos)
+            val health = PeatHealthStatus.decode(data, pos)
             if (health == null) {
                 Log.e(TAG, "Failed to decode health status")
                 return null
@@ -4657,7 +4657,7 @@ data class EchePeripheral(
             pos += 1
 
             val lastEvent = if (hasEvent) {
-                val event = EchePeripheralEvent.decode(data, pos)
+                val event = PeatPeripheralEvent.decode(data, pos)
                 pos += 9
                 event
             } else {
@@ -4672,9 +4672,9 @@ data class EchePeripheral(
             }
             if (data.size > pos) pos += 1
 
-            val location = if (hasLocation && data.size >= pos + EcheLocation.SIZE) {
-                val loc = EcheLocation.decode(data, pos)
-                pos += EcheLocation.SIZE
+            val location = if (hasLocation && data.size >= pos + PeatLocation.SIZE) {
+                val loc = PeatLocation.decode(data, pos)
+                pos += PeatLocation.SIZE
                 loc
             } else {
                 null
@@ -4690,7 +4690,7 @@ data class EchePeripheral(
                     "event=${lastEvent?.eventType}, health=${health.batteryPercent}%, " +
                     "location=${location?.let { "(${it.latitude}, ${it.longitude})" } ?: "none"}")
 
-            return EchePeripheral(
+            return PeatPeripheral(
                 id = id,
                 parentNode = parentNode,
                 peripheralType = peripheralType,
@@ -4702,7 +4702,7 @@ data class EchePeripheral(
             )
         }
 
-        fun encode(peripheral: EchePeripheral): ByteArray {
+        fun encode(peripheral: PeatPeripheral): ByteArray {
             val hasEvent = peripheral.lastEvent != null
             val hasLocation = peripheral.location != null
             val size = when {
@@ -4728,7 +4728,7 @@ data class EchePeripheral(
             }
             pos += 12
 
-            val healthBytes = EcheHealthStatus.encode(peripheral.health)
+            val healthBytes = PeatHealthStatus.encode(peripheral.health)
             healthBytes.copyInto(buf, pos)
             pos += 4
 
@@ -4736,7 +4736,7 @@ data class EchePeripheral(
             pos += 1
 
             if (hasEvent && peripheral.lastEvent != null) {
-                val eventBytes = EchePeripheralEvent.encode(peripheral.lastEvent)
+                val eventBytes = PeatPeripheralEvent.encode(peripheral.lastEvent)
                 eventBytes.copyInto(buf, pos)
                 pos += 9
             }
@@ -4746,9 +4746,9 @@ data class EchePeripheral(
             pos += 1
 
             if (hasLocation && peripheral.location != null) {
-                val locationBytes = EcheLocation.encode(peripheral.location)
+                val locationBytes = PeatLocation.encode(peripheral.location)
                 locationBytes.copyInto(buf, pos)
-                pos += EcheLocation.SIZE
+                pos += PeatLocation.SIZE
             }
 
             writeU64LE(buf, pos, peripheral.timestamp)
@@ -4795,11 +4795,11 @@ data class EchePeripheral(
     /**
      * Get the current event type, or NONE if no event.
      */
-    fun currentEventType(): EcheEventType = lastEvent?.eventType ?: EcheEventType.NONE
+    fun currentEventType(): PeatEventType = lastEvent?.eventType ?: PeatEventType.NONE
 }
 
 /**
- * Eche CRDT GCounter entry.
+ * Peat CRDT GCounter entry.
  */
 data class GCounterEntry(
     val nodeId: Long,
@@ -4807,30 +4807,30 @@ data class GCounterEntry(
 )
 
 /**
- * Eche document format (compatible with M5Stack eche-lite).
+ * Peat document format (compatible with M5Stack peat-lite).
  *
  * Wire format:
  * - Header: version (u32 LE) + node_id (u32 LE)
  * - GCounter: num_entries (u32 LE) + [node_id (u32 LE) + count (u64 LE)] * N
  * - Extended: 0xAB marker + reserved (u8) + peripheral_len (u16 LE) + peripheral data
  */
-data class EcheDocument(
+data class PeatDocument(
     val version: Long,
     val nodeId: Long,
     val counter: List<GCounterEntry>,
-    val peripheral: EchePeripheral?
+    val peripheral: PeatPeripheral?
 ) {
     companion object {
-        private const val TAG = "EcheDocument"
+        private const val TAG = "PeatDocument"
         private const val EXTENDED_MARKER: Byte = 0xAB.toByte()
 
         /**
-         * Decode a Eche document from raw bytes.
+         * Decode a Peat document from raw bytes.
          *
          * @param data Raw document bytes
          * @return Decoded document, or null if parsing failed
          */
-        fun decode(data: ByteArray): EcheDocument? {
+        fun decode(data: ByteArray): PeatDocument? {
             if (data.size < 8) {
                 Log.e(TAG, "Document too short: ${data.size} bytes (minimum 8)")
                 return null
@@ -4877,7 +4877,7 @@ data class EcheDocument(
                 }
 
                 // Check for extended data (peripheral)
-                var peripheral: EchePeripheral? = null
+                var peripheral: PeatPeripheral? = null
                 if (data.size > offset && data[offset] == EXTENDED_MARKER) {
                     offset += 1  // Skip marker
                     if (data.size >= offset + 3) {
@@ -4890,7 +4890,7 @@ data class EcheDocument(
 
                         if (data.size >= offset + peripheralLen && peripheralLen > 0) {
                             // Decode full Peripheral structure
-                            peripheral = EchePeripheral.decode(data, offset)
+                            peripheral = PeatPeripheral.decode(data, offset)
                             if (peripheral != null) {
                                 Log.d(TAG, "Peripheral: eventType=${peripheral.currentEventType()}, " +
                                         "battery=${peripheral.health.batteryPercent}%")
@@ -4901,7 +4901,7 @@ data class EcheDocument(
                     }
                 }
 
-                return EcheDocument(version, nodeId, counter, peripheral)
+                return PeatDocument(version, nodeId, counter, peripheral)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to decode document", e)
@@ -4910,17 +4910,17 @@ data class EcheDocument(
         }
 
         /**
-         * Create an encoded Eche document with full Peripheral structure.
+         * Create an encoded Peat document with full Peripheral structure.
          *
          * @param nodeId This node's ID
          * @param counter GCounter entries
          * @param peripheral Optional Peripheral data (contains event, health, etc.)
          * @return Encoded document bytes
          */
-        fun encode(nodeId: Long, counter: List<GCounterEntry>, peripheral: EchePeripheral? = null): ByteArray {
+        fun encode(nodeId: Long, counter: List<GCounterEntry>, peripheral: PeatPeripheral? = null): ByteArray {
             val headerSize = 8  // version + nodeId
             val counterSize = 4 + counter.size * 12  // count + entries
-            val peripheralBytes = peripheral?.let { EchePeripheral.encode(it) }
+            val peripheralBytes = peripheral?.let { PeatPeripheral.encode(it) }
             val extendedSize = if (peripheralBytes != null) 4 + peripheralBytes.size else 0  // marker + reserved + len(2) + data
             val totalSize = headerSize + counterSize + extendedSize
 
@@ -4958,7 +4958,7 @@ data class EcheDocument(
         }
 
         /**
-         * Create an encoded Eche document with just an event type (simple form).
+         * Create an encoded Peat document with just an event type (simple form).
          *
          * @param nodeId This node's ID
          * @param counter GCounter entries
@@ -4969,18 +4969,18 @@ data class EcheDocument(
         fun encodeWithEvent(
             nodeId: Long,
             counter: List<GCounterEntry>,
-            eventType: EcheEventType = EcheEventType.NONE,
-            location: EcheLocation? = null
+            eventType: PeatEventType = PeatEventType.NONE,
+            location: PeatLocation? = null
         ): ByteArray {
-            val peripheral = if (eventType != EcheEventType.NONE || location != null) {
+            val peripheral = if (eventType != PeatEventType.NONE || location != null) {
                 val timestamp = System.currentTimeMillis()
-                EchePeripheral(
+                PeatPeripheral(
                     id = nodeId,
                     parentNode = 0,
-                    peripheralType = EchePeripheralType.SOLDIER_SENSOR,
+                    peripheralType = PeatPeripheralType.SOLDIER_SENSOR,
                     callsign = "",
-                    health = EcheHealthStatus(100, null, 0, 0),
-                    lastEvent = if (eventType != EcheEventType.NONE) EchePeripheralEvent(eventType, timestamp) else null,
+                    health = PeatHealthStatus(100, null, 0, 0),
+                    lastEvent = if (eventType != PeatEventType.NONE) PeatPeripheralEvent(eventType, timestamp) else null,
                     location = location,
                     timestamp = timestamp
                 )
@@ -5043,7 +5043,7 @@ data class EcheDocument(
     /**
      * Get the current event type from peripheral data.
      */
-    fun currentEventType(): EcheEventType = peripheral?.currentEventType() ?: EcheEventType.NONE
+    fun currentEventType(): PeatEventType = peripheral?.currentEventType() ?: PeatEventType.NONE
 
     /**
      * Get the battery percentage from peripheral health data.
@@ -5053,7 +5053,7 @@ data class EcheDocument(
     /**
      * Get the location from peripheral data.
      */
-    fun location(): EcheLocation? = peripheral?.location
+    fun location(): PeatLocation? = peripheral?.location
 
     /**
      * Get the callsign from peripheral data.
@@ -5078,9 +5078,9 @@ const val MARKER_SECTION_MARKER: Byte = 0xAC.toByte()
 
 /**
  * Compact marker format for BLE transmission (~84 bytes typical).
- * Compatible with CotEcheTranslator.CompactMarker format.
+ * Compatible with CotPeatTranslator.CompactMarker format.
  */
-data class EcheMarker(
+data class PeatMarker(
     val uid: String,        // 36 bytes max (UUID)
     val type: String,       // 12 bytes max (a-f-G-U-C)
     val lat: Float,         // 4 bytes
@@ -5090,12 +5090,12 @@ data class EcheMarker(
     val time: Long          // 8 bytes
 ) {
     companion object {
-        private const val TAG = "EcheMarker"
+        private const val TAG = "PeatMarker"
 
         /**
          * Encode a marker to compact binary format.
          */
-        fun encode(marker: EcheMarker): ByteArray {
+        fun encode(marker: PeatMarker): ByteArray {
             val uidBytes = marker.uid.take(36).toByteArray(Charsets.UTF_8)
             val typeBytes = marker.type.take(12).toByteArray(Charsets.UTF_8)
             val csBytes = marker.callsign.take(16).toByteArray(Charsets.UTF_8)
@@ -5129,7 +5129,7 @@ data class EcheMarker(
         /**
          * Decode a marker from compact binary format.
          */
-        fun decode(data: ByteArray, startOffset: Int = 0): Pair<EcheMarker?, Int> {
+        fun decode(data: ByteArray, startOffset: Int = 0): Pair<PeatMarker?, Int> {
             try {
                 var offset = startOffset
 
@@ -5165,9 +5165,9 @@ data class EcheMarker(
                 val time = bytesToLongLE(data.sliceArray(offset until offset + 8))
                 offset += 8
 
-                return EcheMarker(uid, type, lat, lon, hae, callsign, time) to offset
+                return PeatMarker(uid, type, lat, lon, hae, callsign, time) to offset
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to decode EcheMarker: ${e.message}")
+                Log.e(TAG, "Failed to decode PeatMarker: ${e.message}")
                 return null to startOffset
             }
         }
@@ -5243,7 +5243,7 @@ const val CHAT_SECTION_MARKER: Byte = 0xAD.toByte()
  *
  * Message ID is implicitly (originNode, timestamp) which uniquely identifies each message.
  */
-data class EcheChat(
+data class PeatChat(
     val sender: String,         // Sender callsign (max 16 chars)
     val message: String,        // Message text (max 140 chars)
     val timestamp: Long,        // Epoch milliseconds
@@ -5270,7 +5270,7 @@ data class EcheChat(
     fun replyToIdString(): String? = if (isReply()) "${String.format("%08X", replyToNode)}:$replyToTimestamp" else null
 
     companion object {
-        private const val TAG = "EcheChat"
+        private const val TAG = "PeatChat"
         /** Maximum sender length (12 chars for CRDT compatibility) */
         const val MAX_SENDER_LENGTH = 12
         /** Maximum message length (128 chars for CRDT compatibility) */
@@ -5279,7 +5279,7 @@ data class EcheChat(
         /**
          * Encode a chat message to binary format.
          */
-        fun encode(chat: EcheChat): ByteArray {
+        fun encode(chat: PeatChat): ByteArray {
             val senderBytes = chat.sender.take(MAX_SENDER_LENGTH).toByteArray(Charsets.UTF_8)
             val messageBytes = chat.message.take(MAX_MESSAGE_LENGTH).toByteArray(Charsets.UTF_8)
 
@@ -5340,7 +5340,7 @@ data class EcheChat(
         /**
          * Decode a chat message from binary format.
          */
-        fun decode(data: ByteArray, startOffset: Int = 0): EcheChat? {
+        fun decode(data: ByteArray, startOffset: Int = 0): PeatChat? {
             try {
                 var offset = startOffset
 
@@ -5413,7 +5413,7 @@ data class EcheChat(
                     }
                 }
 
-                return EcheChat(
+                return PeatChat(
                     sender = sender,
                     message = message,
                     timestamp = timestamp,
@@ -5424,7 +5424,7 @@ data class EcheChat(
                     replyToTimestamp = replyToTimestamp
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to decode EcheChat: ${e.message}")
+                Log.e(TAG, "Failed to decode PeatChat: ${e.message}")
                 return null
             }
         }
@@ -5525,11 +5525,11 @@ sealed class DeltaOperation {
     }
 
     data class UpdatePeripheral(
-        val peripheral: EchePeripheral,
+        val peripheral: PeatPeripheral,
         val timestamp: Long
     ) : DeltaOperation() {
         override fun encode(): ByteArray {
-            val peripheralBytes = EchePeripheral.encode(peripheral)
+            val peripheralBytes = PeatPeripheral.encode(peripheral)
             val data = ByteArray(1 + 8 + 2 + peripheralBytes.size)  // type(1) + timestamp(8) + len(2) + peripheral
             var offset = 0
             data[offset++] = DeltaOpType.UPDATE_PERIPHERAL
@@ -5546,7 +5546,7 @@ sealed class DeltaOperation {
                 val timestamp = readU64LE(data, pos); pos += 8
                 val len = readU16LE(data, pos).toInt(); pos += 2
                 if (data.size < pos + len) return null
-                val peripheral = EchePeripheral.decode(data, pos) ?: return null
+                val peripheral = PeatPeripheral.decode(data, pos) ?: return null
                 pos += len
                 return UpdatePeripheral(peripheral, timestamp) to pos
             }
@@ -5727,7 +5727,7 @@ sealed class DeltaOperation {
      * Update event only - 10 bytes total (type + eventType + timestamp)
      */
     data class UpdateEvent(
-        val eventType: EcheEventType,
+        val eventType: PeatEventType,
         val timestamp: Long
     ) : DeltaOperation() {
         override fun encode(): ByteArray {
@@ -5743,7 +5743,7 @@ sealed class DeltaOperation {
             fun decode(data: ByteArray, offset: Int): Pair<UpdateEvent, Int>? {
                 if (data.size < offset + 9) return null
                 val eventValue = data[offset].toInt() and 0xFF
-                val eventType = EcheEventType.entries.find { it.value == eventValue } ?: EcheEventType.NONE
+                val eventType = PeatEventType.entries.find { it.value == eventValue } ?: PeatEventType.NONE
                 val timestamp = readU64LE(data, offset + 1)
                 return UpdateEvent(eventType, timestamp) to (offset + 9)
             }
@@ -5769,7 +5769,7 @@ private fun writeF32LE(data: ByteArray, offset: Int, value: Float) {
 }
 
 /**
- * Eche Delta Document format for bandwidth-efficient sync.
+ * Peat Delta Document format for bandwidth-efficient sync.
  *
  * Wire format (0xB2):
  * - marker: 1 byte (0xB2)
@@ -5779,14 +5779,14 @@ private fun writeF32LE(data: ByteArray, offset: Int, value: Float) {
  * - op_count: 2 bytes (LE)
  * - operations: variable
  */
-data class EcheDeltaDocument(
+data class PeatDeltaDocument(
     val originNode: Long,
     val timestampMs: Long,
     val flags: DeltaFlags = DeltaFlags(),
     val operations: List<DeltaOperation>
 ) {
     companion object {
-        private const val TAG = "EcheDeltaDocument"
+        private const val TAG = "PeatDeltaDocument"
 
         /**
          * Check if data is a delta document (starts with 0xB2 marker).
@@ -5798,7 +5798,7 @@ data class EcheDeltaDocument(
         /**
          * Decode a delta document from raw bytes.
          */
-        fun decode(data: ByteArray): EcheDeltaDocument? {
+        fun decode(data: ByteArray): PeatDeltaDocument? {
             if (data.size < 16) {  // marker(1) + flags(1) + origin(4) + timestamp(8) + opcount(2)
                 Log.e(TAG, "Delta document too short: ${data.size} bytes")
                 return null
@@ -5852,7 +5852,7 @@ data class EcheDeltaDocument(
                     }
                 }
 
-                return EcheDeltaDocument(originNode, timestampMs, flags, operations)
+                return PeatDeltaDocument(originNode, timestampMs, flags, operations)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to decode delta document", e)
@@ -5863,7 +5863,7 @@ data class EcheDeltaDocument(
         /**
          * Encode a delta document to bytes.
          */
-        fun encode(doc: EcheDeltaDocument): ByteArray {
+        fun encode(doc: PeatDeltaDocument): ByteArray {
             // Calculate size
             val operationBytes = doc.operations.map { it.encode() }
             val totalOpSize = operationBytes.sumOf { it.size }
@@ -5892,7 +5892,7 @@ data class EcheDeltaDocument(
  */
 data class PeerSyncState(
     var lastSentTimestamp: Long = 0,
-    var lastSentPeripheral: EchePeripheral? = null,
+    var lastSentPeripheral: PeatPeripheral? = null,
     var lastSentCounterValue: Long = 0,
     var syncCount: Int = 0
 )

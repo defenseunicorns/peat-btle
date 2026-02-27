@@ -1,6 +1,6 @@
-# ECHE-BTLE API Reference
+# PEAT-BTLE API Reference
 
-This document provides a comprehensive guide to the main types, traits, and APIs in the `eche-btle` crate.
+This document provides a comprehensive guide to the main types, traits, and APIs in the `peat-btle` crate.
 
 ## Table of Contents
 
@@ -10,11 +10,11 @@ This document provides a comprehensive guide to the main types, traits, and APIs
   - [HierarchyLevel](#hierarchylevel)
   - [Capabilities](#capabilities)
 - [Entry Points](#entry-points)
-  - [EcheMesh (High-Level)](#hivemesh-high-level)
+  - [PeatMesh (High-Level)](#hivemesh-high-level)
   - [BluetoothLETransport (Low-Level)](#bluetoothletransport-low-level)
 - [Configuration](#configuration)
   - [BleConfig](#bleconfig)
-  - [EcheMeshConfig](#hivemeshconfig)
+  - [PeatMeshConfig](#hivemeshconfig)
   - [PowerProfile](#powerprofile)
   - [BlePhy](#blephy)
 - [Platform Abstraction](#platform-abstraction)
@@ -24,8 +24,8 @@ This document provides a comprehensive guide to the main types, traits, and APIs
   - [Mesh-Wide Encryption](#mesh-wide-encryption)
   - [Per-Peer E2EE](#per-peer-e2ee)
 - [Events and Observers](#events-and-observers)
-  - [EcheEvent](#hiveevent)
-  - [EcheObserver Trait](#hiveobserver-trait)
+  - [PeatEvent](#hiveevent)
+  - [PeatObserver Trait](#hiveobserver-trait)
 - [Error Handling](#error-handling)
 - [Feature Flags](#feature-flags)
 
@@ -33,14 +33,14 @@ This document provides a comprehensive guide to the main types, traits, and APIs
 
 ## Overview
 
-`eche-btle` provides two main entry points:
+`peat-btle` provides two main entry points:
 
 | Entry Point | Use Case | Complexity |
 |-------------|----------|------------|
-| `EcheMesh` | Full mesh management with peers, sync, events | High-level |
+| `PeatMesh` | Full mesh management with peers, sync, events | High-level |
 | `BluetoothLETransport` | Raw BLE transport for custom implementations | Low-level |
 
-For most applications, use `EcheMesh`. It handles peer discovery, document synchronization, encryption, and event notification automatically.
+For most applications, use `PeatMesh`. It handles peer discovery, document synchronization, encryption, and event notification automatically.
 
 ---
 
@@ -51,7 +51,7 @@ For most applications, use `EcheMesh`. It handles peer discovery, document synch
 A 32-bit unique identifier for nodes in the mesh.
 
 ```rust
-use eche_btle::NodeId;
+use peat_btle::NodeId;
 
 // From explicit value
 let node = NodeId::new(0x12345678);
@@ -80,7 +80,7 @@ let node: NodeId = 0x12345678.into();
 Represents the node's position in the tactical hierarchy.
 
 ```rust
-use eche_btle::HierarchyLevel;
+use peat_btle::HierarchyLevel;
 
 let level = HierarchyLevel::Platform;  // Leaf node (soldier)
 let level = HierarchyLevel::Squad;     // Squad leader
@@ -94,12 +94,12 @@ let level: HierarchyLevel = 2u8.into();  // Platoon
 
 ### Capabilities
 
-Bitflags indicating node capabilities, advertised in the Eche beacon.
+Bitflags indicating node capabilities, advertised in the Peat beacon.
 
 ```rust
-use eche_btle::capabilities;
+use peat_btle::capabilities;
 
-let caps = capabilities::LITE_NODE        // Eche-Lite node
+let caps = capabilities::LITE_NODE        // Peat-Lite node
          | capabilities::SENSOR_ACCEL     // Has accelerometer
          | capabilities::HAS_GPS          // Has GPS
          | capabilities::CAN_RELAY;       // Can relay messages
@@ -111,7 +111,7 @@ if caps & capabilities::CODED_PHY != 0 {
 ```
 
 Available flags:
-- `LITE_NODE` (0x0001): Eche-Lite node (minimal state)
+- `LITE_NODE` (0x0001): Peat-Lite node (minimal state)
 - `SENSOR_ACCEL` (0x0002): Has accelerometer
 - `SENSOR_TEMP` (0x0004): Has temperature sensor
 - `SENSOR_BUTTON` (0x0008): Has button input
@@ -126,28 +126,28 @@ Available flags:
 
 ## Entry Points
 
-### EcheMesh (High-Level)
+### PeatMesh (High-Level)
 
-`EcheMesh` is the main facade for Eche BLE mesh operations. It composes peer management, document sync, and observer notifications.
+`PeatMesh` is the main facade for Peat BLE mesh operations. It composes peer management, document sync, and observer notifications.
 
 **Creation:**
 
 ```rust
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
+use peat_btle::{PeatMesh, PeatMeshConfig, NodeId};
 
-let config = EcheMeshConfig::new(
+let config = PeatMeshConfig::new(
     NodeId::new(0x12345678),
     "ALPHA-1",   // Callsign
     "DEMO",      // Mesh ID
 );
 
-let mesh = EcheMesh::new(config);
+let mesh = PeatMesh::new(config);
 ```
 
 **Configuration Options:**
 
 ```rust
-let config = EcheMeshConfig::new(node_id, "ALPHA-1", "DEMO")
+let config = PeatMeshConfig::new(node_id, "ALPHA-1", "DEMO")
     .with_encryption([0x42u8; 32])     // Enable mesh-wide encryption
     .with_strict_encryption()           // Reject unencrypted docs
     .with_sync_interval(5000)          // Sync every 5 seconds
@@ -234,9 +234,9 @@ mesh.mesh_id()           // Mesh identifier
 mesh.device_name()       // BLE device name (e.g., "HIVE_DEMO-12345678")
 mesh.peer_count()        // Number of known peers
 mesh.connected_count()   // Number of connected peers
-mesh.get_peers()         // Vec<EchePeer> of all peers
-mesh.get_connected_peers() // Vec<EchePeer> of connected peers
-mesh.get_peer(node_id)   // Option<EchePeer>
+mesh.get_peers()         // Vec<PeatPeer> of all peers
+mesh.get_connected_peers() // Vec<PeatPeer> of connected peers
+mesh.get_peer(node_id)   // Option<PeatPeer>
 mesh.total_count()       // CRDT counter total
 mesh.version()           // Document version
 ```
@@ -254,7 +254,7 @@ mesh.update_health_full(battery, activity);
 For custom transport implementations that need direct control.
 
 ```rust
-use eche_btle::{BluetoothLETransport, BleConfig, NodeId, MeshTransport};
+use peat_btle::{BluetoothLETransport, BleConfig, NodeId, MeshTransport};
 
 let config = BleConfig::hive_lite(NodeId::new(0x12345678));
 let adapter = platform::linux::BluerAdapter::new()?;
@@ -285,12 +285,12 @@ transport.stop().await?;
 Main configuration structure for the BLE transport.
 
 ```rust
-use eche_btle::{BleConfig, NodeId, PowerProfile, BlePhy};
+use peat_btle::{BleConfig, NodeId, PowerProfile, BlePhy};
 
 // Default configuration
 let config = BleConfig::new(NodeId::new(0x12345678));
 
-// Eche-Lite optimized (low power, leaf node)
+// Peat-Lite optimized (low power, leaf node)
 let config = BleConfig::hive_lite(NodeId::new(0x12345678));
 ```
 
@@ -309,15 +309,15 @@ let config = BleConfig::hive_lite(NodeId::new(0x12345678));
 | `phy` | `PhyConfig` | PHY selection settings |
 | `security` | `SecurityConfig` | Security settings |
 
-### EcheMeshConfig
+### PeatMeshConfig
 
-Configuration for the high-level `EcheMesh` facade.
+Configuration for the high-level `PeatMesh` facade.
 
 ```rust
-use eche_btle::{EcheMeshConfig, NodeId};
-use eche_btle::sync::crdt::PeripheralType;
+use peat_btle::{PeatMeshConfig, NodeId};
+use peat_btle::sync::crdt::PeripheralType;
 
-let config = EcheMeshConfig::new(
+let config = PeatMeshConfig::new(
     NodeId::new(0x12345678),
     "ALPHA-1",  // callsign
     "DEMO",     // mesh_id
@@ -340,7 +340,7 @@ let config = EcheMeshConfig::new(
 Controls radio duty cycle for power management.
 
 ```rust
-use eche_btle::PowerProfile;
+use peat_btle::PowerProfile;
 
 // Preset profiles
 let profile = PowerProfile::Aggressive; // ~20% duty, ~6h battery
@@ -368,7 +368,7 @@ profile.duty_cycle_percent();
 BLE Physical Layer options (BLE 5.0+).
 
 ```rust
-use eche_btle::BlePhy;
+use peat_btle::BlePhy;
 
 let phy = BlePhy::Le1M;      // 1 Mbps, ~100m range (default)
 let phy = BlePhy::Le2M;      // 2 Mbps, ~50m range
@@ -390,7 +390,7 @@ phy.requires_ble5();        // Needs BLE 5.0?
 Each platform implements this trait to provide BLE functionality.
 
 ```rust
-use eche_btle::platform::BleAdapter;
+use peat_btle::platform::BleAdapter;
 
 #[async_trait]
 pub trait BleAdapter: Send + Sync {
@@ -462,13 +462,13 @@ pub trait BleConnection: Send + Sync {
 
 All mesh members share a secret. Protects against external eavesdroppers.
 
-**Via EcheMesh:**
+**Via PeatMesh:**
 
 ```rust
 // At creation
-let config = EcheMeshConfig::new(node_id, "ALPHA", "DEMO")
+let config = PeatMeshConfig::new(node_id, "ALPHA", "DEMO")
     .with_encryption([0x42u8; 32]);
-let mesh = EcheMesh::new(config);
+let mesh = PeatMesh::new(config);
 
 // At runtime
 mesh.enable_encryption(&[0x42u8; 32]);
@@ -482,7 +482,7 @@ mesh.is_strict_encryption_enabled();
 **Direct API (Advanced):**
 
 ```rust
-use eche_btle::security::MeshEncryptionKey;
+use peat_btle::security::MeshEncryptionKey;
 
 let secret = [0x42u8; 32];
 let key = MeshEncryptionKey::from_shared_secret("DEMO", &secret);
@@ -504,7 +504,7 @@ let plaintext = key.decrypt_from_bytes(&bytes).unwrap();
 
 Two specific peers establish encrypted sessions via X25519 key exchange. Only sender and recipient can decrypt.
 
-**Via EcheMesh:**
+**Via PeatMesh:**
 
 ```rust
 // Enable E2EE capability
@@ -535,8 +535,8 @@ mesh.close_peer_e2ee(peer_node_id);
 **Direct API (Advanced):**
 
 ```rust
-use eche_btle::security::PeerSessionManager;
-use eche_btle::NodeId;
+use peat_btle::security::PeerSessionManager;
+use peat_btle::NodeId;
 
 let mut alice = PeerSessionManager::new(NodeId::new(0x11111111));
 let mut bob = PeerSessionManager::new(NodeId::new(0x22222222));
@@ -561,50 +561,50 @@ let decrypted = bob.decrypt_from_peer(&encrypted, now_ms).unwrap();
 
 ## Events and Observers
 
-### EcheEvent
+### PeatEvent
 
 Events emitted by the mesh.
 
 ```rust
-use eche_btle::observer::EcheEvent;
+use peat_btle::observer::PeatEvent;
 
 match event {
     // Peer lifecycle
-    EcheEvent::PeerDiscovered { peer } => { /* new peer found */ }
-    EcheEvent::PeerConnected { node_id } => { /* peer connected */ }
-    EcheEvent::PeerDisconnected { node_id, reason } => { /* peer disconnected */ }
-    EcheEvent::PeerLost { node_id } => { /* peer timed out */ }
+    PeatEvent::PeerDiscovered { peer } => { /* new peer found */ }
+    PeatEvent::PeerConnected { node_id } => { /* peer connected */ }
+    PeatEvent::PeerDisconnected { node_id, reason } => { /* peer disconnected */ }
+    PeatEvent::PeerLost { node_id } => { /* peer timed out */ }
 
     // Mesh events
-    EcheEvent::EmergencyReceived { from_node } => { /* emergency! */ }
-    EcheEvent::AckReceived { from_node } => { /* peer ACKed */ }
-    EcheEvent::DocumentSynced { from_node, total_count } => { /* sync complete */ }
-    EcheEvent::MeshStateChanged { peer_count, connected_count } => { /* state change */ }
+    PeatEvent::EmergencyReceived { from_node } => { /* emergency! */ }
+    PeatEvent::AckReceived { from_node } => { /* peer ACKed */ }
+    PeatEvent::DocumentSynced { from_node, total_count } => { /* sync complete */ }
+    PeatEvent::MeshStateChanged { peer_count, connected_count } => { /* state change */ }
 
     // Per-peer E2EE
-    EcheEvent::PeerE2eeEstablished { peer_node_id } => { /* E2EE ready */ }
-    EcheEvent::PeerE2eeClosed { peer_node_id } => { /* E2EE ended */ }
-    EcheEvent::PeerE2eeMessageReceived { from_node, data } => { /* encrypted msg */ }
+    PeatEvent::PeerE2eeEstablished { peer_node_id } => { /* E2EE ready */ }
+    PeatEvent::PeerE2eeClosed { peer_node_id } => { /* E2EE ended */ }
+    PeatEvent::PeerE2eeMessageReceived { from_node, data } => { /* encrypted msg */ }
 
     // Security
-    EcheEvent::SecurityViolation { kind, source } => { /* security issue */ }
+    PeatEvent::SecurityViolation { kind, source } => { /* security issue */ }
 }
 ```
 
-### EcheObserver Trait
+### PeatObserver Trait
 
 Implement to receive mesh events.
 
 ```rust
-use eche_btle::observer::{EcheEvent, EcheObserver};
+use peat_btle::observer::{PeatEvent, PeatObserver};
 use std::sync::Arc;
 
 struct MyObserver;
 
-impl EcheObserver for MyObserver {
-    fn on_event(&self, event: EcheEvent) {
+impl PeatObserver for MyObserver {
+    fn on_event(&self, event: PeatEvent) {
         match event {
-            EcheEvent::EmergencyReceived { from_node } => {
+            PeatEvent::EmergencyReceived { from_node } => {
                 println!("EMERGENCY from {:08X}!", from_node.as_u32());
                 // Play alarm, show notification, etc.
             }
@@ -624,7 +624,7 @@ mesh.remove_observer(&observer);
 **Testing Helper:**
 
 ```rust
-use eche_btle::observer::CollectingObserver;
+use peat_btle::observer::CollectingObserver;
 
 let observer = Arc::new(CollectingObserver::new());
 mesh.add_observer(observer.clone());
@@ -632,7 +632,7 @@ mesh.add_observer(observer.clone());
 // ... perform operations ...
 
 let events = observer.events();
-assert!(events.iter().any(|e| matches!(e, EcheEvent::EmergencyReceived { .. })));
+assert!(events.iter().any(|e| matches!(e, PeatEvent::EmergencyReceived { .. })));
 ```
 
 ---
@@ -642,7 +642,7 @@ assert!(events.iter().any(|e| matches!(e, EcheEvent::EmergencyReceived { .. })))
 All fallible operations return `Result<T, BleError>`.
 
 ```rust
-use eche_btle::{BleError, Result};
+use peat_btle::{BleError, Result};
 
 fn example() -> Result<()> {
     // Errors you may encounter:
@@ -681,17 +681,17 @@ fn example() -> Result<()> {
 
 ```toml
 [dependencies]
-eche-btle = { version = "0.1", features = ["linux", "coded-phy"] }
+peat-btle = { version = "0.1", features = ["linux", "coded-phy"] }
 ```
 
 **Conditional Compilation:**
 
 ```rust
 #[cfg(feature = "linux")]
-use eche_btle::platform::linux::BluerAdapter;
+use peat_btle::platform::linux::BluerAdapter;
 
 #[cfg(feature = "android")]
-use eche_btle::platform::android::AndroidAdapter;
+use peat_btle::platform::android::AndroidAdapter;
 ```
 
 ---
@@ -699,9 +699,9 @@ use eche_btle::platform::android::AndroidAdapter;
 ## Constants
 
 ```rust
-use eche_btle::{
-    ECHE_SERVICE_UUID,       // 128-bit service UUID
-    ECHE_SERVICE_UUID_16BIT, // 16-bit short form (0xF47A)
+use peat_btle::{
+    PEAT_SERVICE_UUID,       // 128-bit service UUID
+    PEAT_SERVICE_UUID_16BIT, // 16-bit short form (0xF47A)
     CHAR_NODE_INFO_UUID,     // Node info characteristic
     CHAR_SYNC_STATE_UUID,    // Sync state characteristic
     CHAR_SYNC_DATA_UUID,     // Sync data characteristic
@@ -718,24 +718,24 @@ use eche_btle::{
 ### Basic Mesh Setup
 
 ```rust
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
-use eche_btle::observer::{EcheEvent, EcheObserver};
+use peat_btle::{PeatMesh, PeatMeshConfig, NodeId};
+use peat_btle::observer::{PeatEvent, PeatObserver};
 use std::sync::Arc;
 
 // 1. Create config
-let config = EcheMeshConfig::new(
+let config = PeatMeshConfig::new(
     NodeId::new(0x12345678),
     "ALPHA-1",
     "DEMO",
 );
 
 // 2. Create mesh
-let mesh = EcheMesh::new(config);
+let mesh = PeatMesh::new(config);
 
 // 3. Add observer
 struct Handler;
-impl EcheObserver for Handler {
-    fn on_event(&self, event: EcheEvent) {
+impl PeatObserver for Handler {
+    fn on_event(&self, event: PeatEvent) {
         // Handle events
     }
 }
@@ -780,11 +780,11 @@ while !mesh.all_peers_acked() {
 ```rust
 let secret = derive_key_from_password("formation-password");
 
-let config = EcheMeshConfig::new(node_id, "ALPHA", "DEMO")
+let config = PeatMeshConfig::new(node_id, "ALPHA", "DEMO")
     .with_encryption(secret)
     .with_strict_encryption();
 
-let mesh = EcheMesh::new(config);
+let mesh = PeatMesh::new(config);
 
 // All documents automatically encrypted/decrypted
 // SecurityViolation events for unauthorized messages

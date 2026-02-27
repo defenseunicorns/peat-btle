@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to eche-btle will be documented in this file.
+All notable changes to peat-btle will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Android**: High-priority sync mode for time-critical state updates
 - **Android**: WearOS reliability improvements (reconnect on re-discovery, stale peer cleanup, address rotation handling, auto-reconnect with exponential backoff)
-- **feather-sense**: Eche GATT server for WearTAK connectivity on nRF52840
+- **feather-sense**: Peat GATT server for WearTAK connectivity on nRF52840
 - **feather-sense**: Pure Rust BLE advertising with nrf-sdc
 - **feather-sense**: probe-rs build support and BLE target in Makefile
 - **macOS**: GATT client with bidirectional sync
@@ -70,14 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **BREAKING**: Migrated Android bindings from manual JNI to UniFFI
-  - All Rust types now accessed via `uniffi.eche_btle` package
-  - EcheMesh construction uses `newFromGenesis()` or `newWithPeripheral()` factory methods
+  - All Rust types now accessed via `uniffi.peat_btle` package
+  - PeatMesh construction uses `newFromGenesis()` or `newWithPeripheral()` factory methods
   - Method parameters now use Kotlin unsigned types (UInt, ULong, UByte)
   - BLE callback timestamps require `.toULong()` conversion
 
 ### Added
-- UniFFI bindings module (`src/uniffi_bindings.rs`) with full EcheMesh API
-- Generated Kotlin bindings (`android/src/main/kotlin/uniffi/eche_btle/eche_btle.kt`)
+- UniFFI bindings module (`src/uniffi_bindings.rs`) with full PeatMesh API
+- Generated Kotlin bindings (`android/src/main/kotlin/uniffi/peat_btle/peat_btle.kt`)
 - Chat methods exposed via UniFFI: `sendChat`, `sendChatReply`, `chatCount`, `getAllChatMessages`, `getChatMessagesSince`
 - `updatePeripheralState` method for efficient encrypted state updates
 - `deriveNodeIdFromMac` standalone function
@@ -89,9 +89,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - Manual JNI bridge (`src/platform/android/jni_bridge.rs`)
-- JNI-based Kotlin files: `EcheMesh.kt`, `DeviceIdentity.kt`, `MeshGenesis.kt`, `IdentityAttestation.kt`
+- JNI-based Kotlin files: `PeatMesh.kt`, `DeviceIdentity.kt`, `MeshGenesis.kt`, `IdentityAttestation.kt`
 - JNI native method declarations from callback proxy classes
-- `System.loadLibrary("eche_btle")` calls (UniFFI/JNA handles library loading automatically)
+- `System.loadLibrary("peat_btle")` calls (UniFFI/JNA handles library loading automatically)
 - `jni` and `ndk` crate dependencies
 
 ### Migration Guide
@@ -129,7 +129,7 @@ See `docs/UNIFFI_MIGRATION.md` for Android integration updates.
 - Linux platform support with BlueZ/bluer
 - Core BLE transport architecture
 - BleAdapter trait for platform abstraction
-- Eche beacon format and discovery protocol
+- Peat beacon format and discovery protocol
 - GATT service definition (0xF47A)
 - Power profile management (Aggressive, Balanced, LowPower, UltraLow)
 - Lightweight CRDT implementations (GCounter, LWWRegister, ORSet)

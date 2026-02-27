@@ -1,12 +1,12 @@
 # Release Process
 
-This document describes how to release eche-btle to crates.io (Rust) and Maven Central (Android).
+This document describes how to release peat-btle to crates.io (Rust) and Maven Central (Android).
 
 ## Prerequisites
 
 ### Rust (crates.io)
 - Cargo installed with `cargo login` configured
-- Publish access to the `eche-btle` crate
+- Publish access to the `peat-btle` crate
 
 ### Android (Maven Central)
 - GPG key for signing artifacts (current: `B4D250D0`)
@@ -48,7 +48,7 @@ cd android
 ./gradlew buildNativeLibs
 ```
 
-This builds `libeche_btle.so` for:
+This builds `libpeat_btle.so` for:
 - `arm64-v8a` (modern Android devices)
 - `armeabi-v7a` (older devices)
 

@@ -1,6 +1,6 @@
-// UniFFI bindings for eche-btle
+// UniFFI bindings for peat-btle
 //
-// This module provides UniFFI-compatible wrappers around the core eche-btle types.
+// This module provides UniFFI-compatible wrappers around the core peat-btle types.
 // It generates Kotlin and Swift bindings automatically.
 //
 // Note: uniffi::setup_scaffolding!() is called in lib.rs (must be at crate root)
@@ -19,17 +19,17 @@ fn ensure_android_logger() {
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Info)
-                .with_tag("EcheFFI"),
+                .with_tag("PeatFFI"),
         );
     });
 }
 
-use crate::eche_mesh::{self, DataReceivedResult as InternalDataReceivedResult};
 use crate::observer::DisconnectReason as ObserverDisconnectReason;
+use crate::peat_mesh::{self, DataReceivedResult as InternalDataReceivedResult};
 use crate::peer::{
-    ConnectionState as InternalConnectionState, EchePeer as InternalEchePeer,
+    ConnectionState as InternalConnectionState,
     FullStateCountSummary as InternalFullStateCountSummary, IndirectPeer as InternalIndirectPeer,
-    PeerConnectionState as InternalPeerConnectionState,
+    PeatPeer as InternalPeatPeer, PeerConnectionState as InternalPeerConnectionState,
     StateCountSummary as InternalStateCountSummary,
 };
 use crate::platform::DisconnectReason as PlatformDisconnectReason;
@@ -220,7 +220,7 @@ fn event_type_from_u8(value: u8) -> Option<EventType> {
 // ============================================================================
 
 #[derive(Debug, Clone, uniffi::Record)]
-pub struct EchePeer {
+pub struct PeatPeer {
     pub node_id: u32,
     pub identifier: String,
     pub name: Option<String>,
@@ -230,9 +230,9 @@ pub struct EchePeer {
     pub last_seen_ms: u64,
 }
 
-impl From<InternalEchePeer> for EchePeer {
-    fn from(p: InternalEchePeer) -> Self {
-        EchePeer {
+impl From<InternalPeatPeer> for PeatPeer {
+    fn from(p: InternalPeatPeer) -> Self {
+        PeatPeer {
             node_id: p.node_id.as_u32(),
             identifier: p.identifier.clone(),
             name: p.name.clone(),
@@ -413,42 +413,30 @@ impl From<InternalFullStateCountSummary> for FullStateCountSummary {
     }
 }
 
-/// Information about a stored CannedMessage document.
-#[cfg(feature = "eche-lite-sync")]
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct CannedMessageInfo {
-    /// Source node that created the message
-    pub source_node: u32,
-    /// Timestamp when the message was created
-    pub timestamp: u64,
-    /// Encoded message bytes (includes 0xAF marker)
-    pub encoded_bytes: Vec<u8>,
-}
-
 // ============================================================================
-// EcheMesh Object
+// PeatMesh Object
 // ============================================================================
 
 #[derive(uniffi::Object)]
-pub struct EcheMesh {
-    inner: eche_mesh::EcheMesh,
+pub struct PeatMesh {
+    inner: peat_mesh::PeatMesh,
 }
 
 #[uniffi::export]
-impl EcheMesh {
-    /// Create a basic EcheMesh
+impl PeatMesh {
+    /// Create a basic PeatMesh
     #[uniffi::constructor]
     pub fn new(node_id: u32, callsign: &str, mesh_id: &str) -> Arc<Self> {
         #[cfg(target_os = "android")]
         ensure_android_logger();
 
-        let config = crate::EcheMeshConfig::new(NodeId::new(node_id), callsign, mesh_id);
+        let config = crate::PeatMeshConfig::new(NodeId::new(node_id), callsign, mesh_id);
         Arc::new(Self {
-            inner: eche_mesh::EcheMesh::new(config),
+            inner: peat_mesh::PeatMesh::new(config),
         })
     }
 
-    /// Create a EcheMesh with peripheral type
+    /// Create a PeatMesh with peripheral type
     #[uniffi::constructor]
     pub fn new_with_peripheral(
         node_id: u32,
@@ -459,14 +447,14 @@ impl EcheMesh {
         #[cfg(target_os = "android")]
         ensure_android_logger();
 
-        let config = crate::EcheMeshConfig::new(NodeId::new(node_id), callsign, mesh_id)
+        let config = crate::PeatMeshConfig::new(NodeId::new(node_id), callsign, mesh_id)
             .with_peripheral_type(peripheral_type.into());
         Arc::new(Self {
-            inner: eche_mesh::EcheMesh::new(config),
+            inner: peat_mesh::PeatMesh::new(config),
         })
     }
 
-    /// Create a EcheMesh from genesis (recommended for production)
+    /// Create a PeatMesh from genesis (recommended for production)
     #[uniffi::constructor]
     pub fn new_from_genesis(
         callsign: &str,
@@ -477,7 +465,7 @@ impl EcheMesh {
         ensure_android_logger();
 
         Arc::new(Self {
-            inner: eche_mesh::EcheMesh::from_genesis(
+            inner: peat_mesh::PeatMesh::from_genesis(
                 &genesis.inner,
                 identity.inner.clone(),
                 callsign,
@@ -548,7 +536,7 @@ impl EcheMesh {
     /// Takes raw payload bytes, encrypts them (if encryption is enabled),
     /// and returns bytes ready to send to all connected peers.
     ///
-    /// This is useful for sending extension data like CannedMessages from eche-lite.
+    /// This is useful for sending extension data like CannedMessages from peat-lite.
     pub fn broadcast_bytes(&self, payload: &[u8]) -> Vec<u8> {
         self.inner.broadcast_bytes(payload)
     }
@@ -563,7 +551,7 @@ impl EcheMesh {
         rssi: i8,
         mesh_id: Option<String>,
         now_ms: u64,
-    ) -> Option<EchePeer> {
+    ) -> Option<PeatPeer> {
         self.inner
             .on_ble_discovered(
                 identifier,
@@ -643,7 +631,7 @@ impl EcheMesh {
     }
 
     /// Get list of connected peers
-    pub fn get_connected_peers(&self) -> Vec<EchePeer> {
+    pub fn get_connected_peers(&self) -> Vec<PeatPeer> {
         self.inner
             .get_connected_peers()
             .into_iter()
@@ -853,7 +841,7 @@ impl EcheMesh {
     }
 
     // ==================== CannedMessage Integration ====================
-    // These methods enable proper CRDT sync for eche-lite CannedMessages,
+    // These methods enable proper CRDT sync for peat-lite CannedMessages,
     // using document identity for deduplication instead of raw relay.
 
     /// Check if a CannedMessage has been seen recently.
@@ -886,143 +874,6 @@ impl EcheMesh {
     /// Get the number of stored app documents.
     pub fn app_document_count(&self) -> u32 {
         self.inner.app_document_count() as u32
-    }
-}
-
-// ==================== App Document Storage (eche-lite-sync) ====================
-// These methods enable proper CRDT sync for app-layer documents
-// through the document registry (0xC0-0xCF type range).
-// Separated into own impl block because UniFFI proc macros don't
-// respect #[cfg] on individual methods within a #[uniffi::export] block.
-
-#[cfg(feature = "eche-lite-sync")]
-#[uniffi::export]
-impl EcheMesh {
-    /// Create and store a new CannedMessage document.
-    ///
-    /// Creates a CannedMessageAckEvent with the given message code, stores it
-    /// for CRDT sync, and returns the encoded bytes (with 0xAF marker) for
-    /// broadcasting to peers.
-    ///
-    /// Returns the encoded bytes if the document was newly created, None if
-    /// there was an error or the message code is invalid.
-    pub fn send_canned_message(&self, message_code: u8, timestamp_ms: u64) -> Option<Vec<u8>> {
-        use crate::eche_lite_sync::CannedMessageDocument;
-        use eche_lite::{CannedMessage, CannedMessageAckEvent, NodeId as EcheLiteNodeId};
-
-        let message = CannedMessage::from_u8(message_code)?;
-        let source_node = EcheLiteNodeId::new(self.inner.node_id().as_u32());
-        let event = CannedMessageAckEvent::new(message, source_node, None, timestamp_ms);
-        let doc = CannedMessageDocument::new(event);
-
-        // Encode before storing (store consumes ownership via clone internally)
-        let inner = doc.inner().clone();
-        let encoded = inner.encode().to_vec();
-
-        if self.inner.store_app_document(doc) {
-            Some(encoded)
-        } else {
-            None
-        }
-    }
-
-    /// Store a CannedMessage document for CRDT sync.
-    ///
-    /// Takes raw eche-lite encoded bytes (including 0xAF marker).
-    /// The document will be stored and synced to peers via delta sync.
-    ///
-    /// Returns true if the document was newly added or changed via merge.
-    pub fn store_canned_message_document(&self, encoded_bytes: &[u8]) -> bool {
-        use crate::eche_lite_sync::CannedMessageDocument;
-        use crate::registry::DocumentType;
-
-        // The encoded bytes include 0xAF marker from eche-lite.
-        // CannedMessageDocument::decode expects payload WITHOUT 0xAF
-        // (since it prepends it), but the incoming bytes already have it.
-        // So we need to strip it first.
-        if encoded_bytes.is_empty() {
-            return false;
-        }
-
-        // Decode using CannedMessageDocument (which handles the 0xAF internally)
-        // The encode() strips 0xAF, decode() prepends 0xAF.
-        // But here we have raw eche-lite bytes WITH 0xAF.
-        // So we skip the first byte to get the payload that encode() would produce.
-        let payload = &encoded_bytes[1..];
-        if let Some(doc) = CannedMessageDocument::decode(payload) {
-            self.inner.store_app_document(doc)
-        } else {
-            false
-        }
-    }
-
-    /// Record an ACK on a stored CannedMessage document.
-    ///
-    /// This is the efficient path for adding ACKs - the full document
-    /// doesn't need to be re-sent, just the ACK delta.
-    ///
-    /// Returns true if the ACK was new (document changed).
-    pub fn ack_canned_message(
-        &self,
-        source_node: u32,
-        timestamp: u64,
-        acker_node: u32,
-        ack_timestamp: u64,
-    ) -> bool {
-        use crate::eche_lite_sync::CannedMessageDocument;
-
-        // Get the document, add ACK, store back
-        if let Some(mut doc) = self
-            .inner
-            .get_app_document::<CannedMessageDocument>(source_node, timestamp)
-        {
-            if doc.ack(acker_node, ack_timestamp) {
-                self.inner.store_app_document(doc)
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
-
-    /// Get a stored CannedMessage document as raw eche-lite bytes.
-    ///
-    /// Returns the document encoded in eche-lite format (with 0xAF marker),
-    /// or None if not found.
-    pub fn get_canned_message_document(&self, source_node: u32, timestamp: u64) -> Option<Vec<u8>> {
-        use crate::eche_lite_sync::CannedMessageDocument;
-
-        self.inner
-            .get_app_document::<CannedMessageDocument>(source_node, timestamp)
-            .map(|doc| {
-                // Return with 0xAF marker for eche-lite compatibility
-                let inner = doc.into_inner();
-                inner.encode().to_vec()
-            })
-    }
-
-    /// Get all stored CannedMessage documents as encoded bytes.
-    ///
-    /// Returns a list of (source_node, timestamp, encoded_bytes) tuples.
-    /// The encoded_bytes include the 0xAF marker for eche-lite compatibility.
-    pub fn get_all_canned_messages(&self) -> Vec<CannedMessageInfo> {
-        use crate::eche_lite_sync::CannedMessageDocument;
-        use crate::registry::DocumentType;
-
-        self.inner
-            .get_all_app_documents_of_type::<CannedMessageDocument>()
-            .into_iter()
-            .map(|doc| {
-                let (source_node, timestamp) = doc.identity();
-                let inner = doc.into_inner();
-                CannedMessageInfo {
-                    source_node,
-                    timestamp,
-                    encoded_bytes: inner.encode().to_vec(),
-                }
-            })
-            .collect()
     }
 }
 
@@ -1149,23 +1000,23 @@ pub fn derive_node_id_from_mac(mac_address: &str) -> u32 {
         .unwrap_or(0)
 }
 
-/// Create a EcheMesh with encryption enabled (returns null if secret is wrong length)
+/// Create a PeatMesh with encryption enabled (returns null if secret is wrong length)
 #[uniffi::export]
-pub fn create_eche_mesh_with_encryption(
+pub fn create_peat_mesh_with_encryption(
     node_id: u32,
     callsign: &str,
     mesh_id: &str,
     encryption_secret: &[u8],
-) -> Option<std::sync::Arc<EcheMesh>> {
+) -> Option<std::sync::Arc<PeatMesh>> {
     if encryption_secret.len() != 32 {
         return None;
     }
     let mut secret = [0u8; 32];
     secret.copy_from_slice(encryption_secret);
     let config =
-        crate::EcheMeshConfig::new(NodeId::new(node_id), callsign, mesh_id).with_encryption(secret);
-    Some(std::sync::Arc::new(EcheMesh {
-        inner: eche_mesh::EcheMesh::new(config),
+        crate::PeatMeshConfig::new(NodeId::new(node_id), callsign, mesh_id).with_encryption(secret);
+    Some(std::sync::Arc::new(PeatMesh {
+        inner: peat_mesh::PeatMesh::new(config),
     }))
 }
 
@@ -1651,8 +1502,8 @@ pub enum DevicePattern {
     WearTak,
     /// Generic WearOS device (WEAROS-XXXX)
     WearOs,
-    /// Eche mesh device (ECHE_MESH-XXXX or ECHE-XXXX)
-    Eche,
+    /// Peat mesh device (PEAT_MESH-XXXX or PEAT-XXXX)
+    Peat,
     /// Unknown pattern (may still rotate addresses)
     Unknown,
 }
@@ -1662,7 +1513,7 @@ impl From<InternalDevicePattern> for DevicePattern {
         match p {
             InternalDevicePattern::WearTak => DevicePattern::WearTak,
             InternalDevicePattern::WearOs => DevicePattern::WearOs,
-            InternalDevicePattern::Eche => DevicePattern::Eche,
+            InternalDevicePattern::Peat => DevicePattern::Peat,
             InternalDevicePattern::Unknown => DevicePattern::Unknown,
         }
     }

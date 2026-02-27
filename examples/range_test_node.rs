@@ -1,6 +1,6 @@
 //! Range Test Node - Linux BLE node for field testing WearTAK
 //!
-//! This binary runs on a Linux machine and acts as an Eche mesh node that:
+//! This binary runs on a Linux machine and acts as an Peat mesh node that:
 //! 1. Uses the same encrypted genesis as WearTAK watches
 //! 2. Logs all received documents with RSSI and timestamps
 //! 3. Detects SOS/emergency events as test markers
@@ -12,12 +12,12 @@
 //! Build:
 //!   cargo build --release --features linux --example range_test_node
 
-use eche_btle::{
+use peat_btle::{
     config::BleConfig,
-    gatt::EcheCharacteristicUuids,
+    gatt::PeatCharacteristicUuids,
     platform::{linux::BluerAdapter, BleAdapter, DiscoveredDevice},
     security::MeshGenesis,
-    EcheMesh, EcheMeshConfig, ECHE_SERVICE_UUID,
+    PeatMesh, PeatMeshConfig, PEAT_SERVICE_UUID,
 };
 use std::collections::HashSet;
 use std::fs::OpenOptions;
@@ -26,7 +26,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, RwLock};
 
-/// WEARTAK shared genesis - same as in EcheBtleService.kt
+/// WEARTAK shared genesis - same as in PeatBtleService.kt
 /// MESH_ID: 29C916FA (decoded from base64)
 const WEARTAK_GENESIS_BYTES: &[u8] = &[
     0x07, 0x00, 0x57, 0x45, 0x41, 0x52, 0x54, 0x41, 0x4B, 0xE0, 0xEE, 0xED, 0x84, 0x0D, 0x37, 0x75,
@@ -154,7 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Use a fixed node ID for stable testing (derived from "BASESTATION")
     // This ensures the advertisement name stays consistent across restarts
-    let node_id = eche_btle::NodeId::new(0xBA5E0001); // "BASE-0001"
+    let node_id = peat_btle::NodeId::new(0xBA5E0001); // "BASE-0001"
 
     log::info!("================================================");
     log::info!("WearTAK Range Test Node");
@@ -178,9 +178,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Create mesh with encryption credentials from genesis
-    let mesh_config = EcheMeshConfig::new(node_id, callsign, &mesh_id)
+    let mesh_config = PeatMeshConfig::new(node_id, callsign, &mesh_id)
         .with_encryption(genesis.encryption_secret());
-    let mesh = Arc::new(RwLock::new(EcheMesh::new(mesh_config)));
+    let mesh = Arc::new(RwLock::new(PeatMesh::new(mesh_config)));
 
     log::info!("Mesh initialized with encryption, starting BLE adapter...");
 
@@ -201,7 +201,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Set adapter alias for scan response (matches Android's approach)
     // This is the name that will appear when devices scan for us
-    let device_name = format!("ECHE-{:08X}", node_id.as_u32());
+    let device_name = format!("PEAT-{:08X}", node_id.as_u32());
     adapter.set_adapter_alias(&device_name).await?;
     log::info!("Adapter alias set to: {}", device_name);
 
@@ -212,7 +212,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let test_state_discovery = test_state.clone();
     let discovery_tx_clone = discovery_tx.clone();
     adapter.set_discovery_callback(Some(Arc::new(move |device: DiscoveredDevice| {
-        if device.is_hive_node {
+        if device.is_peat_node {
             let state = test_state_discovery.clone();
             let device_clone = device.clone();
             let tx = discovery_tx_clone.clone();
@@ -244,7 +244,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         peer.last_rssi = device_clone.rssi as i16;
                         if let Some(name) = &device_clone.name {
                             if let Some(cs) =
-                                name.strip_prefix("ECHE_").and_then(|s| s.split('-').next())
+                                name.strip_prefix("PEAT_").and_then(|s| s.split('-').next())
                             {
                                 peer.callsign = Some(cs.to_string());
                             }
@@ -365,7 +365,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("================================================");
     log::info!("Range Test Node RUNNING (ACTIVE MODE)");
-    log::info!("Advertising as: ECHE-{:08X}", node_id.as_u32());
+    log::info!("Advertising as: PEAT-{:08X}", node_id.as_u32());
     log::info!("GATT service ready for incoming connections");
     log::info!("");
     log::info!("MODE: Active - will try to connect to discovered watches");
@@ -462,28 +462,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // Wait for services to be resolved
                                 tokio::time::sleep(Duration::from_millis(1000)).await;
 
-                                // Find Eche service
+                                // Find Peat service
                                 match device.services().await {
                                     Ok(services) => {
-                                        // Find Eche service by UUID
-                                        let mut eche_service = None;
+                                        // Find Peat service by UUID
+                                        let mut peat_service = None;
                                         for s in &services {
                                             if let Ok(uuid) = s.uuid().await {
-                                                if uuid == ECHE_SERVICE_UUID {
-                                                    eche_service = Some(s);
+                                                if uuid == PEAT_SERVICE_UUID {
+                                                    peat_service = Some(s);
                                                     break;
                                                 }
                                             }
                                         }
 
-                                        if let Some(service) = eche_service {
-                                            log::info!("Found Eche service on {}", address);
+                                        if let Some(service) = peat_service {
+                                            log::info!("Found Peat service on {}", address);
 
                                             // Find sync_state characteristic
                                             match service.characteristics().await {
                                                 Ok(chars) => {
-                                                    let sync_state_uuid = EcheCharacteristicUuids::sync_state();
-                                                    let sync_data_uuid = EcheCharacteristicUuids::sync_data();
+                                                    let sync_state_uuid = PeatCharacteristicUuids::sync_state();
+                                                    let sync_data_uuid = PeatCharacteristicUuids::sync_data();
 
                                                     // Find characteristics by UUID
                                                     let mut sync_state_char = None;
@@ -546,7 +546,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 }
                                             }
                                         } else {
-                                            log::warn!("Eche service not found on {}", address);
+                                            log::warn!("Peat service not found on {}", address);
                                         }
                                     }
                                     Err(e) => {

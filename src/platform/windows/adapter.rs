@@ -68,7 +68,7 @@ impl Default for AdapterState {
 /// The adapter manages:
 /// - **BleWatcher**: For scanning/discovering devices
 /// - **BleAdvertiser**: For advertising our presence
-/// - **GattServer**: For hosting the Eche GATT service
+/// - **GattServer**: For hosting the Peat GATT service
 /// - **WinRtConnection**: For connecting to other devices as GATT client
 ///
 /// # Example
@@ -140,10 +140,10 @@ impl WinRtBleAdapter {
     /// Process discovered devices and invoke callbacks
     pub async fn process_discoveries(&self) -> Result<()> {
         let watcher = self.watcher.read().await;
-        let eche_peripherals = watcher.get_eche_peripherals();
+        let peat_peripherals = watcher.get_peat_peripherals();
 
         if let Some(ref callback) = *self.discovery_callback.read().await {
-            for peripheral in eche_peripherals {
+            for peripheral in peat_peripherals {
                 // Register the mapping if we have a node ID
                 if let Some(node_id) = peripheral.node_id {
                     self.register_node_address(node_id, peripheral.address)

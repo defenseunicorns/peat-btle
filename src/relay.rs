@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Multi-hop relay support for Eche BLE mesh
+//! Multi-hop relay support for Peat BLE mesh
 //!
 //! This module provides message deduplication and hop tracking for multi-hop
 //! relay scenarios. Without deduplication, messages would bounce infinitely

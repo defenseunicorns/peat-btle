@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Error types for ECHE-BTLE
+//! Error types for PEAT-BTLE
 //!
 //! Provides a comprehensive error enum for all BLE operations including
 //! adapter initialization, discovery, GATT operations, and connectivity.

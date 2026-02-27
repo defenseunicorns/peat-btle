@@ -22,7 +22,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use eche_btle::reconnect::{ReconnectionManager, ReconnectionConfig};
+//! use peat_btle::reconnect::{ReconnectionManager, ReconnectionConfig};
 //!
 //! let config = ReconnectionConfig::default();
 //! let mut manager = ReconnectionManager::new(config);

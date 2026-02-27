@@ -16,7 +16,7 @@
 //! Extensible Document Registry for app-layer CRDT types.
 //!
 //! This module enables external crates to register custom document types
-//! that sync through eche-btle's delta mechanism.
+//! that sync through peat-btle's delta mechanism.
 //!
 //! ## Overview
 //!
@@ -27,7 +27,7 @@
 //! ## Example
 //!
 //! ```ignore
-//! use eche_btle::registry::{DocumentType, DocumentRegistry, AppOperation};
+//! use peat_btle::registry::{DocumentType, DocumentRegistry, AppOperation};
 //!
 //! #[derive(Clone)]
 //! struct MyMessage {

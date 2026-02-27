@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Eche GATT Sync Protocol
+//! Peat GATT Sync Protocol
 //!
 //! Defines the protocol for CRDT sync operations over BLE GATT.
 //!

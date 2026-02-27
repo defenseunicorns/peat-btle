@@ -1,10 +1,10 @@
 [package]
-name = "nano33-ble-sense-hive"
+name = "nano33-ble-sense-peat"
 version = "0.1.0"
 edition = "2021"
 authors = ["(r)evolve - Revolve Team LLC"]
 license = "Apache-2.0"
-description = "Eche sensor beacon on Arduino Nano 33 BLE Sense (nRF52840)"
+description = "Peat sensor beacon on Arduino Nano 33 BLE Sense (nRF52840)"
 
 [dependencies]
 # Embassy async runtime - use git for version compatibility

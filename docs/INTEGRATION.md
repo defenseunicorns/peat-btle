@@ -1,23 +1,23 @@
-# eche-btle Integration Guide
+# peat-btle Integration Guide
 
-**Version**: eche-btle v0.1.0-rc26+
+**Version**: peat-btle v0.1.0-rc26+
 **Date**: 2026-01-26
 
 ## Architecture Overview
 
-eche-btle is a **transport-only** library. It handles:
+peat-btle is a **transport-only** library. It handles:
 - BLE mesh networking (scanning, advertising, connections)
 - Encryption/decryption (ChaCha20-Poly1305)
 - Peer management and mesh sync
 - Message relay between nodes
 
-eche-btle does **NOT** handle application-layer protocols. For tactical messaging (CannedMessage, etc.), use **hive-lite** as a separate dependency.
+peat-btle does **NOT** handle application-layer protocols. For tactical messaging (CannedMessage, etc.), use **hive-lite** as a separate dependency.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Your Application                          │
 ├─────────────────────────────────────────────────────────────┤
-│  hive-lite (optional)      │    eche-btle (required)        │
+│  hive-lite (optional)      │    peat-btle (required)        │
 │  - CannedMessage encoding  │    - BLE transport             │
 │  - CannedMessage decoding  │    - Encryption/decryption     │
 │  - Tactical message types  │    - Mesh peer management      │
@@ -32,20 +32,20 @@ eche-btle does **NOT** handle application-layer protocols. For tactical messagin
 ```toml
 # Cargo.toml
 [dependencies]
-eche-btle = "0.1"
+peat-btle = "0.1"
 hive-lite = "0.0.1"  # Optional: for CannedMessage support
 ```
 
 ```rust
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
+use peat_btle::{PeatMesh, PeatMeshConfig, NodeId};
 
 // Create mesh (transport layer)
-let config = EcheMeshConfig::new(
+let config = PeatMeshConfig::new(
     NodeId::new(0x12345678),
     "ALPHA-1",
     "DEMO"
 );
-let mesh = EcheMesh::new(config);
+let mesh = PeatMesh::new(config);
 
 // Receive data - get raw decrypted bytes
 let decrypted = mesh.decrypt_only(&encrypted_data);
@@ -59,7 +59,7 @@ if let Some(bytes) = decrypted {
                 println!("Received: {:?} from {:08X}", event.message, event.source_node.as_u32());
             }
         }
-        Some(0xAA) => { /* EcheDocument */ }
+        Some(0xAA) => { /* PeatDocument */ }
         Some(0xB2) => { /* DeltaDocument */ }
         _ => {}
     }
@@ -78,20 +78,20 @@ dependencies {
 ```kotlin
 import com.revolveteam.hive.*
 
-class MyActivity : AppCompatActivity(), EcheMeshListener {
+class MyActivity : AppCompatActivity(), PeatMeshListener {
 
-    private lateinit var hiveBtle: EcheBtle
+    private lateinit var hiveBtle: PeatBtle
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        hiveBtle = EcheBtle(context = this, meshId = "DEMO")
+        hiveBtle = PeatBtle(context = this, meshId = "DEMO")
         hiveBtle.init()
         hiveBtle.startMesh(this)
     }
 
     // Transport layer callback - receives raw decrypted bytes
-    override fun onDecryptedData(peer: EchePeer?, data: ByteArray) {
+    override fun onDecryptedData(peer: PeatPeer?, data: ByteArray) {
         if (data.isEmpty()) return
 
         when (data[0]) {
@@ -100,21 +100,21 @@ class MyActivity : AppCompatActivity(), EcheMeshListener {
                 // Decode with your app's protocol handler
                 handleAppLayerMessage(peer, data)
             }
-            0xAA.toByte() -> { /* EcheDocument - handled internally */ }
+            0xAA.toByte() -> { /* PeatDocument - handled internally */ }
             0xB2.toByte() -> { /* DeltaDocument - handled internally */ }
         }
     }
 
     // Legacy callback - still works for backward compatibility
-    override fun onPeerEvent(peer: EchePeer, eventType: EcheEventType) {
+    override fun onPeerEvent(peer: PeatPeer, eventType: PeatEventType) {
         when (eventType) {
-            EcheEventType.EMERGENCY -> handleEmergency(peer)
-            EcheEventType.ACK -> handleAck(peer)
+            PeatEventType.EMERGENCY -> handleEmergency(peer)
+            PeatEventType.ACK -> handleAck(peer)
             else -> {}
         }
     }
 
-    private fun handleAppLayerMessage(peer: EchePeer?, data: ByteArray) {
+    private fun handleAppLayerMessage(peer: PeatPeer?, data: ByteArray) {
         // Example: Parse with your own CannedMessage decoder
         // Apps should add hive-lite dependency and use CannedMessageEvent.decode()
         Log.i("APP", "Received ${data.size} byte app-layer message")
@@ -126,17 +126,17 @@ class MyActivity : AppCompatActivity(), EcheMeshListener {
 
 | Marker | Name | Handler |
 |--------|------|---------|
-| `0xAE` | Encrypted | eche-btle decrypts, passes inner data |
+| `0xAE` | Encrypted | peat-btle decrypts, passes inner data |
 | `0xAF` | App-layer | Passed to `onDecryptedData`, app decodes |
-| `0xAA` | EcheDocument | Processed internally by eche-btle |
-| `0xB2` | DeltaDocument | Processed internally by eche-btle |
+| `0xAA` | PeatDocument | Processed internally by peat-btle |
+| `0xB2` | DeltaDocument | Processed internally by peat-btle |
 
 ## Sending App-Layer Messages
 
 To send app-layer messages (like CannedMessage), encrypt them with the mesh key:
 
 ```kotlin
-// Kotlin - using EcheMesh for encryption
+// Kotlin - using PeatMesh for encryption
 val mesh = hiveBtle.getMesh()
 
 // Encode your message (e.g., using hive-lite)
@@ -152,7 +152,7 @@ if (encrypted != null) {
 ```
 
 ```rust
-// Rust - using EcheMesh for encryption
+// Rust - using PeatMesh for encryption
 let raw_message = encode_your_message();  // Must start with 0xAF marker
 let encrypted = mesh.encrypt_document(&raw_message);
 // Send encrypted bytes over BLE
@@ -181,7 +181,7 @@ let event = CannedMessageEvent::new(
 );
 let encoded = event.encode();  // Includes 0xAF marker
 
-// Encrypt and send via eche-btle
+// Encrypt and send via peat-btle
 let encrypted = mesh.encrypt_document(&encoded);
 
 // Decode received CannedMessage
@@ -292,7 +292,7 @@ hiveBtle.broadcastDocument(wireData)
 **After (rc26+):**
 ```kotlin
 // New API - use onDecryptedData callback + your own encoding
-override fun onDecryptedData(peer: EchePeer?, data: ByteArray) {
+override fun onDecryptedData(peer: PeatPeer?, data: ByteArray) {
     if (data.isNotEmpty() && data[0] == 0xAF.toByte()) {
         val event = CannedMessageDecoder.decode(data)
         // Handle event
@@ -309,11 +309,11 @@ hiveBtle.broadcastDocument(encrypted)
 
 | Component | Responsibility |
 |-----------|---------------|
-| **eche-btle** | BLE transport, encryption, mesh sync, peer management |
+| **peat-btle** | BLE transport, encryption, mesh sync, peer management |
 | **hive-lite** | CannedMessage primitives, CRDT types (optional) |
 | **Your App** | Message encoding/decoding, business logic, UI |
 
 This separation ensures:
-- eche-btle remains lightweight and transport-focused
+- peat-btle remains lightweight and transport-focused
 - Apps have flexibility in message protocols
 - No forced dependencies between libraries

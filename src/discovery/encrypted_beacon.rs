@@ -20,7 +20,7 @@
 //!
 //! # Privacy Properties
 //!
-//! - Device name is generic ("ECHE") - no identifying information
+//! - Device name is generic ("PEAT") - no identifying information
 //! - mesh_id and node_id are encrypted in service data
 //! - Nonce rotates to prevent tracking across advertisements
 //! - Only nodes with beacon_key can decrypt
@@ -41,7 +41,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use eche_btle::discovery::{EncryptedBeacon, BeaconKey};
+//! use peat_btle::discovery::{EncryptedBeacon, BeaconKey};
 //!
 //! // Derive beacon key from genesis
 //! let beacon_key = BeaconKey::from_base(&genesis.beacon_key_base());
@@ -289,7 +289,7 @@ pub fn mesh_id_to_bytes(mesh_id: &str) -> [u8; 4] {
 }
 
 /// Generic device name for encrypted beacons
-pub const ENCRYPTED_DEVICE_NAME: &str = "ECHE";
+pub const ENCRYPTED_DEVICE_NAME: &str = "PEAT";
 
 use rand_core::RngCore;
 

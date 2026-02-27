@@ -1,4 +1,4 @@
-//! Profiling stress test for eche-btle
+//! Profiling stress test for peat-btle
 //!
 //! This example exercises all major code paths for profiling:
 //! - CRDT operations (counter, emergency, chat)
@@ -27,8 +27,8 @@
 //! cargo flamegraph --example profile_stress
 //! ```
 
-use eche_btle::observer::DisconnectReason;
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
+use peat_btle::observer::DisconnectReason;
+use peat_btle::{NodeId, PeatMesh, PeatMeshConfig};
 use std::time::Instant;
 
 /// Number of simulated nodes in the mesh
@@ -44,7 +44,7 @@ const CHAT_MESSAGES: usize = 500;
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
-    println!("=== ECHE-BTLE Profiling Stress Test ===\n");
+    println!("=== PEAT-BTLE Profiling Stress Test ===\n");
 
     let total_start = Instant::now();
 
@@ -107,18 +107,18 @@ fn main() {
     print_memory_stats();
 }
 
-fn create_meshes(count: usize) -> Vec<EcheMesh> {
+fn create_meshes(count: usize) -> Vec<PeatMesh> {
     (0..count)
         .map(|i| {
             let node_id = NodeId::new(0x10000000 + i as u32);
-            let config = EcheMeshConfig::new(node_id, &format!("NODE-{:02}", i), "PROFILE_TEST")
+            let config = PeatMeshConfig::new(node_id, &format!("NODE-{:02}", i), "PROFILE_TEST")
                 .with_encryption(*b"profile-test-key-32-bytes-pad!!!");
-            EcheMesh::new(config)
+            PeatMesh::new(config)
         })
         .collect()
 }
 
-fn test_document_sync(meshes: &[EcheMesh], iterations: usize) {
+fn test_document_sync(meshes: &[PeatMesh], iterations: usize) {
     let now_ms = now();
 
     for i in 0..iterations {
@@ -133,7 +133,7 @@ fn test_document_sync(meshes: &[EcheMesh], iterations: usize) {
                     let peer_id = format!("peer-{}", send_idx);
                     receiver.on_ble_discovered(
                         &peer_id,
-                        Some(&format!("ECHE_TEST-{:08X}", 0x10000000 + send_idx as u32)),
+                        Some(&format!("PEAT_TEST-{:08X}", 0x10000000 + send_idx as u32)),
                         -60,
                         Some("PROFILE_TEST"),
                         now_ms + i as u64 * 100,
@@ -147,7 +147,7 @@ fn test_document_sync(meshes: &[EcheMesh], iterations: usize) {
 }
 
 #[cfg(feature = "legacy-chat")]
-fn test_chat_operations(meshes: &[EcheMesh], message_count: usize) {
+fn test_chat_operations(meshes: &[PeatMesh], message_count: usize) {
     let now_ms = now();
 
     // First establish peer connections
@@ -157,7 +157,7 @@ fn test_chat_operations(meshes: &[EcheMesh], message_count: usize) {
                 let peer_id = format!("chat-peer-{}", j);
                 mesh.on_ble_discovered(
                     &peer_id,
-                    Some(&format!("ECHE_TEST-{:08X}", 0x10000000 + j as u32)),
+                    Some(&format!("PEAT_TEST-{:08X}", 0x10000000 + j as u32)),
                     -60,
                     Some("PROFILE_TEST"),
                     now_ms,
@@ -217,7 +217,7 @@ fn test_chat_operations(meshes: &[EcheMesh], message_count: usize) {
     }
 }
 
-fn test_emergency_cycles(meshes: &[EcheMesh], cycles: usize) {
+fn test_emergency_cycles(meshes: &[PeatMesh], cycles: usize) {
     let now_ms = now();
 
     // Establish connections first
@@ -227,7 +227,7 @@ fn test_emergency_cycles(meshes: &[EcheMesh], cycles: usize) {
                 let peer_id = format!("emerg-peer-{}", j);
                 mesh.on_ble_discovered(
                     &peer_id,
-                    Some(&format!("ECHE_TEST-{:08X}", 0x10000000 + j as u32)),
+                    Some(&format!("PEAT_TEST-{:08X}", 0x10000000 + j as u32)),
                     -60,
                     Some("PROFILE_TEST"),
                     now_ms,
@@ -273,7 +273,7 @@ fn test_emergency_cycles(meshes: &[EcheMesh], cycles: usize) {
     }
 }
 
-fn test_peer_churn(meshes: &[EcheMesh], cycles: usize) {
+fn test_peer_churn(meshes: &[PeatMesh], cycles: usize) {
     let now_ms = now();
 
     for i in 0..cycles {
@@ -284,7 +284,7 @@ fn test_peer_churn(meshes: &[EcheMesh], cycles: usize) {
         // Discover peer
         mesh.on_ble_discovered(
             &peer_id,
-            Some(&format!("ECHE_TEST-{:08X}", peer_node.as_u32())),
+            Some(&format!("PEAT_TEST-{:08X}", peer_node.as_u32())),
             -60 - (i % 40) as i8,
             Some("PROFILE_TEST"),
             now_ms + i as u64,
@@ -307,7 +307,7 @@ fn test_peer_churn(meshes: &[EcheMesh], cycles: usize) {
     }
 }
 
-fn test_document_sizes(_meshes: &[EcheMesh]) {
+fn test_document_sizes(_meshes: &[PeatMesh]) {
     let now_ms = now();
 
     // Create fresh nodes for accurate size testing (previous phases accumulate state)
@@ -318,7 +318,7 @@ fn test_document_sizes(_meshes: &[EcheMesh]) {
     let peer_id = "size-peer-1";
     fresh_meshes[0].on_ble_discovered(
         peer_id,
-        Some(&format!("ECHE_TEST-{:08X}", 0x10000001)),
+        Some(&format!("PEAT_TEST-{:08X}", 0x10000001)),
         -60,
         Some("PROFILE_TEST"),
         now_ms,
@@ -327,7 +327,7 @@ fn test_document_sizes(_meshes: &[EcheMesh]) {
 
     fresh_meshes[1].on_ble_discovered(
         "size-peer-0",
-        Some(&format!("ECHE_TEST-{:08X}", 0x10000000)),
+        Some(&format!("PEAT_TEST-{:08X}", 0x10000000)),
         -60,
         Some("PROFILE_TEST"),
         now_ms,

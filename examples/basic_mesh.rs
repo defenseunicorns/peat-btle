@@ -15,13 +15,13 @@
 
 //! Basic Mesh Example
 //!
-//! Demonstrates the core EcheMesh API for CRDT-based mesh synchronization.
+//! Demonstrates the core PeatMesh API for CRDT-based mesh synchronization.
 //! This example creates two mesh nodes and shows how they synchronize state.
 //!
 //! Run with: cargo run --example basic_mesh
 
-use eche_btle::observer::{EcheEvent, EcheObserver};
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
+use peat_btle::observer::{PeatEvent, PeatObserver};
+use peat_btle::{NodeId, PeatMesh, PeatMeshConfig};
 use std::sync::Arc;
 
 /// Observer that prints all mesh events
@@ -35,16 +35,16 @@ impl PrintObserver {
     }
 }
 
-impl EcheObserver for PrintObserver {
-    fn on_event(&self, event: EcheEvent) {
+impl PeatObserver for PrintObserver {
+    fn on_event(&self, event: PeatEvent) {
         match event {
-            EcheEvent::PeerDiscovered { peer } => {
+            PeatEvent::PeerDiscovered { peer } => {
                 println!("[{}] Discovered peer: {}", self.name, peer.display_name());
             }
-            EcheEvent::PeerConnected { node_id } => {
+            PeatEvent::PeerConnected { node_id } => {
                 println!("[{}] Connected to: {:08X}", self.name, node_id.as_u32());
             }
-            EcheEvent::PeerDisconnected { node_id, reason } => {
+            PeatEvent::PeerDisconnected { node_id, reason } => {
                 println!(
                     "[{}] Disconnected from: {:08X} ({:?})",
                     self.name,
@@ -52,17 +52,17 @@ impl EcheObserver for PrintObserver {
                     reason
                 );
             }
-            EcheEvent::EmergencyReceived { from_node } => {
+            PeatEvent::EmergencyReceived { from_node } => {
                 println!(
                     "[{}] *** EMERGENCY from {:08X} ***",
                     self.name,
                     from_node.as_u32()
                 );
             }
-            EcheEvent::AckReceived { from_node } => {
+            PeatEvent::AckReceived { from_node } => {
                 println!("[{}] ACK from {:08X}", self.name, from_node.as_u32());
             }
-            EcheEvent::DocumentSynced {
+            PeatEvent::DocumentSynced {
                 from_node,
                 total_count,
             } => {
@@ -73,7 +73,7 @@ impl EcheObserver for PrintObserver {
                     total_count
                 );
             }
-            EcheEvent::MeshStateChanged {
+            PeatEvent::MeshStateChanged {
                 peer_count,
                 connected_count,
             } => {
@@ -90,14 +90,14 @@ impl EcheObserver for PrintObserver {
 }
 
 fn main() {
-    println!("=== ECHE-BTLE Basic Mesh Example ===\n");
+    println!("=== PEAT-BTLE Basic Mesh Example ===\n");
 
     // Create two mesh nodes
-    let config_alpha = EcheMeshConfig::new(NodeId::new(0x11111111), "ALPHA-1", "DEMO");
-    let config_bravo = EcheMeshConfig::new(NodeId::new(0x22222222), "BRAVO-1", "DEMO");
+    let config_alpha = PeatMeshConfig::new(NodeId::new(0x11111111), "ALPHA-1", "DEMO");
+    let config_bravo = PeatMeshConfig::new(NodeId::new(0x22222222), "BRAVO-1", "DEMO");
 
-    let mesh_alpha = EcheMesh::new(config_alpha);
-    let mesh_bravo = EcheMesh::new(config_bravo);
+    let mesh_alpha = PeatMesh::new(config_alpha);
+    let mesh_bravo = PeatMesh::new(config_bravo);
 
     // Add observers
     mesh_alpha.add_observer(Arc::new(PrintObserver::new("ALPHA")));
@@ -123,7 +123,7 @@ fn main() {
     println!("--- Simulating BLE Discovery ---");
     mesh_alpha.on_ble_discovered(
         "bravo-uuid",
-        Some("ECHE_DEMO-22222222"),
+        Some("PEAT_DEMO-22222222"),
         -65,
         Some("DEMO"),
         now_ms,
@@ -131,7 +131,7 @@ fn main() {
 
     mesh_bravo.on_ble_discovered(
         "alpha-uuid",
-        Some("ECHE_DEMO-11111111"),
+        Some("PEAT_DEMO-11111111"),
         -60,
         Some("DEMO"),
         now_ms,

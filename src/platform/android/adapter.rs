@@ -16,8 +16,8 @@
 //! Android BLE adapter stub
 //!
 //! This module provides a stub `AndroidAdapter`. The actual BLE operations
-//! are handled by the Kotlin EcheBtle class using Android Bluetooth APIs.
-//! Mesh logic is provided via UniFFI bindings to Rust EcheMesh.
+//! are handled by the Kotlin PeatBtle class using Android Bluetooth APIs.
+//! Mesh logic is provided via UniFFI bindings to Rust PeatMesh.
 //!
 //! ## Architecture
 //!
@@ -25,14 +25,14 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────┐
-//! │     Kotlin EcheBtle (Android BLE)       │
+//! │     Kotlin PeatBtle (Android BLE)       │
 //! │   - BLE scanning and advertising        │
 //! │   - GATT client/server operations       │
 //! │   - Android permission management       │
 //! ├─────────────────────────────────────────┤
-//! │   UniFFI Bindings (uniffi.eche_btle)   │
+//! │   UniFFI Bindings (uniffi.peat_btle)   │
 //! ├─────────────────────────────────────────┤
-//! │          Rust EcheMesh Core             │
+//! │          Rust PeatMesh Core             │
 //! │   - Mesh state management               │
 //! │   - CRDT document sync                  │
 //! │   - Encryption/decryption               │
@@ -41,7 +41,7 @@
 //! ```
 //!
 //! This stub exists to satisfy the platform module structure but is not
-//! used at runtime. All BLE operations go through Kotlin -> UniFFI -> EcheMesh.
+//! used at runtime. All BLE operations go through Kotlin -> UniFFI -> PeatMesh.
 
 use async_trait::async_trait;
 
@@ -57,10 +57,10 @@ use super::connection::AndroidConnection;
 /// Android BLE adapter stub
 ///
 /// This is a placeholder implementation. On Android, BLE operations are
-/// handled entirely by the Kotlin EcheBtle class. The Rust EcheMesh
+/// handled entirely by the Kotlin PeatBtle class. The Rust PeatMesh
 /// is accessed via UniFFI bindings for mesh logic only.
 ///
-/// See the Kotlin `EcheBtle` class for the actual Android BLE implementation.
+/// See the Kotlin `PeatBtle` class for the actual Android BLE implementation.
 pub struct AndroidAdapter {
     _private: (),
 }
@@ -68,8 +68,8 @@ pub struct AndroidAdapter {
 impl AndroidAdapter {
     /// This adapter is not meant to be instantiated from Rust.
     ///
-    /// On Android, use the Kotlin EcheBtle class instead, which accesses
-    /// EcheMesh via UniFFI bindings.
+    /// On Android, use the Kotlin PeatBtle class instead, which accesses
+    /// PeatMesh via UniFFI bindings.
     pub fn new_stub() -> Self {
         Self { _private: () }
     }
@@ -103,25 +103,25 @@ impl BleAdapter for AndroidAdapter {
 
     async fn start_scan(&self, _config: &DiscoveryConfig) -> Result<()> {
         Err(BleError::NotSupported(
-            "Use Kotlin EcheBtle for Android BLE".to_string(),
+            "Use Kotlin PeatBtle for Android BLE".to_string(),
         ))
     }
 
     async fn stop_scan(&self) -> Result<()> {
         Err(BleError::NotSupported(
-            "Use Kotlin EcheBtle for Android BLE".to_string(),
+            "Use Kotlin PeatBtle for Android BLE".to_string(),
         ))
     }
 
     async fn start_advertising(&self, _config: &DiscoveryConfig) -> Result<()> {
         Err(BleError::NotSupported(
-            "Use Kotlin EcheBtle for Android BLE".to_string(),
+            "Use Kotlin PeatBtle for Android BLE".to_string(),
         ))
     }
 
     async fn stop_advertising(&self) -> Result<()> {
         Err(BleError::NotSupported(
-            "Use Kotlin EcheBtle for Android BLE".to_string(),
+            "Use Kotlin PeatBtle for Android BLE".to_string(),
         ))
     }
 
@@ -131,13 +131,13 @@ impl BleAdapter for AndroidAdapter {
 
     async fn connect(&self, _peer_id: &NodeId) -> Result<Box<dyn BleConnection>> {
         Err(BleError::NotSupported(
-            "Use Kotlin EcheBtle for Android BLE".to_string(),
+            "Use Kotlin PeatBtle for Android BLE".to_string(),
         ))
     }
 
     async fn disconnect(&self, _peer_id: &NodeId) -> Result<()> {
         Err(BleError::NotSupported(
-            "Use Kotlin EcheBtle for Android BLE".to_string(),
+            "Use Kotlin PeatBtle for Android BLE".to_string(),
         ))
     }
 
@@ -159,13 +159,13 @@ impl BleAdapter for AndroidAdapter {
 
     async fn register_gatt_service(&self) -> Result<()> {
         Err(BleError::NotSupported(
-            "Use Kotlin EcheBtle for Android BLE".to_string(),
+            "Use Kotlin PeatBtle for Android BLE".to_string(),
         ))
     }
 
     async fn unregister_gatt_service(&self) -> Result<()> {
         Err(BleError::NotSupported(
-            "Use Kotlin EcheBtle for Android BLE".to_string(),
+            "Use Kotlin PeatBtle for Android BLE".to_string(),
         ))
     }
 

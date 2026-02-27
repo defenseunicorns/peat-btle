@@ -146,7 +146,7 @@ impl CoreBluetoothAdapter {
 
     /// Start scanning without any service UUID filter (debug mode)
     ///
-    /// This discovers ALL BLE devices, not just Eche nodes.
+    /// This discovers ALL BLE devices, not just Peat nodes.
     /// Useful for debugging when devices aren't being discovered.
     pub async fn start_scan_unfiltered(&self) -> Result<()> {
         let config = self.config.read().await;
@@ -159,7 +159,7 @@ impl CoreBluetoothAdapter {
 
     /// Connect to a peripheral by its CoreBluetooth identifier
     ///
-    /// Use this for devices discovered with F47A service but without Eche-style name.
+    /// Use this for devices discovered with F47A service but without Peat-style name.
     /// After connecting, you can read the node_info characteristic to get the actual node ID.
     ///
     /// Returns `Ok(())` if connection initiated. Watch for connection events via callback.
@@ -177,36 +177,36 @@ impl CoreBluetoothAdapter {
 
     /// Discover GATT services on a connected peripheral
     ///
-    /// Call this after connecting to discover the Eche service and its characteristics.
+    /// Call this after connecting to discover the Peat service and its characteristics.
     pub async fn discover_services(&self, identifier: &str) -> Result<()> {
-        // Discover only the Eche service
-        let eche_service_uuid = crate::ECHE_SERVICE_UUID.to_string();
+        // Discover only the Peat service
+        let peat_service_uuid = crate::PEAT_SERVICE_UUID.to_string();
         self.central
-            .discover_services(identifier, Some(&[&eche_service_uuid]))
+            .discover_services(identifier, Some(&[&peat_service_uuid]))
             .await
     }
 
-    /// Discover characteristics for the Eche service on a connected peripheral
+    /// Discover characteristics for the Peat service on a connected peripheral
     pub async fn discover_characteristics(&self, identifier: &str) -> Result<()> {
-        let eche_service_uuid = crate::ECHE_SERVICE_UUID.to_string();
+        let peat_service_uuid = crate::PEAT_SERVICE_UUID.to_string();
         self.central
-            .discover_characteristics(identifier, &eche_service_uuid)
+            .discover_characteristics(identifier, &peat_service_uuid)
             .await
     }
 
-    /// Read an Eche characteristic from a connected peripheral
+    /// Read a Peat characteristic from a connected peripheral
     pub async fn read_characteristic(
         &self,
         identifier: &str,
         characteristic_uuid: &str,
     ) -> Result<()> {
-        let eche_service_uuid = crate::ECHE_SERVICE_UUID.to_string();
+        let peat_service_uuid = crate::PEAT_SERVICE_UUID.to_string();
         self.central
-            .read_characteristic(identifier, &eche_service_uuid, characteristic_uuid)
+            .read_characteristic(identifier, &peat_service_uuid, characteristic_uuid)
             .await
     }
 
-    /// Write to an Eche characteristic on a connected peripheral
+    /// Write to a Peat characteristic on a connected peripheral
     pub async fn write_characteristic(
         &self,
         identifier: &str,
@@ -214,11 +214,11 @@ impl CoreBluetoothAdapter {
         data: &[u8],
         with_response: bool,
     ) -> Result<()> {
-        let eche_service_uuid = crate::ECHE_SERVICE_UUID.to_string();
+        let peat_service_uuid = crate::PEAT_SERVICE_UUID.to_string();
         self.central
             .write_characteristic(
                 identifier,
-                &eche_service_uuid,
+                &peat_service_uuid,
                 characteristic_uuid,
                 data,
                 with_response,
@@ -239,10 +239,10 @@ impl CoreBluetoothAdapter {
         self.central.process_events().await?;
         self.peripheral.process_events().await?;
 
-        // Check for discovered Eche nodes and invoke callback
-        let eche_peripherals = self.central.get_eche_peripherals().await;
+        // Check for discovered Peat nodes and invoke callback
+        let peat_peripherals = self.central.get_peat_peripherals().await;
         if let Some(ref callback) = *self.discovery_callback.read().await {
-            for peripheral in eche_peripherals {
+            for peripheral in peat_peripherals {
                 // Register the mapping if we have a node ID
                 if let Some(node_id) = &peripheral.node_id {
                     self.register_node_identifier(node_id.clone(), peripheral.identifier.clone())
@@ -253,7 +253,7 @@ impl CoreBluetoothAdapter {
                     address: peripheral.identifier.clone(),
                     name: peripheral.name.clone(),
                     rssi: peripheral.rssi,
-                    is_eche_node: peripheral.is_eche_node,
+                    is_peat_node: peripheral.is_peat_node,
                     node_id: peripheral.node_id.clone(),
                     adv_data: Vec::new(),
                 };
@@ -341,13 +341,13 @@ impl BleAdapter for CoreBluetoothAdapter {
             .as_ref()
             .ok_or_else(|| BleError::InvalidState("Adapter not initialized".to_string()))?;
 
-        // Register Eche GATT service
+        // Register Peat GATT service
         if let Err(e) = self
             .peripheral
-            .register_eche_service(config.node_id.clone())
+            .register_peat_service(config.node_id.clone())
             .await
         {
-            log::warn!("Failed to register Eche service: {}", e);
+            log::warn!("Failed to register Peat service: {}", e);
         }
 
         // Start advertising
@@ -359,12 +359,12 @@ impl BleAdapter for CoreBluetoothAdapter {
             log::warn!("Failed to start advertising: {}", e);
         }
 
-        // Start scanning WITHOUT UUID filter - matches Android EcheBtle behavior
-        // Android scans all devices and filters by name pattern (ECHE_* or ECHE-*)
+        // Start scanning WITHOUT UUID filter - matches Android PeatBtle behavior
+        // Android scans all devices and filters by name pattern (PEAT_* or PEAT-*)
         // This is more reliable because:
         // 1. Some devices may advertise 16-bit UUID differently
         // 2. Legacy devices may not include UUID in advertisement
-        // 3. Name-based filtering catches all Eche devices
+        // 3. Name-based filtering catches all Peat devices
         if let Err(e) = self.central.start_scan(&config.discovery, None).await {
             log::warn!("Failed to start scanning: {}", e);
         }
@@ -400,7 +400,7 @@ impl BleAdapter for CoreBluetoothAdapter {
     }
 
     async fn start_scan(&self, config: &DiscoveryConfig) -> Result<()> {
-        // Scan WITHOUT UUID filter - matches Android EcheBtle behavior
+        // Scan WITHOUT UUID filter - matches Android PeatBtle behavior
         // Filter by name pattern in the discovery callback instead
         self.central.start_scan(config, None).await
     }
@@ -535,7 +535,7 @@ impl BleAdapter for CoreBluetoothAdapter {
             .ok_or_else(|| BleError::InvalidState("Adapter not initialized".to_string()))?;
 
         self.peripheral
-            .register_eche_service(config.node_id.clone())
+            .register_peat_service(config.node_id.clone())
             .await
     }
 
@@ -554,13 +554,13 @@ impl BleAdapter for CoreBluetoothAdapter {
             .await
             .ok_or_else(|| BleError::ConnectionFailed(format!("Unknown node ID: {}", peer_id)))?;
 
-        let eche_service_uuid = crate::ECHE_SERVICE_UUID.to_string();
+        let peat_service_uuid = crate::PEAT_SERVICE_UUID.to_string();
         let char_uuid_str = char_uuid.to_string();
 
         self.central
             .write_characteristic(
                 &identifier,
-                &eche_service_uuid,
+                &peat_service_uuid,
                 &char_uuid_str,
                 data,
                 true, // with response

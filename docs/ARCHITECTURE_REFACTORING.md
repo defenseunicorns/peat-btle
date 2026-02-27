@@ -1,4 +1,4 @@
-# HIVE / eche-btle Architecture Refactoring Plan
+# HIVE / peat-btle Architecture Refactoring Plan
 
 **Status**: **Decisions Made** - Ready for Implementation
 **Date**: 2026-01-25 (updated)
@@ -9,18 +9,18 @@
 > 1. **hive-lite** → Separate repo (leaf crate, no HIVE deps, `no_std`)
 > 2. **CannedMessage** → Predefined message codes replace ChatCRDT
 > 3. **Emergency** → Becomes `CannedMessage::Emergency`
-> 4. **eche-btle** → Transport only; `standalone` feature adds hive-lite dep
+> 4. **peat-btle** → Transport only; `standalone` feature adds hive-lite dep
 > 5. **Translation layer** → Lives in hive-protocol, not transports
 
 ---
 
 ## Executive Summary
 
-The current eche-btle library conflates two different responsibilities:
+The current peat-btle library conflates two different responsibilities:
 1. **BLE Transport** - Moving bytes over Bluetooth Low Energy
 2. **Document/CRDT Logic** - Defining and merging application data structures
 
-This has caused bugs (chat not syncing) and architectural confusion. This document proposes a clear separation of concerns between HIVE (protocol layer) and eche-btle (transport layer).
+This has caused bugs (chat not syncing) and architectural confusion. This document proposes a clear separation of concerns between HIVE (protocol layer) and peat-btle (transport layer).
 
 ---
 
@@ -42,7 +42,7 @@ This has caused bugs (chat not syncing) and architectural confusion. This docume
 
 1. **Chat messages don't sync reliably** between WearTAK devices and ATAK plugin
 2. **Duplicate delta sync implementations** - Kotlin builds delta operations separately from Rust
-3. **Architectural confusion** - Unclear what eche-btle should know about vs HIVE
+3. **Architectural confusion** - Unclear what peat-btle should know about vs HIVE
 
 ### The Specific Bug
 
@@ -57,7 +57,7 @@ From device testing:
 
 ### Root Cause
 
-In `EcheBtle.kt`, the `buildSyncDocumentForPeer()` function has two paths:
+In `PeatBtle.kt`, the `buildSyncDocumentForPeer()` function has two paths:
 
 1. **Full sync** (every 10th sync): Uses native `buildDocument()` which includes chat ✓
 2. **Delta sync** (9/10 syncs): Builds Kotlin-side delta operations ✗
@@ -77,7 +77,7 @@ The Kotlin delta operations only include:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        eche-btle                                 │
+│                        peat-btle                                 │
 │  (Currently owns too much)                                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  ✓ Platform adapters (BlueZ, CoreBluetooth, Android, ESP32)     │
@@ -86,7 +86,7 @@ The Kotlin delta operations only include:
 │  ✓ Encryption primitives                                        │
 │  ✓ Discovery & connection management                            │
 ├─────────────────────────────────────────────────────────────────┤
-│  ✗ EcheDocument format (counter, peripheral, emergency, chat)   │
+│  ✗ PeatDocument format (counter, peripheral, emergency, chat)   │
 │  ✗ CRDT implementations (GCounter, ChatCRDT, EmergencyEvent)    │
 │  ✗ Delta sync with CRDT-specific operations                     │
 │  ✗ Document merge semantics                                     │
@@ -95,17 +95,17 @@ The Kotlin delta operations only include:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### What eche-btle Currently Defines
+### What peat-btle Currently Defines
 
 | Component | Location | Problem |
 |-----------|----------|---------|
-| `EcheDocument` | `src/document.rs` | Application-level structure in transport |
+| `PeatDocument` | `src/document.rs` | Application-level structure in transport |
 | `ChatCRDT` | `src/sync/crdt.rs` | Chat is a HIVE concept, not transport |
 | `GCounter` | `src/sync/crdt.rs` | Counter semantics belong in HIVE |
 | `EmergencyEvent` | `src/sync/crdt.rs` | Emergency protocol is HIVE-level |
 | `DeltaDocument` | `src/sync/delta_document.rs` | CRDT-specific operations |
 | `MeshGenesis` | `src/security/genesis.rs` | Trust policy is HIVE-level |
-| `HierarchyLevel` | `src/eche_mesh.rs` | Hierarchy is HIVE concept |
+| `HierarchyLevel` | `src/peat_mesh.rs` | Hierarchy is HIVE concept |
 
 ---
 
@@ -114,14 +114,14 @@ The Kotlin delta operations only include:
 ### Two Different Use Cases Conflated
 
 **Use Case 1: Standalone Embedded Mesh** (ESP32 sensors without HIVE)
-- Needs lightweight CRDTs in eche-btle
+- Needs lightweight CRDTs in peat-btle
 - Self-contained document format
 - Valid for ESP32-to-ESP32 mesh
 
 **Use Case 2: HIVE Transport Layer** (WearTAK, phones with full HIVE)
 - Should be opaque byte transport
 - HIVE manages documents via Automerge/Ditto
-- eche-btle should just move bytes
+- peat-btle should just move bytes
 
 **The problem**: These are not clearly separated. The Android/Kotlin code tries to use both, causing bugs.
 
@@ -150,7 +150,7 @@ The HIVE project has 8 core protobuf schemas:
 | hive-protocol | Sync abstraction | Document type definition |
 | hive-persistence | Automerge/Ditto backends | CRDT storage & merge |
 | hive-lite | Constrained primitives | **NO** - too complex for 256KB |
-| eche-btle | BLE transport | **NO** - just moves bytes |
+| peat-btle | BLE transport | **NO** - just moves bytes |
 
 ---
 
@@ -172,7 +172,7 @@ The HIVE project has 8 core protobuf schemas:
                     └─────────┬─────────┘
                               │
 ┌─────────────────────────────────────────────────────────────────┐
-│                   eche-btle (Transport Layer)                    │
+│                   peat-btle (Transport Layer)                    │
 ├─────────────────────────────────────────────────────────────────┤
 │  Platform adapters (BlueZ, CoreBluetooth, Android, ESP32)       │
 │  GATT service & fragmentation                                   │
@@ -185,7 +185,7 @@ The HIVE project has 8 core protobuf schemas:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Target eche-btle API
+### Target peat-btle API
 
 **Current API** (wrong - knows about documents):
 ```rust
@@ -293,7 +293,7 @@ message MessageCollection {
 **Location**: `hive-protocol/src/transport/ble_bridge.rs` (or new crate)
 
 ```rust
-/// Bridge between HIVE documents and eche-btle transport
+/// Bridge between HIVE documents and peat-btle transport
 pub trait BleBridge {
     /// Serialize current HIVE state for BLE transmission
     fn serialize_for_ble(&self) -> Vec<u8>;
@@ -316,7 +316,7 @@ pub trait BleBridge {
 
 ---
 
-### Phase 3: eche-btle Refactoring
+### Phase 3: peat-btle Refactoring
 
 #### Task 3.1: Feature-Gate Standalone Mode
 
@@ -339,7 +339,7 @@ Move document-aware methods behind `standalone` feature:
 
 ```rust
 // Always available (transport layer)
-impl EcheMesh {
+impl PeatMesh {
     pub fn send(&self, peer: NodeId, data: &[u8]) -> Result<()>;
     pub fn broadcast(&self, data: &[u8]) -> Result<()>;
     pub fn on_data_received(&self, peer: NodeId, data: &[u8]);
@@ -347,7 +347,7 @@ impl EcheMesh {
 
 // Only with standalone feature
 #[cfg(feature = "standalone")]
-impl EcheMesh {
+impl PeatMesh {
     pub fn build_document(&self) -> Vec<u8>;
     pub fn merge_document(&self, data: &[u8]) -> MergeResult;
     pub fn send_chat(&self, sender: &str, text: &str) -> Option<Vec<u8>>;
@@ -374,7 +374,7 @@ private fun buildSyncDocumentForPeer(...): ByteArray? {
 // HIVE layer provides serialized state
 val documentBytes = hiveProtocol.serializeForBle()
 
-// eche-btle just transports
+// peat-btle just transports
 hiveBtle.broadcast(documentBytes)
 ```
 
@@ -387,14 +387,14 @@ hiveBtle.broadcast(documentBytes)
 
 #### Task 4.1: Update Architecture Documentation
 
-- [ ] Update eche-btle README to clarify scope
+- [ ] Update peat-btle README to clarify scope
 - [ ] Add ADR for transport/protocol separation
 - [ ] Document standalone vs HIVE integration modes
 - [ ] Update Codex.md with new architecture
 
 #### Task 4.2: Integration Tests
 
-- [ ] Test HIVE → eche-btle → HIVE round-trip
+- [ ] Test HIVE → peat-btle → HIVE round-trip
 - [ ] Test message sync across mesh
 - [ ] Test standalone ESP32 mesh (no HIVE)
 - [ ] Performance benchmarks
@@ -405,7 +405,7 @@ hiveBtle.broadcast(documentBytes)
 
 ### Q1: Is tactical messaging in scope for HIVE?
 
-**Context**: The current eche-btle ChatCRDT was added for WearTAK use. HIVE core ontology doesn't include messaging.
+**Context**: The current peat-btle ChatCRDT was added for WearTAK use. HIVE core ontology doesn't include messaging.
 
 **Options**:
 - A: Add `cap.message.v1` to HIVE schema
@@ -421,7 +421,7 @@ hiveBtle.broadcast(documentBytes)
 
 **Options**:
 - A: In `hive-protocol` crate
-- B: New `eche-btle-bridge` crate
+- B: New `peat-btle-bridge` crate
 - C: In each app (Android, iOS, etc.)
 
 **Decision**: _____________
@@ -429,7 +429,7 @@ hiveBtle.broadcast(documentBytes)
 
 ---
 
-### Q3: What happens to existing eche-btle users?
+### Q3: What happens to existing peat-btle users?
 
 **Concern**: Breaking changes for standalone ESP32 users.
 
@@ -445,7 +445,7 @@ hiveBtle.broadcast(documentBytes)
 
 ### Q4: Should standalone mode support chat?
 
-**Current**: eche-btle has ChatCRDT in standalone mode
+**Current**: peat-btle has ChatCRDT in standalone mode
 
 **Concern**: Chat is complex for 256KB RAM budget (hive-lite target)
 
@@ -476,10 +476,10 @@ hiveBtle.broadcast(documentBytes)
 | Date | Decision | Rationale | Participants |
 |------|----------|-----------|--------------|
 | 2026-01-25 | Document created | Initial analysis of chat sync bug | Kit, Codex |
-| 2026-01-25 | **hive-lite as separate repo** | Leaf crate with no HIVE deps; reusable by eche-btle, hive-lora, future transports | Kit, Codex |
+| 2026-01-25 | **hive-lite as separate repo** | Leaf crate with no HIVE deps; reusable by peat-btle, hive-lora, future transports | Kit, Codex |
 | 2026-01-25 | **CannedMessage primitive** | Predefined message codes (ACK, EMERGENCY, etc.) fit 256KB budget; no free-text chat in hive-lite | Kit, Codex |
 | 2026-01-25 | **Emergency → CannedMessage** | Unify event types; Emergency becomes `CannedMessage::Emergency` | Kit, Codex |
-| 2026-01-25 | **ChatCRDT deprecated** | Full chat doesn't fit hive-lite; will be removed or feature-gated in eche-btle | Kit, Codex |
+| 2026-01-25 | **ChatCRDT deprecated** | Full chat doesn't fit hive-lite; will be removed or feature-gated in peat-btle | Kit, Codex |
 
 ---
 
@@ -490,17 +490,17 @@ hiveBtle.broadcast(documentBytes)
 - [HIVE ADR-032: Transport Trait](../hive/docs/adr/032-transport-trait.md)
 - [HIVE ADR-035: HIVE-Lite Embedded Nodes](../hive/docs/adr/035-hive-lite.md)
 - [HIVE ADR-037: Differential Sync](../hive/docs/adr/037-differential-sync.md)
-- [HIVE ADR-039: ECHE-BTLE Mesh Transport](../hive/docs/adr/039-eche-btle.md)
-- [eche-btle Issue cc953d6: Delta Sync Integration](https://app.radicle.xyz/nodes/seed.radicle.garden/rad:z458mp9Um3AYNQQFMdHaNEUtmiohq/issues/cc953d6)
+- [HIVE ADR-039: PEAT-BTLE Mesh Transport](../hive/docs/adr/039-peat-btle.md)
+- [peat-btle Issue cc953d6: Delta Sync Integration](https://app.radicle.xyz/nodes/seed.radicle.garden/rad:z458mp9Um3AYNQQFMdHaNEUtmiohq/issues/cc953d6)
 
 ---
 
-## Appendix A: Current eche-btle Document Format
+## Appendix A: Current peat-btle Document Format
 
-For reference, the current `EcheDocument` structure that would be deprecated for HIVE integration:
+For reference, the current `PeatDocument` structure that would be deprecated for HIVE integration:
 
 ```rust
-pub struct EcheDocument {
+pub struct PeatDocument {
     pub version: u32,
     pub node_id: NodeId,
     pub counter: GCounter,
@@ -511,8 +511,8 @@ pub struct EcheDocument {
 ```
 
 Wire format markers:
-- `0xAA` - Unencrypted EcheDocument
-- `0xAE` - Encrypted EcheDocument
+- `0xAA` - Unencrypted PeatDocument
+- `0xAE` - Encrypted PeatDocument
 - `0xAC` - Emergency section
 - `0xAD` - Chat section
 - `0xB2` - Delta document
@@ -539,9 +539,9 @@ From ADR-035, the 256KB target allocation:
 
 ### Decision: Separate Repository
 
-hive-lite will be a **separate repository** (`hive-lite`), not a workspace member of eche-btle or hive. This enables:
+hive-lite will be a **separate repository** (`hive-lite`), not a workspace member of peat-btle or hive. This enables:
 
-1. **Reuse by multiple transports**: eche-btle, hive-lora (future), ESP-NOW
+1. **Reuse by multiple transports**: peat-btle, hive-lora (future), ESP-NOW
 2. **Independent versioning**: Primitives may stabilize faster than transport implementations
 3. **Clean dependency tree**: No circular dependencies with HIVE ecosystem
 
@@ -560,7 +560,7 @@ hive-lite will be a **separate repository** (`hive-lite`), not a workspace membe
               │            │            │
               ▼            ▼            ▼
         ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │hive-schema│ │eche-btle │ │hive-lora │
+        │hive-schema│ │peat-btle │ │hive-lora │
         └──────────┘ │(transport)│ │ (future) │
                      └─────┬─────┘ └────┬─────┘
                            │            │
@@ -651,10 +651,10 @@ New marker byte `0xAF` for CannedMessage:
 - Minimum: 14 bytes (no target)
 - Maximum: 18 bytes (with target)
 
-### eche-btle Integration
+### peat-btle Integration
 
 ```toml
-# eche-btle/Cargo.toml
+# peat-btle/Cargo.toml
 [features]
 default = ["std", "standalone"]
 standalone = ["dep:hive-lite"]  # Include primitives
@@ -675,7 +675,7 @@ hive-protocol (or apps) translates between hive-lite and HIVE-Full:
 | `LwwRegister<Position>` | `cap.common.v1.Position` in Automerge doc |
 | `GCounter` | Automerge counter |
 
-The translation layer lives in **hive-protocol**, not hive-lite or eche-btle.
+The translation layer lives in **hive-protocol**, not hive-lite or peat-btle.
 
 ---
 
@@ -696,9 +696,9 @@ The translation layer lives in **hive-protocol**, not hive-lite or eche-btle.
 - [ ] `no_std` compatible, optional `std` feature
 - [ ] Basic tests
 
-### Phase 1: Integrate hive-lite into eche-btle
+### Phase 1: Integrate hive-lite into peat-btle
 
-**Owner**: eche-btle Team
+**Owner**: peat-btle Team
 **Target**: Following week
 **Depends on**: Phase 0
 
@@ -717,7 +717,7 @@ The translation layer lives in **hive-protocol**, not hive-lite or eche-btle.
 **Target**: Following Phase 1
 **Depends on**: Phase 1
 
-- [ ] Update eche-btle dependency
+- [ ] Update peat-btle dependency
 - [ ] Replace chat-based ACK with CannedMessage ACK
 - [ ] Update UI to show CannedMessage events
 - [ ] Test with WearTAK devices

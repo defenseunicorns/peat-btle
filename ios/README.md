@@ -1,12 +1,12 @@
-# Eche BLE Demo App (iOS/macOS)
+# Peat BLE Demo App (iOS/macOS)
 
-A SwiftUI application demonstrating Eche BLE mesh connectivity with M5Stack Core2 devices.
+A SwiftUI application demonstrating Peat BLE mesh connectivity with M5Stack Core2 devices.
 
 ## Features
 
-- **Discover** Eche BLE nodes advertising the Eche service UUID (`0xF47A`)
+- **Discover** Peat BLE nodes advertising the Peat service UUID (`0xF47A`)
 - **Connect** to discovered M5Stack Core2 nodes
-- **Advertise** as a Eche node for other devices to discover
+- **Advertise** as a Peat node for other devices to discover
 - **Sync** CRDT data over BLE GATT characteristics
 - **Alert/Ack** emergency alert system with haptic feedback
 
@@ -32,7 +32,7 @@ A SwiftUI application demonstrating Eche BLE mesh connectivity with M5Stack Core
 For development and testing without native Rust bindings:
 
 ```bash
-cd examples/ios-eche-test
+cd examples/ios-peat-test
 swift build
 swift run
 ```
@@ -42,29 +42,29 @@ swift run
 To build the full app with Rust BLE bindings:
 
 ```bash
-cd examples/ios-eche-test
+cd examples/ios-peat-test
 ./build-ios.sh
 ```
 
 This will:
-1. Build the Rust `eche-apple-ffi` library for iOS and macOS
+1. Build the Rust `peat-apple-ffi` library for iOS and macOS
 2. Generate UniFFI Swift bindings
 3. Create an xcframework for Xcode integration
 
 Then open in Xcode:
-- Add `build/EcheFFI.xcframework` to your Xcode project
-- Replace the mock `EcheFFI.swift` with the generated `eche_apple_ffi.swift`
+- Add `build/PeatFFI.xcframework` to your Xcode project
+- Replace the mock `PeatFFI.swift` with the generated `peat_apple_ffi.swift`
 
 ## Usage
 
 1. Launch the app on an iOS device or Mac
 2. Grant Bluetooth permissions when prompted
-3. The mesh automatically starts and discovers nearby Eche nodes
+3. The mesh automatically starts and discovers nearby Peat nodes
 4. Tap **EMERGENCY** to send an alert to all connected peers
 5. Tap **ACK** to acknowledge received alerts
 6. Tap **RESET** to clear the current alert state
 
-## Eche BLE Protocol
+## Peat BLE Protocol
 
 This demo uses the same BLE protocol as the M5Stack Core2 firmware and Android demo for full interoperability.
 
@@ -72,12 +72,12 @@ This demo uses the same BLE protocol as the M5Stack Core2 firmware and Android d
 
 | UUID | Name | Description |
 |------|------|-------------|
-| `0xF47A` | Service | Eche BLE Service |
+| `0xF47A` | Service | Peat BLE Service |
 | `0xF47B` | Document | CRDT document exchange (read/write/notify) |
 
 ### Document Format
 
-The Eche document format is:
+The Peat document format is:
 
 ```
 [version: 4 bytes] [node_id: 4 bytes] [counter_data: N bytes] [0xAB marker] [reserved: 1 byte] [peripheral_len: 2 bytes] [peripheral_data: M bytes]
@@ -99,8 +99,8 @@ The Eche document format is:
 
 ## Testing with M5Stack Core2
 
-1. Flash the M5Stack Core2 with the `m5stack-core2-eche` firmware
-2. Power on the M5Stack - it will advertise as `ECHE-XXXXXXXX`
+1. Flash the M5Stack Core2 with the `m5stack-core2-peat` firmware
+2. Power on the M5Stack - it will advertise as `PEAT-XXXXXXXX`
 3. Use this demo app to discover and connect
 4. Tap the M5Stack's right button (C) to send EMERGENCY
 5. Tap ACK on the iOS app to acknowledge
@@ -113,13 +113,13 @@ The Eche document format is:
 │   iOS/macOS      │◄────────────────────►│  M5Stack Core2   │
 │   (this app)     │                      │  (ESP32 + NimBLE)│
 │                  │   GATT read/write    │                  │
-│   EcheViewModel  │   notifications      │  nimble.rs       │
+│   PeatViewModel  │   notifications      │  nimble.rs       │
 │   CoreBluetooth  │◄────────────────────►│  gap_event_handler│
 └──────────────────┘                      └──────────────────┘
         │                                          │
         ▼                                          ▼
 ┌──────────────────┐                      ┌──────────────────┐
-│  EcheDocument    │                      │  EcheDocument    │
+│  PeatDocument    │                      │  PeatDocument    │
 │  - GCounter      │     CRDT merge       │  - GCounter      │
 │  - Peripheral    │◄────────────────────►│  - Peripheral    │
 │  - version       │                      │  - version       │
@@ -129,22 +129,22 @@ The Eche document format is:
 ## Project Structure
 
 ```
-examples/ios-eche-test/
+examples/ios-peat-test/
 ├── Package.swift           # Swift Package Manager config
 ├── build-ios.sh           # Build script for native library
-├── EcheTest/
-│   ├── EcheTestApp.swift  # App entry point
+├── PeatTest/
+│   ├── PeatTestApp.swift  # App entry point
 │   ├── ContentView.swift  # Main UI (peer list + buttons)
 │   ├── Models/
-│   │   └── EchePeer.swift # Peer and ACK status models
+│   │   └── PeatPeer.swift # Peer and ACK status models
 │   ├── ViewModels/
-│   │   └── EcheViewModel.swift  # Mesh state management
+│   │   └── PeatViewModel.swift  # Mesh state management
 │   ├── Extensions/
 │   │   └── Color+Platform.swift # Cross-platform colors
-│   ├── EcheBridge/
-│   │   └── EcheFFI.swift  # UniFFI bindings placeholder
+│   ├── PeatBridge/
+│   │   └── PeatFFI.swift  # UniFFI bindings placeholder
 │   └── Info.plist         # iOS permissions
-└── eche-apple-ffi/        # Rust FFI crate
+└── peat-apple-ffi/        # Rust FFI crate
     ├── Cargo.toml
     ├── src/lib.rs         # UniFFI exports
     └── uniffi-bindgen.rs  # Binding generator

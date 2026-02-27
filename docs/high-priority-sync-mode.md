@@ -38,12 +38,12 @@ A configurable mode that trades battery life for communication reliability.
 
 ## Systems Touched
 
-### 1. eche-btle Library (`EcheBtle.kt`)
+### 1. peat-btle Library (`PeatBtle.kt`)
 
 New configuration class:
 
 ```kotlin
-data class EcheMeshConfig(
+data class PeatMeshConfig(
     val highPriorityMode: Boolean = false,
     val scanRestartIntervalMs: Long = if (highPriorityMode) 30000 else 120000,
     val keepAliveIntervalMs: Long = if (highPriorityMode) 3000 else 10000,
@@ -63,13 +63,13 @@ fun isHighPriorityMode(): Boolean
 fun requestBatteryOptimizationExemption(activity: Activity)
 ```
 
-### 2. WearTAK Service (`EcheBtleService.kt`)
+### 2. WearTAK Service (`PeatBtleService.kt`)
 
 - Acquire/release `PowerManager.PARTIAL_WAKE_LOCK` based on mode
 - Update notification to indicate high-priority mode active
 - Persist mode preference to SharedPreferences
 
-### 3. WearTAK Repository (`EcheBtleRepository.kt`)
+### 3. WearTAK Repository (`PeatBtleRepository.kt`)
 
 New state:
 
@@ -80,7 +80,7 @@ val highPriorityMode: StateFlow<Boolean> = _highPriorityMode
 fun setHighPriorityMode(enabled: Boolean)
 ```
 
-### 4. WearTAK UI (`EcheMeshActivity.kt`)
+### 4. WearTAK UI (`PeatMeshActivity.kt`)
 
 Add toggle button at top of peer list:
 
@@ -113,7 +113,7 @@ Expose high-priority state for watchface display:
 
 ### Phase 1: Core Library Support
 
-1. Add `EcheMeshConfig` data class to EcheBtle
+1. Add `PeatMeshConfig` data class to PeatBtle
 2. Add configuration setters/getters
 3. Implement dynamic interval updates (scan restart, sync, reconnect)
 4. Add connection parameter request on connect
@@ -128,10 +128,10 @@ Expose high-priority state for watchface display:
 
 ### Phase 3: UI Integration
 
-1. Add toggle button to EcheMeshActivity
+1. Add toggle button to PeatMeshActivity
 2. Add confirmation dialog with battery warning
-3. Update EcheBtleRepository with mode state
-4. Add mode indicator to existing Eche icons
+3. Update PeatBtleRepository with mode state
+4. Add mode indicator to existing Peat icons
 
 ### Phase 4: Watchface Integration
 
@@ -148,7 +148,7 @@ Expose high-priority state for watchface display:
 val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
 val wakeLock = powerManager.newWakeLock(
     PowerManager.PARTIAL_WAKE_LOCK,
-    "WearTAK::EcheMeshWakeLock"
+    "WearTAK::PeatMeshWakeLock"
 )
 wakeLock.acquire()  // On enable
 wakeLock.release()  // On disable
@@ -173,7 +173,7 @@ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
 ```kotlin
 // In AndroidManifest.xml
 <service
-    android:name=".service.EcheBtleService"
+    android:name=".service.PeatBtleService"
     android:foregroundServiceType="connectedDevice|location" />
 ```
 

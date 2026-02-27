@@ -16,7 +16,7 @@
 //! Mock BLE adapter for testing
 //!
 //! This module provides a simulated BLE adapter that enables unit and integration
-//! testing of Eche mesh logic without requiring actual BLE hardware.
+//! testing of Peat mesh logic without requiring actual BLE hardware.
 //!
 //! ## Features
 //!
@@ -28,10 +28,10 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use eche_btle::platform::mock::{MockBleAdapter, MockNetwork};
-//! use eche_btle::platform::BleAdapter;
-//! use eche_btle::config::{BleConfig, DiscoveryConfig};
-//! use eche_btle::NodeId;
+//! use peat_btle::platform::mock::{MockBleAdapter, MockNetwork};
+//! use peat_btle::platform::BleAdapter;
+//! use peat_btle::config::{BleConfig, DiscoveryConfig};
+//! use peat_btle::NodeId;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create a shared network for multiple mock nodes
@@ -156,7 +156,7 @@ impl MockNetwork {
                 address: n.address.clone(),
                 name: n.name.clone(),
                 rssi: n.rssi,
-                is_eche_node: true,
+                is_peat_node: true,
                 node_id: Some(n.node_id),
                 adv_data: n.adv_data.clone(),
             })
@@ -565,7 +565,7 @@ impl BleAdapter for MockBleAdapter {
     async fn start_advertising(&self, _config: &DiscoveryConfig) -> Result<()> {
         self.advertising.store(true, Ordering::SeqCst);
         self.network
-            .start_advertising(self.node_id, &self.address, Some("ECHE"));
+            .start_advertising(self.node_id, &self.address, Some("PEAT"));
         self.record_event(MockEvent::AdvertisingStarted);
         Ok(())
     }

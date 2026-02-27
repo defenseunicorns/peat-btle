@@ -1,4 +1,4 @@
-//! Minimal advertising test - raw AD bytes like eche-btle library
+//! Minimal advertising test - raw AD bytes like peat-btle library
 
 #![no_std]
 #![no_main]
@@ -81,7 +81,7 @@ async fn main(spawner: Spawner) {
         Timer::after(Duration::from_millis(200)).await;
     }
 
-    // Build raw advertising data like eche-btle library does
+    // Build raw advertising data like peat-btle library does
     // Format: Flags(3) + ServiceUUID(4) + ServiceData(14) + ShortName(6) = 27 bytes
     let node_id: u32 = unsafe { core::ptr::read_volatile(0x10000060 as *const u32) };
 

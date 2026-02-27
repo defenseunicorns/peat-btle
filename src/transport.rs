@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Transport trait implementation for ECHE-BTLE
+//! Transport trait implementation for PEAT-BTLE
 //!
 //! Implements the pluggable transport abstraction (ADR-032) for Bluetooth LE,
 //! providing the `BluetoothLETransport` struct that can be registered with
@@ -148,9 +148,9 @@ pub trait BleConnection: Send + Sync {
 /// # Example
 ///
 /// ```ignore
-/// use eche_btle::{BluetoothLETransport, BleConfig, NodeId};
+/// use peat_btle::{BluetoothLETransport, BleConfig, NodeId};
 ///
-/// let config = BleConfig::eche_lite(NodeId::new(0x12345678));
+/// let config = BleConfig::peat_lite(NodeId::new(0x12345678));
 /// let transport = BluetoothLETransport::new(config)?;
 ///
 /// transport.start().await?;
@@ -195,7 +195,7 @@ impl<A: BleAdapter> BluetoothLETransport<A> {
 /// Async transport operations
 ///
 /// These are the core transport operations that integrate with
-/// the Eche protocol's transport abstraction (ADR-032).
+/// the Peat protocol's transport abstraction (ADR-032).
 #[async_trait]
 pub trait MeshTransport: Send + Sync {
     /// Start the transport layer

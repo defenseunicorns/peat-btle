@@ -1,17 +1,17 @@
 #!/bin/bash
-# Build script for Eche iOS/macOS test app
+# Build script for Peat iOS/macOS test app
 #
-# This script builds the Rust eche-apple-ffi library for Apple platforms
+# This script builds the Rust peat-apple-ffi library for Apple platforms
 # and creates an xcframework for use with the SwiftUI app.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FFI_DIR="$SCRIPT_DIR/eche-apple-ffi"
+FFI_DIR="$SCRIPT_DIR/peat-apple-ffi"
 BUILD_DIR="$SCRIPT_DIR/build"
-XCFRAMEWORK_DIR="$BUILD_DIR/EcheFFI.xcframework"
+XCFRAMEWORK_DIR="$BUILD_DIR/PeatFFI.xcframework"
 
-echo "=== Eche iOS Build Script ==="
+echo "=== Peat iOS Build Script ==="
 echo "FFI dir: $FFI_DIR"
 echo ""
 
@@ -23,7 +23,7 @@ command -v xcodebuild >/dev/null 2>&1 || { echo "Error: xcodebuild not found"; e
 mkdir -p "$BUILD_DIR"
 
 # Build for each target
-echo "=== Building eche-apple-ffi for Apple platforms ==="
+echo "=== Building peat-apple-ffi for Apple platforms ==="
 
 cd "$FFI_DIR"
 
@@ -62,12 +62,12 @@ echo "=== Generating Swift bindings ==="
 
 # Generate Swift bindings (use the macOS arm64 dylib)
 cargo run --features macos --bin uniffi-bindgen generate \
-    --library target/aarch64-apple-darwin/release/libeche_apple_ffi.dylib \
+    --library target/aarch64-apple-darwin/release/libpeat_apple_ffi.dylib \
     --language swift \
     --out-dir "$BUILD_DIR/generated"
 
 # Copy Swift file to project
-cp "$BUILD_DIR/generated/eche_apple_ffi.swift" "$SCRIPT_DIR/EcheTest/EcheBridge/"
+cp "$BUILD_DIR/generated/peat_apple_ffi.swift" "$SCRIPT_DIR/PeatTest/PeatBridge/"
 
 echo ""
 echo "=== Creating xcframework ==="
@@ -78,14 +78,14 @@ rm -rf "$XCFRAMEWORK_DIR"
 # Create include directory for headers
 INCLUDE_DIR="$BUILD_DIR/include"
 mkdir -p "$INCLUDE_DIR"
-cp "$BUILD_DIR/generated/eche_apple_ffiFFI.h" "$INCLUDE_DIR/"
-cp "$BUILD_DIR/generated/eche_apple_ffiFFI.modulemap" "$INCLUDE_DIR/module.modulemap"
+cp "$BUILD_DIR/generated/peat_apple_ffiFFI.h" "$INCLUDE_DIR/"
+cp "$BUILD_DIR/generated/peat_apple_ffiFFI.modulemap" "$INCLUDE_DIR/module.modulemap"
 
 # Create xcframework from the available libraries
 FRAMEWORKS=()
 
 # macOS arm64
-MACOS_ARM64_LIB="$FFI_DIR/target/aarch64-apple-darwin/release/libeche_apple_ffi.a"
+MACOS_ARM64_LIB="$FFI_DIR/target/aarch64-apple-darwin/release/libpeat_apple_ffi.a"
 if [ -f "$MACOS_ARM64_LIB" ]; then
     echo "Adding macOS arm64..."
     mkdir -p "$BUILD_DIR/macos-arm64"
@@ -93,36 +93,36 @@ if [ -f "$MACOS_ARM64_LIB" ]; then
     cp -r "$INCLUDE_DIR" "$BUILD_DIR/macos-arm64/include"
 
     # Check if we also have x86_64 to create universal binary
-    MACOS_X64_LIB="$FFI_DIR/target/x86_64-apple-darwin/release/libeche_apple_ffi.a"
+    MACOS_X64_LIB="$FFI_DIR/target/x86_64-apple-darwin/release/libpeat_apple_ffi.a"
     if [ -f "$MACOS_X64_LIB" ]; then
         echo "Creating universal macOS binary..."
         mkdir -p "$BUILD_DIR/macos-universal"
-        lipo -create "$MACOS_ARM64_LIB" "$MACOS_X64_LIB" -output "$BUILD_DIR/macos-universal/libeche_apple_ffi.a"
+        lipo -create "$MACOS_ARM64_LIB" "$MACOS_X64_LIB" -output "$BUILD_DIR/macos-universal/libpeat_apple_ffi.a"
         cp -r "$INCLUDE_DIR" "$BUILD_DIR/macos-universal/include"
-        FRAMEWORKS+=(-library "$BUILD_DIR/macos-universal/libeche_apple_ffi.a" -headers "$BUILD_DIR/macos-universal/include")
+        FRAMEWORKS+=(-library "$BUILD_DIR/macos-universal/libpeat_apple_ffi.a" -headers "$BUILD_DIR/macos-universal/include")
     else
-        FRAMEWORKS+=(-library "$BUILD_DIR/macos-arm64/libeche_apple_ffi.a" -headers "$BUILD_DIR/macos-arm64/include")
+        FRAMEWORKS+=(-library "$BUILD_DIR/macos-arm64/libpeat_apple_ffi.a" -headers "$BUILD_DIR/macos-arm64/include")
     fi
 fi
 
 # iOS device
-IOS_ARM64_LIB="$FFI_DIR/target/aarch64-apple-ios/release/libeche_apple_ffi.a"
+IOS_ARM64_LIB="$FFI_DIR/target/aarch64-apple-ios/release/libpeat_apple_ffi.a"
 if [ -f "$IOS_ARM64_LIB" ]; then
     echo "Adding iOS arm64..."
     mkdir -p "$BUILD_DIR/ios-arm64"
     cp "$IOS_ARM64_LIB" "$BUILD_DIR/ios-arm64/"
     cp -r "$INCLUDE_DIR" "$BUILD_DIR/ios-arm64/include"
-    FRAMEWORKS+=(-library "$BUILD_DIR/ios-arm64/libeche_apple_ffi.a" -headers "$BUILD_DIR/ios-arm64/include")
+    FRAMEWORKS+=(-library "$BUILD_DIR/ios-arm64/libpeat_apple_ffi.a" -headers "$BUILD_DIR/ios-arm64/include")
 fi
 
 # iOS Simulator
-IOS_SIM_LIB="$FFI_DIR/target/aarch64-apple-ios-sim/release/libeche_apple_ffi.a"
+IOS_SIM_LIB="$FFI_DIR/target/aarch64-apple-ios-sim/release/libpeat_apple_ffi.a"
 if [ -f "$IOS_SIM_LIB" ]; then
     echo "Adding iOS Simulator arm64..."
     mkdir -p "$BUILD_DIR/ios-sim-arm64"
     cp "$IOS_SIM_LIB" "$BUILD_DIR/ios-sim-arm64/"
     cp -r "$INCLUDE_DIR" "$BUILD_DIR/ios-sim-arm64/include"
-    FRAMEWORKS+=(-library "$BUILD_DIR/ios-sim-arm64/libeche_apple_ffi.a" -headers "$BUILD_DIR/ios-sim-arm64/include")
+    FRAMEWORKS+=(-library "$BUILD_DIR/ios-sim-arm64/libpeat_apple_ffi.a" -headers "$BUILD_DIR/ios-sim-arm64/include")
 fi
 
 # Create xcframework
@@ -145,10 +145,10 @@ echo ""
 echo "=== Build complete ==="
 echo ""
 echo "Generated files:"
-echo "  - Swift bindings: EcheTest/EcheBridge/eche_apple_ffi.swift"
-echo "  - xcframework: build/EcheFFI.xcframework"
+echo "  - Swift bindings: PeatTest/PeatBridge/peat_apple_ffi.swift"
+echo "  - xcframework: build/PeatFFI.xcframework"
 echo ""
 echo "To run the app:"
-echo "  1. Open EcheTest in Xcode"
-echo "  2. Add EcheFFI.xcframework to the project"
+echo "  1. Open PeatTest in Xcode"
+echo "  2. Add PeatFFI.xcframework to the project"
 echo "  3. Build and run"

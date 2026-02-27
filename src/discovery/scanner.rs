@@ -13,9 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! BLE Scanner for discovering Eche nodes
+//! BLE Scanner for discovering Peat nodes
 //!
-//! Provides filtering, deduplication, and tracking of discovered Eche beacons.
+//! Provides filtering, deduplication, and tracking of discovered Peat beacons.
 
 #[cfg(not(feature = "std"))]
 use alloc::{string::String, vec::Vec};
@@ -28,7 +28,7 @@ use crate::HierarchyLevel;
 #[cfg(feature = "std")]
 use crate::NodeId;
 
-use super::beacon::{EcheBeacon, ParsedAdvertisement};
+use super::beacon::{ParsedAdvertisement, PeatBeacon};
 #[cfg(feature = "std")]
 use super::encrypted_beacon::{BeaconKey, EncryptedBeacon};
 
@@ -44,7 +44,7 @@ const DEDUP_INTERVAL_MS: u64 = 500;
 #[derive(Debug, Clone)]
 pub struct TrackedDevice {
     /// Last received beacon
-    pub beacon: EcheBeacon,
+    pub beacon: PeatBeacon,
     /// Device address
     pub address: String,
     /// Last RSSI reading
@@ -65,7 +65,7 @@ impl TrackedDevice {
     /// Create a new tracked device
     #[cfg(feature = "std")]
     fn new(
-        beacon: EcheBeacon,
+        beacon: PeatBeacon,
         address: String,
         rssi: i8,
         connectable: bool,
@@ -85,7 +85,7 @@ impl TrackedDevice {
 
     /// Update with new beacon data
     #[cfg(feature = "std")]
-    fn update(&mut self, beacon: EcheBeacon, rssi: i8, connectable: bool, current_time_ms: u64) {
+    fn update(&mut self, beacon: PeatBeacon, rssi: i8, connectable: bool, current_time_ms: u64) {
         self.beacon = beacon;
         self.rssi = rssi;
         self.last_seen_ms = current_time_ms;
@@ -121,8 +121,8 @@ impl TrackedDevice {
 /// Filter criteria for scanning
 #[derive(Debug, Clone, Default)]
 pub struct ScanFilter {
-    /// Only include Eche nodes
-    pub eche_only: bool,
+    /// Only include Peat nodes
+    pub peat_only: bool,
     /// Only include nodes at or above this hierarchy level
     pub min_hierarchy_level: Option<HierarchyLevel>,
     /// Only include nodes with these capabilities (bitmask)
@@ -138,10 +138,10 @@ pub struct ScanFilter {
 }
 
 impl ScanFilter {
-    /// Create a filter for Eche nodes only
-    pub fn eche_nodes() -> Self {
+    /// Create a filter for Peat nodes only
+    pub fn peat_nodes() -> Self {
         Self {
-            eche_only: true,
+            peat_only: true,
             ..Default::default()
         }
     }
@@ -149,7 +149,7 @@ impl ScanFilter {
     /// Create a filter for potential parents (nodes above our level)
     pub fn potential_parents(our_level: HierarchyLevel) -> Self {
         Self {
-            eche_only: true,
+            peat_only: true,
             min_hierarchy_level: Some(our_level),
             connectable_only: true,
             ..Default::default()
@@ -158,8 +158,8 @@ impl ScanFilter {
 
     /// Check if a parsed advertisement passes this filter
     pub fn matches(&self, adv: &ParsedAdvertisement) -> bool {
-        // Eche-only filter
-        if self.eche_only && !adv.is_eche_device() {
+        // Peat-only filter
+        if self.peat_only && !adv.is_peat_device() {
             return false;
         }
 
@@ -223,7 +223,7 @@ pub enum ScannerState {
     Paused,
 }
 
-/// BLE Scanner for discovering Eche nodes
+/// BLE Scanner for discovering Peat nodes
 ///
 /// Handles beacon reception, filtering, deduplication, and device tracking.
 ///
@@ -358,7 +358,7 @@ impl Scanner {
                 None => return false, // Decryption failed (wrong mesh or no key)
             }
         } else {
-            return false; // No beacon = not a Eche device
+            return false; // No beacon = not a Peat device
         };
 
         // Check deduplication
@@ -394,7 +394,7 @@ impl Scanner {
     /// Attempt to decrypt an encrypted beacon
     ///
     /// Returns the decrypted beacon and mesh_id if successful.
-    fn try_decrypt_beacon(&self, encrypted_data: &[u8]) -> Option<(EcheBeacon, [u8; 4])> {
+    fn try_decrypt_beacon(&self, encrypted_data: &[u8]) -> Option<(PeatBeacon, [u8; 4])> {
         let key = self.beacon_key.as_ref()?;
         let expected_mesh_id = self.mesh_id_bytes?;
 
@@ -406,8 +406,8 @@ impl Scanner {
             return None;
         }
 
-        // Convert EncryptedBeacon to EcheBeacon
-        let beacon = EcheBeacon {
+        // Convert EncryptedBeacon to a PeatBeacon
+        let beacon = PeatBeacon {
             version: 1,
             capabilities: encrypted_beacon.capabilities,
             node_id: encrypted_beacon.node_id,
@@ -512,7 +512,7 @@ mod tests {
     use super::*;
 
     fn make_adv(node_id: u32, rssi: i8, level: HierarchyLevel) -> ParsedAdvertisement {
-        let beacon = EcheBeacon::new(NodeId::new(node_id))
+        let beacon = PeatBeacon::new(NodeId::new(node_id))
             .with_hierarchy_level(level)
             .with_battery(80);
 
@@ -521,7 +521,7 @@ mod tests {
             rssi,
             beacon: Some(beacon),
             encrypted_service_data: None,
-            local_name: Some(format!("ECHE-{:08X}", node_id)),
+            local_name: Some(format!("PEAT-{:08X}", node_id)),
             tx_power: Some(0),
             connectable: true,
         }
@@ -545,13 +545,13 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_filter_eche_only() {
-        let filter = ScanFilter::eche_nodes();
+    fn test_scan_filter_peat_only() {
+        let filter = ScanFilter::peat_nodes();
 
-        let eche_adv = make_adv(0x12345678, -60, HierarchyLevel::Platform);
-        assert!(filter.matches(&eche_adv));
+        let peat_adv = make_adv(0x12345678, -60, HierarchyLevel::Platform);
+        assert!(filter.matches(&peat_adv));
 
-        let non_eche = ParsedAdvertisement {
+        let non_peat = ParsedAdvertisement {
             address: "AA:BB:CC:DD:EE:FF".to_string(),
             rssi: -50,
             beacon: None,
@@ -560,13 +560,13 @@ mod tests {
             tx_power: None,
             connectable: true,
         };
-        assert!(!filter.matches(&non_eche));
+        assert!(!filter.matches(&non_peat));
     }
 
     #[test]
     fn test_scan_filter_rssi() {
         let filter = ScanFilter {
-            eche_only: true,
+            peat_only: true,
             min_rssi: Some(-70),
             ..Default::default()
         };
@@ -664,7 +664,7 @@ mod tests {
             rssi: -60,
             beacon: None,
             encrypted_service_data: Some(encrypted_data),
-            local_name: Some("ECHE".to_string()),
+            local_name: Some("PEAT".to_string()),
             tx_power: None,
             connectable: true,
         };
@@ -706,7 +706,7 @@ mod tests {
             rssi: -60,
             beacon: None,
             encrypted_service_data: Some(encrypted_data),
-            local_name: Some("ECHE".to_string()),
+            local_name: Some("PEAT".to_string()),
             tx_power: None,
             connectable: true,
         };

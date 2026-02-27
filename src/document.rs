@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Eche Document wire format for BLE mesh sync
+//! Peat Document wire format for BLE mesh sync
 //!
 //! This module provides the unified document format used across all platforms
 //! (iOS, Android, ESP32) for mesh synchronization. The format is designed for
@@ -76,7 +76,7 @@ pub const CHAT_MARKER: u8 = 0xAD;
 /// payload:  12 bytes nonce + variable ciphertext (includes 16-byte auth tag)
 /// ```
 ///
-/// Encryption happens at the EcheMesh layer before transmission, and decryption
+/// Encryption happens at the PeatMesh layer before transmission, and decryption
 /// happens upon receipt before document parsing.
 pub const ENCRYPTED_MARKER: u8 = 0xAE;
 
@@ -161,13 +161,13 @@ pub const TARGET_DOCUMENT_SIZE: usize = 244;
 /// BLE 5.0+ supports up to 517 byte MTU, but 512 is practical max payload.
 pub const MAX_DOCUMENT_SIZE: usize = 512;
 
-/// An Eche document for mesh synchronization
+/// A Peat document for mesh synchronization
 ///
 /// Contains header information, a CRDT G-Counter for tracking mesh activity,
 /// optional peripheral data for events, optional emergency event with ACK tracking,
 /// and optional chat CRDT for mesh-wide messaging.
 #[derive(Debug, Clone)]
-pub struct EcheDocument {
+pub struct PeatDocument {
     /// Document version (incremented on each change)
     pub version: u32,
 
@@ -192,7 +192,7 @@ pub struct EcheDocument {
     pub chat: Option<ChatCRDT>,
 }
 
-impl Default for EcheDocument {
+impl Default for PeatDocument {
     fn default() -> Self {
         Self {
             version: 1,
@@ -206,7 +206,7 @@ impl Default for EcheDocument {
     }
 }
 
-impl EcheDocument {
+impl PeatDocument {
     /// Create a new document for the given node
     pub fn new(node_id: NodeId) -> Self {
         Self {
@@ -389,7 +389,7 @@ impl EcheDocument {
     /// Merge with another document using CRDT semantics
     ///
     /// Returns true if our state changed (useful for triggering re-broadcast)
-    pub fn merge(&mut self, other: &EcheDocument) -> bool {
+    pub fn merge(&mut self, other: &PeatDocument) -> bool {
         let mut changed = false;
 
         // Merge counter
@@ -512,7 +512,7 @@ impl EcheDocument {
 
     /// Encode to bytes for transmission (alias for [`Self::encode()`])
     ///
-    /// This is the conventional name used by external crates like eche-ffi
+    /// This is the conventional name used by external crates like peat-ffi
     /// for transport-agnostic document serialization.
     #[inline]
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -615,7 +615,7 @@ impl EcheDocument {
 
     /// Decode from bytes (alias for [`Self::decode()`])
     ///
-    /// This is the conventional name used by external crates like eche-ffi
+    /// This is the conventional name used by external crates like peat-ffi
     /// for transport-agnostic document deserialization.
     #[inline]
     pub fn from_bytes(data: &[u8]) -> Option<Self> {
@@ -715,12 +715,12 @@ mod tests {
     #[test]
     fn test_document_encode_decode_minimal() {
         let node_id = NodeId::new(0x12345678);
-        let doc = EcheDocument::new(node_id);
+        let doc = PeatDocument::new(node_id);
 
         let encoded = doc.encode();
         assert_eq!(encoded.len(), 12); // 8 header + 4 counter (0 entries)
 
-        let decoded = EcheDocument::decode(&encoded).unwrap();
+        let decoded = PeatDocument::decode(&encoded).unwrap();
         assert_eq!(decoded.version, 1);
         assert_eq!(decoded.node_id.as_u32(), 0x12345678);
         assert_eq!(decoded.counter.value(), 0);
@@ -730,7 +730,7 @@ mod tests {
     #[test]
     fn test_document_encode_decode_with_counter() {
         let node_id = NodeId::new(0x12345678);
-        let mut doc = EcheDocument::new(node_id);
+        let mut doc = PeatDocument::new(node_id);
         doc.increment_counter();
         doc.increment_counter();
 
@@ -738,7 +738,7 @@ mod tests {
         // 8 header + 4 num_entries + 1 entry (12 bytes) = 24
         assert_eq!(encoded.len(), 24);
 
-        let decoded = EcheDocument::decode(&encoded).unwrap();
+        let decoded = PeatDocument::decode(&encoded).unwrap();
         assert_eq!(decoded.counter.value(), 2);
     }
 
@@ -748,10 +748,10 @@ mod tests {
         let peripheral =
             Peripheral::new(0xAABBCCDD, PeripheralType::SoldierSensor).with_callsign("ALPHA-1");
 
-        let doc = EcheDocument::new(node_id).with_peripheral(peripheral);
+        let doc = PeatDocument::new(node_id).with_peripheral(peripheral);
 
         let encoded = doc.encode();
-        let decoded = EcheDocument::decode(&encoded).unwrap();
+        let decoded = PeatDocument::decode(&encoded).unwrap();
 
         assert!(decoded.peripheral.is_some());
         let p = decoded.peripheral.unwrap();
@@ -765,10 +765,10 @@ mod tests {
         let mut peripheral = Peripheral::new(0xAABBCCDD, PeripheralType::SoldierSensor);
         peripheral.set_event(EventType::Emergency, TEST_TIMESTAMP);
 
-        let doc = EcheDocument::new(node_id).with_peripheral(peripheral);
+        let doc = PeatDocument::new(node_id).with_peripheral(peripheral);
 
         let encoded = doc.encode();
-        let decoded = EcheDocument::decode(&encoded).unwrap();
+        let decoded = PeatDocument::decode(&encoded).unwrap();
 
         assert!(decoded.peripheral.is_some());
         let p = decoded.peripheral.unwrap();
@@ -783,10 +783,10 @@ mod tests {
         let node1 = NodeId::new(0x11111111);
         let node2 = NodeId::new(0x22222222);
 
-        let mut doc1 = EcheDocument::new(node1);
+        let mut doc1 = PeatDocument::new(node1);
         doc1.increment_counter();
 
-        let mut doc2 = EcheDocument::new(node2);
+        let mut doc2 = PeatDocument::new(node2);
         doc2.counter.increment(&node2, 3);
 
         // Merge doc2 into doc1
@@ -833,23 +833,23 @@ mod tests {
         let node_id = NodeId::new(0x12345678);
 
         // Minimal document: 8 header + 4 counter (0 entries) = 12 bytes
-        let doc = EcheDocument::new(node_id);
+        let doc = PeatDocument::new(node_id);
         assert_eq!(doc.encoded_size(), 12);
         assert!(!doc.exceeds_target_size());
 
         // With one counter entry: 8 + (4 + 12) = 24 bytes
-        let mut doc = EcheDocument::new(node_id);
+        let mut doc = PeatDocument::new(node_id);
         doc.increment_counter();
         assert_eq!(doc.encoded_size(), 24);
 
         // With peripheral: adds ~42 bytes (4 marker/len + 38 data)
         let peripheral = Peripheral::new(0xAABBCCDD, PeripheralType::SoldierSensor);
-        let doc = EcheDocument::new(node_id).with_peripheral(peripheral);
+        let doc = PeatDocument::new(node_id).with_peripheral(peripheral);
         let encoded = doc.encode();
         assert_eq!(doc.encoded_size(), encoded.len());
 
         // Verify size stays under target for reasonable mesh
-        let mut doc = EcheDocument::new(node_id);
+        let mut doc = PeatDocument::new(node_id);
         for i in 0..10 {
             doc.counter.increment(&NodeId::new(i), 1);
         }
@@ -868,7 +868,7 @@ mod tests {
         #[test]
         fn test_document_add_chat_message() {
             let node_id = NodeId::new(0x12345678);
-            let mut doc = EcheDocument::new(node_id);
+            let mut doc = PeatDocument::new(node_id);
 
             assert!(!doc.has_chat());
             assert_eq!(doc.chat_count(), 0);
@@ -895,7 +895,7 @@ mod tests {
         #[test]
         fn test_document_add_chat_reply() {
             let node_id = NodeId::new(0x12345678);
-            let mut doc = EcheDocument::new(node_id);
+            let mut doc = PeatDocument::new(node_id);
 
             // Add original message
             doc.add_chat_message(0xAABBCCDD, TEST_TIMESTAMP, "BRAVO", "Need assistance");
@@ -923,13 +923,13 @@ mod tests {
         #[test]
         fn test_document_encode_decode_with_chat() {
             let node_id = NodeId::new(0x12345678);
-            let mut doc = EcheDocument::new(node_id);
+            let mut doc = PeatDocument::new(node_id);
 
             doc.add_chat_message(0x12345678, TEST_TIMESTAMP, "ALPHA", "First message");
             doc.add_chat_message(0xAABBCCDD, TEST_TIMESTAMP + 1000, "BRAVO", "Second message");
 
             let encoded = doc.encode();
-            let decoded = EcheDocument::decode(&encoded).unwrap();
+            let decoded = PeatDocument::decode(&encoded).unwrap();
 
             assert!(decoded.has_chat());
             assert_eq!(decoded.chat_count(), 2);
@@ -949,10 +949,10 @@ mod tests {
             let node1 = NodeId::new(0x11111111);
             let node2 = NodeId::new(0x22222222);
 
-            let mut doc1 = EcheDocument::new(node1);
+            let mut doc1 = PeatDocument::new(node1);
             doc1.add_chat_message(0x11111111, TEST_TIMESTAMP, "ALPHA", "From node 1");
 
-            let mut doc2 = EcheDocument::new(node2);
+            let mut doc2 = PeatDocument::new(node2);
             doc2.add_chat_message(0x22222222, TEST_TIMESTAMP + 1000, "BRAVO", "From node 2");
 
             // Merge doc2 into doc1
@@ -975,7 +975,7 @@ mod tests {
         #[test]
         fn test_document_chat_encoded_size() {
             let node_id = NodeId::new(0x12345678);
-            let mut doc = EcheDocument::new(node_id);
+            let mut doc = PeatDocument::new(node_id);
 
             let base_size = doc.encoded_size();
 

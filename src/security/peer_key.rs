@@ -31,7 +31,7 @@ use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 use crate::NodeId;
 
 /// HKDF info context for per-peer session key derivation
-const PEER_E2EE_HKDF_INFO: &[u8] = b"ECHE-peer-e2ee-v1";
+const PEER_E2EE_HKDF_INFO: &[u8] = b"PEAT-peer-e2ee-v1";
 
 /// A long-term X25519 keypair for peer identity
 ///

@@ -41,7 +41,7 @@ use objc2_foundation::{
 };
 use tokio::sync::mpsc;
 
-use crate::{NodeId, ECHE_SERVICE_UUID};
+use crate::{NodeId, PEAT_SERVICE_UUID};
 
 // ============================================================================
 // Event Types
@@ -64,9 +64,9 @@ pub enum CentralEvent {
         advertisement_data: Vec<u8>,
         /// Service UUIDs advertised by the peripheral
         service_uuids: Vec<String>,
-        /// Is this a Eche node?
-        is_eche_node: bool,
-        /// Parsed node ID if Eche node
+        /// Is this a Peat node?
+        is_peat_node: bool,
+        /// Parsed node ID if Peat node
         node_id: Option<NodeId>,
     },
     /// Connected to a peripheral
@@ -285,26 +285,26 @@ declare_class!(
                 Self::parse_service_uuids(advertisement_data)
             };
 
-            // Check if Eche service UUID is present in the advertisement
+            // Check if Peat service UUID is present in the advertisement
             // Check full 128-bit UUID, 16-bit expanded form, and bare 16-bit form
             // CoreBluetooth may report any of these depending on how the device advertises
-            let eche_uuid_full = ECHE_SERVICE_UUID.to_string().to_uppercase();
-            let eche_uuid_16bit_expanded = "0000F47A-0000-1000-8000-00805F9B34FB";
-            let eche_uuid_16bit_bare = "F47A";
-            let has_eche_service = service_uuids.iter().any(|uuid| {
+            let peat_uuid_full = PEAT_SERVICE_UUID.to_string().to_uppercase();
+            let peat_uuid_16bit_expanded = "0000F47A-0000-1000-8000-00805F9B34FB";
+            let peat_uuid_16bit_bare = "F47A";
+            let has_peat_service = service_uuids.iter().any(|uuid| {
                 let upper = uuid.to_uppercase();
-                upper == eche_uuid_full || upper == eche_uuid_16bit_expanded || upper == eche_uuid_16bit_bare
+                upper == peat_uuid_full || upper == peat_uuid_16bit_expanded || upper == peat_uuid_16bit_bare
             });
 
-            // Check if this is a Eche node by:
-            // 1. Presence of Eche service UUID (preferred, reliable)
-            // 2. Name starting with "ECHE_" or "ECHE-" (fallback for compatibility)
-            //    - New format: ECHE_<MESH>-<NODE_ID> (e.g., "ECHE_WEARTAK-8DD4")
-            //    - Legacy format: ECHE-<NODE_ID> (e.g., "ECHE-12345678")
-            let name_indicates_eche = name.as_ref().map(|n| {
-                n.starts_with("ECHE_") || n.starts_with("ECHE-")
+            // Check if this is a Peat node by:
+            // 1. Presence of Peat service UUID (preferred, reliable)
+            // 2. Name starting with "PEAT_" or "PEAT-" (fallback for compatibility)
+            //    - New format: PEAT_<MESH>-<NODE_ID> (e.g., "PEAT_WEARTAK-8DD4")
+            //    - Legacy format: PEAT-<NODE_ID> (e.g., "PEAT-12345678")
+            let name_indicates_peat = name.as_ref().map(|n| {
+                n.starts_with("PEAT_") || n.starts_with("PEAT-")
             }).unwrap_or(false);
-            let is_eche_node = has_eche_service || name_indicates_eche;
+            let is_peat_node = has_peat_service || name_indicates_peat;
 
             // Parse node ID from name (supports both formats)
             let node_id = name.as_ref().and_then(|n| {
@@ -313,10 +313,10 @@ declare_class!(
             });
 
             // Log with service UUIDs for debugging
-            if !service_uuids.is_empty() || name_indicates_eche {
+            if !service_uuids.is_empty() || name_indicates_peat {
                 log::debug!(
-                    "Discovered peripheral: {} ({:?}) RSSI: {} Eche: {} (service_uuid: {}, name: {}, uuids: {:?})",
-                    identifier, name, rssi_val, is_eche_node, has_eche_service, name_indicates_eche, service_uuids
+                    "Discovered peripheral: {} ({:?}) RSSI: {} Peat: {} (service_uuid: {}, name: {}, uuids: {:?})",
+                    identifier, name, rssi_val, is_peat_node, has_peat_service, name_indicates_peat, service_uuids
                 );
             } else {
                 log::trace!(
@@ -338,7 +338,7 @@ declare_class!(
                         rssi: rssi_val,
                         advertisement_data: Vec::new(),
                         service_uuids,
-                        is_eche_node,
+                        is_peat_node,
                         node_id,
                     });
                 }

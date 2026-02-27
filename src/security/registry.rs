@@ -22,7 +22,7 @@
 //! # Example
 //!
 //! ```
-//! use eche_btle::security::{DeviceIdentity, IdentityRegistry, RegistryResult};
+//! use peat_btle::security::{DeviceIdentity, IdentityRegistry, RegistryResult};
 //!
 //! let mut registry = IdentityRegistry::new();
 //!

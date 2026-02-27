@@ -13,14 +13,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Eche GATT Service Module
+//! Peat GATT Service Module
 //!
-//! Provides the GATT service implementation for Eche Protocol BLE communication.
+//! Provides the GATT service implementation for Peat Protocol BLE communication.
 //!
 //! ## Service Structure
 //!
 //! ```text
-//! Eche GATT Service (UUID: f47ac10b-58cc-4372-a567-0e02b2c3d479)
+//! Peat GATT Service (UUID: f47ac10b-58cc-4372-a567-0e02b2c3d479)
 //! ├── Node Info (read)           - Basic node information
 //! ├── Sync State (read/notify)   - Current sync status
 //! ├── Sync Data (write/indicate) - Sync data transfer
@@ -31,11 +31,11 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::gatt::{EcheGattService, EcheCharacteristics};
-//! use eche_btle::{NodeId, HierarchyLevel};
+//! use peat_btle::gatt::{PeatGattService, PeatCharacteristics};
+//! use peat_btle::{NodeId, HierarchyLevel};
 //!
 //! // Create the GATT service
-//! let service = EcheGattService::new(
+//! let service = PeatGattService::new(
 //!     NodeId::new(0x12345678),
 //!     HierarchyLevel::Platform,
 //!     0, // capabilities
@@ -56,7 +56,7 @@
 //! The sync protocol uses fragmentation for large messages:
 //!
 //! ```ignore
-//! use eche_btle::gatt::SyncProtocol;
+//! use peat_btle::gatt::SyncProtocol;
 //!
 //! let mut protocol = SyncProtocol::new();
 //! protocol.set_mtu(251); // Use negotiated MTU
@@ -81,7 +81,7 @@ mod protocol;
 mod service;
 
 pub use characteristics::{
-    CharacteristicProperties, Command, CommandType, EcheCharacteristicUuids, NodeInfo, StatusData,
+    CharacteristicProperties, Command, CommandType, NodeInfo, PeatCharacteristicUuids, StatusData,
     StatusFlags, SyncDataHeader, SyncDataOp, SyncState, SyncStateData,
 };
 pub use protocol::{
@@ -90,5 +90,5 @@ pub use protocol::{
 };
 #[cfg(feature = "std")]
 pub use service::{
-    CharacteristicDescriptor, EcheCharacteristics, EcheGattService, GattEvent, GattEventCallback,
+    CharacteristicDescriptor, GattEvent, GattEventCallback, PeatCharacteristics, PeatGattService,
 };

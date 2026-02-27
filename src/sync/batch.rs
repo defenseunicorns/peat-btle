@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Batch Accumulator for Eche-Lite Sync
+//! Batch Accumulator for Peat-Lite Sync
 //!
 //! Collects CRDT operations over a configurable time window or size limit,
 //! then emits them as a batch for efficient BLE transmission.

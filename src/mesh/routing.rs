@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Message routing for ECHE-BTLE mesh
+//! Message routing for PEAT-BTLE mesh
 //!
 //! Handles routing messages through the mesh topology, including:
 //! - Upward routing to parent
@@ -236,7 +236,7 @@ impl MeshRouter {
 
     /// Get the best route for aggregation (data flowing upward)
     ///
-    /// For Eche-Lite nodes, this is always the parent.
+    /// For Peat-Lite nodes, this is always the parent.
     pub fn aggregation_route(&self, topology: &MeshTopology) -> Option<NodeId> {
         topology.parent
     }

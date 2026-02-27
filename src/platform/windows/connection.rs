@@ -46,7 +46,7 @@ pub struct WinRtConnection {
     address: u64,
     /// The BLE device (wrapped in Arc for cloning)
     device: Arc<Option<BluetoothLEDevice>>,
-    /// The Eche GATT service
+    /// The Peat GATT service
     service: Arc<Option<GattDeviceService>>,
     /// The sync data characteristic
     sync_char: Arc<Option<GattCharacteristic>>,
@@ -101,11 +101,11 @@ impl WinRtConnection {
             ));
         }
 
-        // Find Eche service
+        // Find Peat service
         let services = services_result
             .Services()
             .map_err(win_err("Failed to get services"))?;
-        let mut eche_service: Option<GattDeviceService> = None;
+        let mut peat_service: Option<GattDeviceService> = None;
 
         let count = services.Size().map_err(win_err("Failed to get count"))?;
         for i in 0..count {
@@ -116,13 +116,13 @@ impl WinRtConnection {
             let uuid_str = format!("{:?}", uuid).to_lowercase();
 
             if uuid_str.contains("f47ac10b-58cc-4372-a567-0e02b2c3d479") {
-                eche_service = Some(service);
+                peat_service = Some(service);
                 break;
             }
         }
 
-        let service = eche_service.ok_or_else(|| {
-            BleError::ServiceNotFound("Eche service not found on device".to_string())
+        let service = peat_service.ok_or_else(|| {
+            BleError::ServiceNotFound("Peat service not found on device".to_string())
         })?;
 
         // Get characteristics

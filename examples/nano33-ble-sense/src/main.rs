@@ -1,7 +1,7 @@
-//! Eche Sensor Beacon for Arduino Nano 33 BLE Sense
+//! Peat Sensor Beacon for Arduino Nano 33 BLE Sense
 //!
-//! Transmit-only Eche node that:
-//! - Advertises Eche beacon
+//! Transmit-only Peat node that:
+//! - Advertises Peat beacon
 //! - Serves sensor data via GATT
 //!
 //! ## Building
@@ -29,21 +29,21 @@ use nrf_softdevice::ble::peripheral;
 use nrf_softdevice::{raw, Softdevice};
 use panic_probe as _;
 
-/// Eche Service UUID (16-bit short form for advertising)
-const ECHE_SERVICE_UUID_16: u16 = 0xF47A;
+/// Peat Service UUID (16-bit short form for advertising)
+const PEAT_SERVICE_UUID_16: u16 = 0xF47A;
 
 /// Device name in advertisements
-const DEVICE_NAME: &str = "ECHE-SENSE";
+const DEVICE_NAME: &str = "PEAT-SENSE";
 
 // GATT Server definition
 #[nrf_softdevice::gatt_server]
-struct EcheServer {
-    eche: EcheService,
+struct PeatServer {
+    peat: PeatService,
 }
 
-// Eche GATT Service
+// Peat GATT Service
 #[nrf_softdevice::gatt_service(uuid = "f47ac10b-58cc-4372-a567-0e02b2c3d479")]
-struct EcheService {
+struct PeatService {
     /// Document characteristic - CRDT state
     #[characteristic(uuid = "f47a0003-58cc-4372-a567-0e02b2c3d479", read, write, notify)]
     document: [u8; 128],
@@ -60,7 +60,7 @@ async fn softdevice_task(sd: &'static Softdevice) -> ! {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    info!("Eche Sensor Beacon starting...");
+    info!("Peat Sensor Beacon starting...");
 
     // Configure SoftDevice
     let config = nrf_softdevice::Config {
@@ -101,7 +101,7 @@ async fn main(spawner: Spawner) {
     let sd = Softdevice::enable(&config);
 
     // Create GATT server
-    let server = unwrap!(EcheServer::new(sd));
+    let server = unwrap!(PeatServer::new(sd));
 
     // Spawn softdevice task
     spawner.spawn(unwrap!(softdevice_task(sd)));
@@ -115,7 +115,7 @@ async fn main(spawner: Spawner) {
             .flags(&[Flag::GeneralDiscovery, Flag::LE_Only])
             .services_16(
                 ServiceList::Complete,
-                &[ServiceUuid16::from_u16(ECHE_SERVICE_UUID_16)],
+                &[ServiceUuid16::from_u16(PEAT_SERVICE_UUID_16)],
             )
             .full_name(DEVICE_NAME)
             .build();
@@ -137,15 +137,15 @@ async fn main(spawner: Spawner) {
 
                 // Run GATT server until disconnect
                 let res = gatt_server::run(&conn, &server, |event| match event {
-                    EcheServerEvent::Eche(e) => match e {
-                        EcheServiceEvent::DocumentWrite(data) => {
+                    PeatServerEvent::Peat(e) => match e {
+                        PeatServiceEvent::DocumentWrite(data) => {
                             info!("Received document: {} bytes", data.len());
                             // TODO: Merge into local CRDT
                         }
-                        EcheServiceEvent::SensorDataCccdWrite { notifications } => {
+                        PeatServiceEvent::SensorDataCccdWrite { notifications } => {
                             info!("Sensor notifications: {}", notifications);
                         }
-                        EcheServiceEvent::DocumentCccdWrite { notifications } => {
+                        PeatServiceEvent::DocumentCccdWrite { notifications } => {
                             info!("Document notifications: {}", notifications);
                         }
                     },
