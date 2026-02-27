@@ -27,12 +27,12 @@ use windows::Devices::Bluetooth::Advertisement::{
 use windows::Foundation::{EventRegistrationToken, TypedEventHandler};
 
 use crate::config::DiscoveryConfig;
-use crate::discovery::EcheBeacon;
+use crate::discovery::PeatBeacon;
 use crate::error::{BleError, Result};
 use crate::platform::DiscoveredDevice;
 use crate::NodeId;
 
-/// Discovered peripheral with parsed Eche data
+/// Discovered peripheral with parsed Peat data
 #[derive(Debug, Clone)]
 pub struct DiscoveredPeripheral {
     /// Bluetooth address (as u64)
@@ -43,9 +43,9 @@ pub struct DiscoveredPeripheral {
     pub name: Option<String>,
     /// RSSI in dBm
     pub rssi: i16,
-    /// Is this a Eche node?
-    pub is_eche_node: bool,
-    /// Parsed Eche node ID (if Eche node)
+    /// Is this a Peat node?
+    pub is_peat_node: bool,
+    /// Parsed Peat node ID (if Peat node)
     pub node_id: Option<NodeId>,
     /// Raw advertisement data
     pub adv_data: Vec<u8>,
@@ -57,15 +57,15 @@ pub struct DiscoveredPeripheral {
 struct WatcherState {
     /// Known peripherals by address
     peripherals: HashMap<u64, DiscoveredPeripheral>,
-    /// Eche peripherals (subset of peripherals)
-    eche_peripherals: Vec<DiscoveredPeripheral>,
+    /// Peat peripherals (subset of peripherals)
+    peat_peripherals: Vec<DiscoveredPeripheral>,
 }
 
 impl Default for WatcherState {
     fn default() -> Self {
         Self {
             peripherals: HashMap::new(),
-            eche_peripherals: Vec::new(),
+            peat_peripherals: Vec::new(),
         }
     }
 }
@@ -178,10 +178,10 @@ impl BleWatcher {
             .map_err(|e| BleError::PlatformError(format!("Failed to get status: {}", e)))
     }
 
-    /// Get discovered Eche peripherals
-    pub fn get_eche_peripherals(&self) -> Vec<DiscoveredPeripheral> {
+    /// Get discovered Peat peripherals
+    pub fn get_peat_peripherals(&self) -> Vec<DiscoveredPeripheral> {
         if let Ok(state) = self.state.lock() {
-            state.eche_peripherals.clone()
+            state.peat_peripherals.clone()
         } else {
             Vec::new()
         }
@@ -200,7 +200,7 @@ impl BleWatcher {
     pub fn clear_peripherals(&self) {
         if let Ok(mut state) = self.state.lock() {
             state.peripherals.clear();
-            state.eche_peripherals.clear();
+            state.peat_peripherals.clear();
         }
     }
 
@@ -251,9 +251,9 @@ impl BleWatcher {
             }
         });
 
-        // Get manufacturer data to check for Eche beacon
+        // Get manufacturer data to check for Peat beacon
         let mut adv_data = Vec::new();
-        let mut is_eche_node = false;
+        let mut is_peat_node = false;
         let mut node_id = None;
 
         if let Ok(manufacturer_data) = advertisement.ManufacturerData() {
@@ -261,7 +261,7 @@ impl BleWatcher {
                 for i in 0..size {
                     if let Ok(data) = manufacturer_data.GetAt(i) {
                         if let Ok(company_id) = data.CompanyId() {
-                            // Check for Eche company ID (we use 0xFFFF for development)
+                            // Check for Peat company ID (we use 0xFFFF for development)
                             if company_id == 0xFFFF {
                                 if let Ok(buffer) = data.Data() {
                                     if let Ok(reader) =
@@ -272,9 +272,9 @@ impl BleWatcher {
                                             if reader.ReadBytes(&mut bytes).is_ok() {
                                                 adv_data = bytes.clone();
 
-                                                // Try to parse as Eche beacon
-                                                if let Some(beacon) = EcheBeacon::decode(&bytes) {
-                                                    is_eche_node = true;
+                                                // Try to parse as Peat beacon
+                                                if let Some(beacon) = PeatBeacon::decode(&bytes) {
+                                                    is_peat_node = true;
                                                     node_id = Some(beacon.node_id);
                                                 }
                                             }
@@ -288,14 +288,14 @@ impl BleWatcher {
             }
         }
 
-        // Also check service UUIDs for Eche service
+        // Also check service UUIDs for Peat service
         if let Ok(service_uuids) = advertisement.ServiceUuids() {
             if let Ok(size) = service_uuids.Size() {
                 for i in 0..size {
                     if let Ok(uuid) = service_uuids.GetAt(i) {
                         let uuid_str = format!("{:?}", uuid);
                         if uuid_str.contains("f47ac10b-58cc-4372-a567-0e02b2c3d479") {
-                            is_eche_node = true;
+                            is_peat_node = true;
                             break;
                         }
                     }
@@ -309,7 +309,7 @@ impl BleWatcher {
             address_string,
             name,
             rssi,
-            is_eche_node,
+            is_peat_node,
             node_id,
             adv_data,
             timestamp,
@@ -319,16 +319,16 @@ impl BleWatcher {
         if let Ok(mut state) = state.lock() {
             state.peripherals.insert(address, peripheral.clone());
 
-            if is_eche_node {
-                // Update or add to Eche peripherals list
+            if is_peat_node {
+                // Update or add to Peat peripherals list
                 if let Some(existing) = state
-                    .eche_peripherals
+                    .peat_peripherals
                     .iter_mut()
                     .find(|p| p.address == address)
                 {
                     *existing = peripheral;
                 } else {
-                    state.eche_peripherals.push(peripheral);
+                    state.peat_peripherals.push(peripheral);
                 }
             }
         }
@@ -350,7 +350,7 @@ impl From<DiscoveredPeripheral> for DiscoveredDevice {
             address: peripheral.address_string,
             name: peripheral.name,
             rssi: peripheral.rssi as i8,
-            is_eche_node: peripheral.is_eche_node,
+            is_peat_node: peripheral.is_peat_node,
             node_id: peripheral.node_id,
             adv_data: peripheral.adv_data,
         }

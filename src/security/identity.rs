@@ -15,7 +15,7 @@
 
 //! Device identity management using Ed25519 signatures
 //!
-//! Each device in an Eche mesh has a cryptographic identity consisting of:
+//! Each device in a Peat mesh has a cryptographic identity consisting of:
 //! - An Ed25519 signing keypair (private key stored securely)
 //! - A derived NodeId (first 4 bytes of BLAKE3 hash of public key)
 //!
@@ -27,7 +27,7 @@
 //! # Example
 //!
 //! ```
-//! use eche_btle::security::DeviceIdentity;
+//! use peat_btle::security::DeviceIdentity;
 //!
 //! // Generate a new identity
 //! let identity = DeviceIdentity::generate();

@@ -39,7 +39,7 @@
 //! │   (scanning)     │    (advertising)     │
 //! ├─────────────────────────────────────────┤
 //! │  GattClient      │    GattServer        │
-//! │  (connecting,    │   (hosting Eche      │
+//! │  (connecting,    │   (hosting Peat      │
 //! │   reading)       │    service)          │
 //! ├─────────────────────────────────────────┤
 //! │           WinRT Bluetooth APIs          │
@@ -49,8 +49,8 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::platform::windows::WinRtBleAdapter;
-//! use eche_btle::{BleConfig, NodeId};
+//! use peat_btle::platform::windows::WinRtBleAdapter;
+//! use peat_btle::{BleConfig, NodeId};
 //!
 //! let config = BleConfig::new(NodeId::new(0x12345678));
 //! let mut adapter = WinRtBleAdapter::new()?;

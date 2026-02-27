@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Observer pattern for Eche mesh events
+//! Observer pattern for Peat mesh events
 //!
 //! This module provides the event types and observer trait for receiving
 //! notifications about mesh state changes. Platform implementations register
@@ -23,17 +23,17 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::observer::{EcheEvent, EcheObserver};
+//! use peat_btle::observer::{PeatEvent, PeatObserver};
 //!
 //! struct MyObserver;
 //!
-//! impl EcheObserver for MyObserver {
-//!     fn on_event(&self, event: EcheEvent) {
+//! impl PeatObserver for MyObserver {
+//!     fn on_event(&self, event: PeatEvent) {
 //!         match event {
-//!             EcheEvent::PeerDiscovered { peer } => {
+//!             PeatEvent::PeerDiscovered { peer } => {
 //!                 println!("Discovered: {}", peer.display_name());
 //!             }
-//!             EcheEvent::EmergencyReceived { from_node } => {
+//!             PeatEvent::EmergencyReceived { from_node } => {
 //!                 println!("EMERGENCY from {:08X}", from_node.as_u32());
 //!             }
 //!             _ => {}
@@ -47,27 +47,27 @@ use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 #[cfg(feature = "std")]
 use std::sync::Arc;
 
-// Re-import Vec for EcheEvent variants
+// Re-import Vec for PeatEvent variants
 #[cfg(feature = "std")]
 use std::string::String;
 #[cfg(feature = "std")]
 use std::vec::Vec;
 
-use crate::peer::EchePeer;
+use crate::peer::PeatPeer;
 use crate::sync::crdt::EventType;
 use crate::NodeId;
 
-/// Events emitted by the Eche mesh
+/// Events emitted by the Peat mesh
 ///
 /// These events notify observers about changes in mesh state, peer lifecycle,
 /// and document synchronization.
 #[derive(Debug, Clone)]
-pub enum EcheEvent {
+pub enum PeatEvent {
     // ==================== Peer Lifecycle Events ====================
     /// A new peer was discovered via BLE scanning
     PeerDiscovered {
         /// The discovered peer
-        peer: EchePeer,
+        peer: PeatPeer,
     },
 
     /// A peer connected to us (either direction)
@@ -215,9 +215,9 @@ pub enum EcheEvent {
     },
 }
 
-impl EcheEvent {
+impl PeatEvent {
     /// Create a peer discovered event
-    pub fn peer_discovered(peer: EchePeer) -> Self {
+    pub fn peer_discovered(peer: PeatPeer) -> Self {
         Self::PeerDiscovered { peer }
     }
 
@@ -337,7 +337,7 @@ pub enum SecurityViolationKind {
     UnauthorizedNode,
 }
 
-/// Observer trait for receiving Eche mesh events
+/// Observer trait for receiving Peat mesh events
 ///
 /// Implement this trait to receive callbacks when mesh events occur.
 /// Observers must be thread-safe (Send + Sync) as they may be called
@@ -348,19 +348,19 @@ pub enum SecurityViolationKind {
 /// - **iOS/macOS**: Wrap in a Swift class that conforms to this protocol via UniFFI
 /// - **Android**: Implement via JNI callback interface
 /// - **ESP32**: Use direct Rust implementation with static callbacks
-pub trait EcheObserver: Send + Sync {
+pub trait PeatObserver: Send + Sync {
     /// Called when a mesh event occurs
     ///
     /// This method should return quickly to avoid blocking the mesh.
     /// If heavy processing is needed, dispatch to another thread.
-    fn on_event(&self, event: EcheEvent);
+    fn on_event(&self, event: PeatEvent);
 }
 
 /// A simple observer that collects events into a vector (useful for testing)
 #[cfg(feature = "std")]
 #[derive(Debug, Default)]
 pub struct CollectingObserver {
-    events: std::sync::Mutex<Vec<EcheEvent>>,
+    events: std::sync::Mutex<Vec<PeatEvent>>,
 }
 
 #[cfg(feature = "std")]
@@ -373,7 +373,7 @@ impl CollectingObserver {
     }
 
     /// Get all collected events
-    pub fn events(&self) -> Vec<EcheEvent> {
+    pub fn events(&self) -> Vec<PeatEvent> {
         self.events.lock().unwrap().clone()
     }
 
@@ -389,8 +389,8 @@ impl CollectingObserver {
 }
 
 #[cfg(feature = "std")]
-impl EcheObserver for CollectingObserver {
-    fn on_event(&self, event: EcheEvent) {
+impl PeatObserver for CollectingObserver {
+    fn on_event(&self, event: PeatEvent) {
         self.events.lock().unwrap().push(event);
     }
 }
@@ -398,7 +398,7 @@ impl EcheObserver for CollectingObserver {
 /// Helper to manage multiple observers
 #[cfg(feature = "std")]
 pub struct ObserverManager {
-    observers: std::sync::RwLock<Vec<Arc<dyn EcheObserver>>>,
+    observers: std::sync::RwLock<Vec<Arc<dyn PeatObserver>>>,
 }
 
 #[cfg(feature = "std")]
@@ -418,12 +418,12 @@ impl ObserverManager {
     }
 
     /// Add an observer
-    pub fn add(&self, observer: Arc<dyn EcheObserver>) {
+    pub fn add(&self, observer: Arc<dyn PeatObserver>) {
         self.observers.write().unwrap().push(observer);
     }
 
     /// Remove an observer (by Arc pointer equality)
-    pub fn remove(&self, observer: &Arc<dyn EcheObserver>) {
+    pub fn remove(&self, observer: &Arc<dyn PeatObserver>) {
         self.observers
             .write()
             .unwrap()
@@ -431,7 +431,7 @@ impl ObserverManager {
     }
 
     /// Notify all observers of an event
-    pub fn notify(&self, event: EcheEvent) {
+    pub fn notify(&self, event: PeatEvent) {
         // Use try_read to avoid panicking on poisoned locks
         if let Ok(observers) = self.observers.try_read() {
             for observer in observers.iter() {
@@ -454,14 +454,14 @@ mod tests {
     fn test_collecting_observer() {
         let observer = CollectingObserver::new();
 
-        observer.on_event(EcheEvent::peer_connected(NodeId::new(0x12345678)));
-        observer.on_event(EcheEvent::emergency_received(NodeId::new(0x87654321)));
+        observer.on_event(PeatEvent::peer_connected(NodeId::new(0x12345678)));
+        observer.on_event(PeatEvent::emergency_received(NodeId::new(0x87654321)));
 
         assert_eq!(observer.count(), 2);
 
         let events = observer.events();
-        assert!(matches!(events[0], EcheEvent::PeerConnected { .. }));
-        assert!(matches!(events[1], EcheEvent::EmergencyReceived { .. }));
+        assert!(matches!(events[0], PeatEvent::PeerConnected { .. }));
+        assert!(matches!(events[1], PeatEvent::EmergencyReceived { .. }));
 
         observer.clear();
         assert_eq!(observer.count(), 0);
@@ -474,15 +474,15 @@ mod tests {
         // Keep concrete references for count checks
         let obs1_concrete = Arc::new(CollectingObserver::new());
         let obs2_concrete = Arc::new(CollectingObserver::new());
-        let observer1: Arc<dyn EcheObserver> = obs1_concrete.clone();
-        let observer2: Arc<dyn EcheObserver> = obs2_concrete.clone();
+        let observer1: Arc<dyn PeatObserver> = obs1_concrete.clone();
+        let observer2: Arc<dyn PeatObserver> = obs2_concrete.clone();
 
         manager.add(observer1.clone());
         manager.add(observer2.clone());
 
         assert_eq!(manager.count(), 2);
 
-        manager.notify(EcheEvent::peer_connected(NodeId::new(0x12345678)));
+        manager.notify(PeatEvent::peer_connected(NodeId::new(0x12345678)));
 
         assert_eq!(obs1_concrete.count(), 1);
         assert_eq!(obs2_concrete.count(), 1);
@@ -490,7 +490,7 @@ mod tests {
         manager.remove(&observer1);
         assert_eq!(manager.count(), 1);
 
-        manager.notify(EcheEvent::peer_lost(NodeId::new(0x12345678)));
+        manager.notify(PeatEvent::peer_lost(NodeId::new(0x12345678)));
 
         assert_eq!(obs1_concrete.count(), 1); // Not notified
         assert_eq!(obs2_concrete.count(), 2); // Got both events

@@ -15,12 +15,12 @@
 
 //! Test peer connection state tracking and emergency/ACK flow
 //!
-//! Verifies that eche-btle properly tracks peer connection state
+//! Verifies that peat-btle properly tracks peer connection state
 //! and handles emergency/ACK propagation.
 
-use eche_btle::eche_mesh::{EcheMesh, EcheMeshConfig};
-use eche_btle::observer::DisconnectReason;
-use eche_btle::NodeId;
+use peat_btle::observer::DisconnectReason;
+use peat_btle::peat_mesh::{PeatMesh, PeatMeshConfig};
+use peat_btle::NodeId;
 
 // Valid timestamp for testing (2024-01-15 00:00:00 UTC)
 const TEST_TIMESTAMP: u64 = 1705276800000;
@@ -31,11 +31,11 @@ fn test_peer_marked_connected_on_data_receive() {
     let node_a = NodeId::new(0xAAAAAAAA);
     let node_b = NodeId::new(0xBBBBBBBB);
 
-    let config_a = EcheMeshConfig::new(node_a, "ALPHA", "TEST");
-    let config_b = EcheMeshConfig::new(node_b, "BRAVO", "TEST");
+    let config_a = PeatMeshConfig::new(node_a, "ALPHA", "TEST");
+    let config_b = PeatMeshConfig::new(node_b, "BRAVO", "TEST");
 
-    let mesh_a = EcheMesh::new(config_a);
-    let mesh_b = EcheMesh::new(config_b);
+    let mesh_a = PeatMesh::new(config_a);
+    let mesh_b = PeatMesh::new(config_b);
 
     // Initially, mesh_a has no peers
     assert_eq!(
@@ -84,11 +84,11 @@ fn test_emergency_ack_flow() {
     let node_a = NodeId::new(0xAAAAAAAA);
     let node_b = NodeId::new(0xBBBBBBBB);
 
-    let config_a = EcheMeshConfig::new(node_a, "ALPHA", "TEST");
-    let config_b = EcheMeshConfig::new(node_b, "BRAVO", "TEST");
+    let config_a = PeatMeshConfig::new(node_a, "ALPHA", "TEST");
+    let config_b = PeatMeshConfig::new(node_b, "BRAVO", "TEST");
 
-    let mesh_a = EcheMesh::new(config_a);
-    let mesh_b = EcheMesh::new(config_b);
+    let mesh_a = PeatMesh::new(config_a);
+    let mesh_b = PeatMesh::new(config_b);
 
     // Step 1: Exchange initial documents to register peers
     let doc_a = mesh_a.build_document();
@@ -209,13 +209,13 @@ fn test_multiple_peer_registration() {
     let node_b = NodeId::new(0xBBBBBBBB);
     let node_c = NodeId::new(0xCCCCCCCC);
 
-    let config_a = EcheMeshConfig::new(node_a, "ALPHA", "TEST");
-    let config_b = EcheMeshConfig::new(node_b, "BRAVO", "TEST");
-    let config_c = EcheMeshConfig::new(node_c, "CHARLIE", "TEST");
+    let config_a = PeatMeshConfig::new(node_a, "ALPHA", "TEST");
+    let config_b = PeatMeshConfig::new(node_b, "BRAVO", "TEST");
+    let config_c = PeatMeshConfig::new(node_c, "CHARLIE", "TEST");
 
-    let mesh_a = EcheMesh::new(config_a);
-    let mesh_b = EcheMesh::new(config_b);
-    let mesh_c = EcheMesh::new(config_c);
+    let mesh_a = PeatMesh::new(config_a);
+    let mesh_b = PeatMesh::new(config_b);
+    let mesh_c = PeatMesh::new(config_c);
 
     // Build documents
     let _doc_a = mesh_a.build_document();
@@ -252,11 +252,11 @@ fn test_peer_marked_disconnected_on_ble_disconnect() {
     let node_a = NodeId::new(0xAAAAAAAA);
     let node_b = NodeId::new(0xBBBBBBBB);
 
-    let config_a = EcheMeshConfig::new(node_a, "ALPHA", "TEST");
-    let config_b = EcheMeshConfig::new(node_b, "BRAVO", "TEST");
+    let config_a = PeatMeshConfig::new(node_a, "ALPHA", "TEST");
+    let config_b = PeatMeshConfig::new(node_b, "BRAVO", "TEST");
 
-    let mesh_a = EcheMesh::new(config_a);
-    let mesh_b = EcheMesh::new(config_b);
+    let mesh_a = PeatMesh::new(config_a);
+    let mesh_b = PeatMesh::new(config_b);
 
     // Build and exchange documents
     let doc_b = mesh_b.build_document();
@@ -314,11 +314,11 @@ fn test_stale_disconnected_peer_cleanup() {
     // Use short timeout for testing (5 seconds)
     // Note: cleanup_interval is 10s by default, so we need to use timestamps
     // that account for both the peer_timeout AND cleanup_interval
-    let config_a = EcheMeshConfig::new(node_a, "ALPHA", "TEST").with_peer_timeout(5000);
-    let config_b = EcheMeshConfig::new(node_b, "BRAVO", "TEST");
+    let config_a = PeatMeshConfig::new(node_a, "ALPHA", "TEST").with_peer_timeout(5000);
+    let config_b = PeatMeshConfig::new(node_b, "BRAVO", "TEST");
 
-    let mesh_a = EcheMesh::new(config_a);
-    let mesh_b = EcheMesh::new(config_b);
+    let mesh_a = PeatMesh::new(config_a);
+    let mesh_b = PeatMesh::new(config_b);
 
     // Build and exchange documents at t=1000 (use small timestamps for tick() internal tracking)
     let doc_b = mesh_b.build_document();
@@ -368,11 +368,11 @@ fn test_connected_peer_becomes_stale() {
 
     // Use short timeout for testing (5 seconds)
     // Note: cleanup runs every 10s by default
-    let config_a = EcheMeshConfig::new(node_a, "ALPHA", "TEST").with_peer_timeout(5000);
-    let config_b = EcheMeshConfig::new(node_b, "BRAVO", "TEST");
+    let config_a = PeatMeshConfig::new(node_a, "ALPHA", "TEST").with_peer_timeout(5000);
+    let config_b = PeatMeshConfig::new(node_b, "BRAVO", "TEST");
 
-    let mesh_a = EcheMesh::new(config_a);
-    let mesh_b = EcheMesh::new(config_b);
+    let mesh_a = PeatMesh::new(config_a);
+    let mesh_b = PeatMesh::new(config_b);
 
     // Build and exchange documents at t=1000 (use small timestamps)
     let doc_b = mesh_b.build_document();
@@ -414,11 +414,11 @@ fn test_reconnect_after_disconnect() {
     let node_a = NodeId::new(0xAAAAAAAA);
     let node_b = NodeId::new(0xBBBBBBBB);
 
-    let config_a = EcheMeshConfig::new(node_a, "ALPHA", "TEST");
-    let config_b = EcheMeshConfig::new(node_b, "BRAVO", "TEST");
+    let config_a = PeatMeshConfig::new(node_a, "ALPHA", "TEST");
+    let config_b = PeatMeshConfig::new(node_b, "BRAVO", "TEST");
 
-    let mesh_a = EcheMesh::new(config_a);
-    let mesh_b = EcheMesh::new(config_b);
+    let mesh_a = PeatMesh::new(config_a);
+    let mesh_b = PeatMesh::new(config_b);
 
     // Initial connection
     let doc_b = mesh_b.build_document();
@@ -466,11 +466,11 @@ fn test_various_disconnect_reasons() {
     let node_a = NodeId::new(0xAAAAAAAA);
     let node_b = NodeId::new(0xBBBBBBBB);
 
-    let config_a = EcheMeshConfig::new(node_a, "ALPHA", "TEST");
-    let config_b = EcheMeshConfig::new(node_b, "BRAVO", "TEST");
+    let config_a = PeatMeshConfig::new(node_a, "ALPHA", "TEST");
+    let config_b = PeatMeshConfig::new(node_b, "BRAVO", "TEST");
 
-    let mesh_a = EcheMesh::new(config_a);
-    let mesh_b = EcheMesh::new(config_b);
+    let mesh_a = PeatMesh::new(config_a);
+    let mesh_b = PeatMesh::new(config_b);
 
     let doc_b = mesh_b.build_document();
 
@@ -515,16 +515,16 @@ fn test_various_disconnect_reasons() {
 /// Test that connection graph is updated when peers disconnect
 #[test]
 fn test_connection_graph_updated_on_disconnect() {
-    use eche_btle::peer::ConnectionState;
+    use peat_btle::peer::ConnectionState;
 
     let node_a = NodeId::new(0xAAAAAAAA);
     let node_b = NodeId::new(0xBBBBBBBB);
 
-    let config_a = EcheMeshConfig::new(node_a, "ALPHA", "TEST");
-    let config_b = EcheMeshConfig::new(node_b, "BRAVO", "TEST");
+    let config_a = PeatMeshConfig::new(node_a, "ALPHA", "TEST");
+    let config_b = PeatMeshConfig::new(node_b, "BRAVO", "TEST");
 
-    let mesh_a = EcheMesh::new(config_a);
-    let mesh_b = EcheMesh::new(config_b);
+    let mesh_a = PeatMesh::new(config_a);
+    let mesh_b = PeatMesh::new(config_b);
 
     // Build and exchange documents
     let doc_b = mesh_b.build_document();
@@ -596,18 +596,18 @@ fn test_connection_graph_updated_on_disconnect() {
 /// Test that indirect peers are cleaned up when their via_peer disconnects
 #[test]
 fn test_indirect_peers_cleaned_on_via_peer_disconnect() {
-    use eche_btle::relay::RelayEnvelope;
+    use peat_btle::relay::RelayEnvelope;
 
     let node_a = NodeId::new(0xAAAAAAAA);
     let node_b = NodeId::new(0xBBBBBBBB);
     let node_c = NodeId::new(0xCCCCCCCC);
 
     // Enable relay to track indirect peers
-    let config_a = EcheMeshConfig::new(node_a, "ALPHA", "TEST").with_relay();
-    let config_b = EcheMeshConfig::new(node_b, "BRAVO", "TEST").with_relay();
+    let config_a = PeatMeshConfig::new(node_a, "ALPHA", "TEST").with_relay();
+    let config_b = PeatMeshConfig::new(node_b, "BRAVO", "TEST").with_relay();
 
-    let mesh_a = EcheMesh::new(config_a);
-    let mesh_b = EcheMesh::new(config_b);
+    let mesh_a = PeatMesh::new(config_a);
+    let mesh_b = PeatMesh::new(config_b);
 
     // Build and exchange documents to establish direct connection A <-> B
     let doc_b = mesh_b.build_document();
@@ -618,8 +618,8 @@ fn test_indirect_peers_cleaned_on_via_peer_disconnect() {
 
     // Create a relay envelope that looks like it came from C via B
     // C originates the message, B relays it (so hop_count is 1 when A receives it)
-    let config_c = EcheMeshConfig::new(node_c, "CHARLIE", "TEST").with_relay();
-    let mesh_c = EcheMesh::new(config_c);
+    let config_c = PeatMeshConfig::new(node_c, "CHARLIE", "TEST").with_relay();
+    let mesh_c = PeatMesh::new(config_c);
     let c_doc = mesh_c.build_document();
 
     // Create envelope as if C sent it, then B relayed it (increment hop)

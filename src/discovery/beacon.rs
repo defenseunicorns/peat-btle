@@ -13,9 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Eche Beacon format for BLE advertisements
+//! Peat Beacon format for BLE advertisements
 //!
-//! This module defines the wire format for Eche beacons that are broadcast
+//! This module defines the wire format for Peat beacons that are broadcast
 //! via BLE advertising packets. The beacon format is designed to fit within
 //! the 31-byte legacy advertising limit while conveying essential node info.
 //!
@@ -53,7 +53,7 @@ use alloc::{string::String, vec::Vec};
 
 use crate::{capabilities, HierarchyLevel, NodeId};
 
-/// Eche beacon protocol version
+/// Peat beacon protocol version
 pub const BEACON_VERSION: u8 = 1;
 
 /// Beacon size in bytes
@@ -62,11 +62,11 @@ pub const BEACON_SIZE: usize = 16;
 /// Compact beacon size (for legacy advertising)
 pub const BEACON_COMPACT_SIZE: usize = 10;
 
-/// Eche Beacon data structure
+/// Peat Beacon data structure
 ///
-/// Contains all information broadcast in a Eche BLE advertisement.
+/// Contains all information broadcast in a Peat BLE advertisement.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EcheBeacon {
+pub struct PeatBeacon {
     /// Protocol version (0-15)
     pub version: u8,
     /// Node capabilities flags
@@ -83,7 +83,7 @@ pub struct EcheBeacon {
     pub seq_num: u16,
 }
 
-impl EcheBeacon {
+impl PeatBeacon {
     /// Create a new beacon with the given node ID
     pub fn new(node_id: NodeId) -> Self {
         Self {
@@ -97,8 +97,8 @@ impl EcheBeacon {
         }
     }
 
-    /// Create a beacon for a Eche-Lite node
-    pub fn eche_lite(node_id: NodeId) -> Self {
+    /// Create a beacon for a Peat-Lite node
+    pub fn peat_lite(node_id: NodeId) -> Self {
         Self {
             version: BEACON_VERSION,
             capabilities: capabilities::LITE_NODE,
@@ -275,7 +275,7 @@ impl EcheBeacon {
         })
     }
 
-    /// Check if this is a Eche-Lite node
+    /// Check if this is a Peat-Lite node
     pub fn is_lite_node(&self) -> bool {
         self.capabilities & capabilities::LITE_NODE != 0
     }
@@ -291,7 +291,7 @@ impl EcheBeacon {
     }
 }
 
-impl Default for EcheBeacon {
+impl Default for PeatBeacon {
     fn default() -> Self {
         Self::new(NodeId::default())
     }
@@ -304,8 +304,8 @@ pub struct ParsedAdvertisement {
     pub address: String,
     /// RSSI in dBm
     pub rssi: i8,
-    /// Parsed Eche beacon (if this is a Eche device with plaintext beacon)
-    pub beacon: Option<EcheBeacon>,
+    /// Parsed Peat beacon (if this is a Peat device with plaintext beacon)
+    pub beacon: Option<PeatBeacon>,
     /// Raw encrypted beacon service data (if version 0x02 beacon detected)
     ///
     /// Platform code should populate this when it detects service data
@@ -321,15 +321,15 @@ pub struct ParsedAdvertisement {
 }
 
 impl ParsedAdvertisement {
-    /// Check if this is a Eche device
+    /// Check if this is a Peat device
     ///
     /// Returns true if either a plaintext beacon is present or encrypted
     /// service data is available (which may be decryptable by the Scanner).
-    pub fn is_eche_device(&self) -> bool {
+    pub fn is_peat_device(&self) -> bool {
         self.beacon.is_some() || self.encrypted_service_data.is_some()
     }
 
-    /// Get the node ID if this is a Eche device
+    /// Get the node ID if this is a Peat device
     pub fn node_id(&self) -> Option<&NodeId> {
         self.beacon.as_ref().map(|b| &b.node_id)
     }
@@ -368,14 +368,14 @@ mod tests {
 
     #[test]
     fn test_beacon_encode_decode() {
-        let beacon = EcheBeacon::new(NodeId::new(0x12345678))
+        let beacon = PeatBeacon::new(NodeId::new(0x12345678))
             .with_capabilities(capabilities::LITE_NODE | capabilities::SENSOR_ACCEL)
             .with_hierarchy_level(HierarchyLevel::Squad)
             .with_geohash(0x98FF88)
             .with_battery(75);
 
         let encoded = beacon.encode();
-        let decoded = EcheBeacon::decode(&encoded).unwrap();
+        let decoded = PeatBeacon::decode(&encoded).unwrap();
 
         assert_eq!(decoded.version, beacon.version);
         assert_eq!(decoded.capabilities, beacon.capabilities);
@@ -387,14 +387,14 @@ mod tests {
 
     #[test]
     fn test_beacon_compact_encode_decode() {
-        let beacon = EcheBeacon::new(NodeId::new(0xDEADBEEF))
+        let beacon = PeatBeacon::new(NodeId::new(0xDEADBEEF))
             .with_capabilities(capabilities::CAN_RELAY)
             .with_battery(50);
 
         let encoded = beacon.encode_compact();
         assert_eq!(encoded.len(), BEACON_COMPACT_SIZE);
 
-        let decoded = EcheBeacon::decode_compact(&encoded).unwrap();
+        let decoded = PeatBeacon::decode_compact(&encoded).unwrap();
 
         assert_eq!(decoded.node_id, beacon.node_id);
         assert_eq!(decoded.capabilities, beacon.capabilities);
@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_beacon_size() {
-        let beacon = EcheBeacon::new(NodeId::new(0x12345678));
+        let beacon = PeatBeacon::new(NodeId::new(0x12345678));
         let encoded = beacon.encode();
         assert_eq!(encoded.len(), BEACON_SIZE);
         assert_eq!(encoded.len(), 16);
@@ -412,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_beacon_version() {
-        let beacon = EcheBeacon::new(NodeId::new(0x12345678));
+        let beacon = PeatBeacon::new(NodeId::new(0x12345678));
         let encoded = beacon.encode();
         let version = (encoded[0] >> 4) & 0x0F;
         assert_eq!(version, BEACON_VERSION);
@@ -421,20 +421,20 @@ mod tests {
     #[test]
     fn test_beacon_capabilities() {
         let caps = capabilities::LITE_NODE | capabilities::CODED_PHY | capabilities::HAS_GPS;
-        let beacon = EcheBeacon::new(NodeId::new(0x12345678)).with_capabilities(caps);
+        let beacon = PeatBeacon::new(NodeId::new(0x12345678)).with_capabilities(caps);
 
         assert!(beacon.is_lite_node());
         assert!(beacon.supports_coded_phy());
         assert!(!beacon.can_relay());
 
         let encoded = beacon.encode();
-        let decoded = EcheBeacon::decode(&encoded).unwrap();
+        let decoded = PeatBeacon::decode(&encoded).unwrap();
         assert_eq!(decoded.capabilities, caps);
     }
 
     #[test]
     fn test_sequence_number_wrap() {
-        let mut beacon = EcheBeacon::new(NodeId::new(0x12345678));
+        let mut beacon = PeatBeacon::new(NodeId::new(0x12345678));
         beacon.seq_num = 0xFFFF;
         beacon.increment_seq();
         assert_eq!(beacon.seq_num, 0);
@@ -443,8 +443,8 @@ mod tests {
     #[test]
     fn test_decode_invalid_length() {
         let short_data = [0u8; 5];
-        assert!(EcheBeacon::decode(&short_data).is_none());
-        assert!(EcheBeacon::decode_compact(&short_data).is_none());
+        assert!(PeatBeacon::decode(&short_data).is_none());
+        assert!(PeatBeacon::decode_compact(&short_data).is_none());
     }
 
     #[test]
@@ -466,8 +466,8 @@ mod tests {
     }
 
     #[test]
-    fn test_eche_lite_beacon() {
-        let beacon = EcheBeacon::eche_lite(NodeId::new(0xCAFEBABE));
+    fn test_peat_lite_beacon() {
+        let beacon = PeatBeacon::peat_lite(NodeId::new(0xCAFEBABE));
         assert!(beacon.is_lite_node());
         assert!(!beacon.can_relay());
     }

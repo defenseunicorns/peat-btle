@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Goa CI script for eche-btle
+# Goa CI script for peat-btle
 # Triggered when changes are detected on the Radicle repo
 #
 # Architecture:
@@ -103,7 +103,7 @@ HAS_FAILURE=0
 # Two Pis: one runs the responder, the other runs the client
 RESPONDER_HOST="${RESPONDER_HOST:-kit@rpi-ci}"
 CLIENT_HOST="${CLIENT_HOST:-kit@rpi-ci2}"
-REMOTE_REPO="${REMOTE_REPO:-/home/kit/eche-btle}"
+REMOTE_REPO="${REMOTE_REPO:-/home/kit/peat-btle}"
 
 # Run CI checks with timeouts
 CI_TIMEOUT=300  # 5 minutes per step

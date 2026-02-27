@@ -4,7 +4,7 @@
 
 ### What Works (macOS - PRIMARY)
 - **CoreBluetooth Adapter**: Successfully initialized (waits for PoweredOn state)
-- **BLE Advertising**: Advertising as `ECHE-BA5E0001` with Eche service UUID
+- **BLE Advertising**: Advertising as `PEAT-BA5E0001` with Peat service UUID
 - **GATT Server**: 5 characteristics registered (node_info, sync_state, sync_data, command, status)
 - **BLE Discovery**: Working! Discovers all nearby BLE devices
 - **NSRunLoop Integration**: Pumps run loop to deliver CoreBluetooth callbacks
@@ -12,27 +12,27 @@
 - **Self-Discovery Filtering**: Ignores own advertisements
 - **Mesh Integration**: Using same WEARTAK genesis as watches (mesh ID: 29C916FA)
 - **GATT Client Connections**: Full outbound connection support to discovered watches
-- **Service/Characteristic Discovery**: Discovers Eche service (F47AC10B) and characteristics
+- **Service/Characteristic Discovery**: Discovers Peat service (F47AC10B) and characteristics
 - **Sync Data Read**: Reads sync_data (F47A0003) from connected watches
-- **Document Decryption**: Decrypts received documents via EcheMesh with shared encryption key
+- **Document Decryption**: Decrypts received documents via PeatMesh with shared encryption key
 - **Data Extraction**: Extracts node_id, callsign, location, battery, heart rate, emergency status
 - **Bidirectional Sync**: Writes our sync document back to watches after receiving theirs
 
 ### Discovered Devices (Test Results 2026-02-05)
-- `WEAROS-4059`, `WEAROS-3301` - WearOS watches visible but not advertising as Eche
+- `WEAROS-4059`, `WEAROS-3301` - WearOS watches visible but not advertising as Peat
 - Various other BLE devices (TV, soundbar, HomePods, etc.)
-- Self: `ECHE-BA5E0` (name truncated by CoreBluetooth)
+- Self: `PEAT-BA5E0` (name truncated by CoreBluetooth)
 
-**Note**: WearTAK watches only advertise Eche service UUID when actively syncing. To test:
+**Note**: WearTAK watches only advertise Peat service UUID when actively syncing. To test:
 1. Open WearTAK app on watch
 2. Trigger a sync or ensure BLE advertising is enabled
 3. Watch should then appear as `HIVE_WEARTAK-xxxx`
 
 ### What Works (Linux)
-- **Linux BLE Advertising**: Successfully advertising as `ECHE-BA5E0001` with GATT service
+- **Linux BLE Advertising**: Successfully advertising as `PEAT-BA5E0001` with GATT service
 - **GATT Server**: 5 characteristics registered
 - **Encrypted Documents**: Initial sync_state populated with 81-byte encrypted document
-- **Discovery**: Successfully discovering WearTAK watches (e.g., `ECHE-C8E32F88`)
+- **Discovery**: Successfully discovering WearTAK watches (e.g., `PEAT-C8E32F88`)
 
 ### What Doesn't Work (Linux/BlueZ)
 - **Outbound Connections**: BlueZ consistently fails with `le-connection-abort-by-local`
@@ -45,7 +45,7 @@
 ### Files Changed
 - `src/platform/linux/adapter.rs`: Added helper methods for device access, discovery control, adapter alias, MTU tracking
 - `src/platform/linux/connection.rs`: Added MTU discovery via GATT operations, better default MTU (185 bytes)
-- `src/platform/apple/adapter.rs`: Fixed scan filter to use Eche service UUID
+- `src/platform/apple/adapter.rs`: Fixed scan filter to use Peat service UUID
 - `examples/range_test_node.rs`: Range test orchestrator with active/passive connection modes (Linux)
 - `examples/range_test_node_macos.rs`: Range test orchestrator for macOS using CoreBluetooth
 
@@ -59,12 +59,12 @@ The macOS range test node is implemented and working:
 ### What Works (macOS)
 - CoreBluetooth adapter initialization
 - GATT service registration with 5 characteristics
-- Advertising as `ECHE-BA5E0001` with Eche service UUID
-- Scanning filtered by Eche service UUID
+- Advertising as `PEAT-BA5E0001` with Peat service UUID
+- Scanning filtered by Peat service UUID
 - Discovery callback for found devices
 - Periodic status updates
 - **Full GATT Client (NEW)**:
-  - Connect to discovered Eche watches via `connect_by_identifier()`
+  - Connect to discovered Peat watches via `connect_by_identifier()`
   - Discover services and characteristics
   - Read sync_data from watches (F47A0003)
   - Decrypt documents via `mesh.on_ble_data_received_anonymous()`
@@ -214,7 +214,7 @@ Use device name (which is stable) as a secondary key for identifying devices:
 **Device patterns detected:**
 - `WT-WEAROS-*` - WearTAK on WearOS (rotates addresses)
 - `WEAROS-*` - Generic WearOS device (rotates addresses)
-- `ECHE_*` / `ECHE-*` - Eche mesh devices
+- `PEAT_*` / `PEAT-*` - Peat mesh devices
 
 **Key methods:**
 - `register_device(name, address, node_id)` - Register a new device
@@ -252,9 +252,9 @@ if let Some(result) = handler.on_device_discovered(&name, &address) {
 
 ### macOS - COMPLETE
 The macOS GATT client is fully operational:
-- Discovers watches advertising Eche service UUID
+- Discovers watches advertising Peat service UUID
 - Connects, discovers services/characteristics, reads sync_data
-- Decrypts via EcheMesh, extracts all CRDT data
+- Decrypts via PeatMesh, extracts all CRDT data
 - Writes back for bidirectional sync
 
 **Note**: WearTAK watches expose sync_data (F47A0003) but NOT node_info (F47A0001). Node ID is extracted from the decrypted document header instead.
@@ -277,7 +277,7 @@ Continue debugging BlueZ issues:
 Current Linux advertisement:
 - Service UUID: 0xF47A (16-bit alias)
 - Service Data: [nodeId: 4 bytes BE]
-- Local Name: ECHE-BA5E0001
+- Local Name: PEAT-BA5E0001
 - Total: ~30 bytes (fits 31-byte legacy limit)
 
 Note: Mesh ID omitted from service data. Android code shows `matchesMesh()` returns true for null meshId (legacy compatibility), so this should work.
@@ -292,8 +292,8 @@ const WEARTAK_GENESIS_BYTES: &[u8] = &[
 ```
 
 ### Connection Flow (Expected)
-1. Linux advertises as ECHE-BA5E0001 with GATT service
-2. Watch scans, sees ECHE-BA5E0001, recognizes as Eche device
+1. Linux advertises as PEAT-BA5E0001 with GATT service
+2. Watch scans, sees PEAT-BA5E0001, recognizes as Peat device
 3. Watch connects as GATT client, reads sync_state
 4. Watch writes to sync_data with its document
 5. Linux receives via sync_data_callback, processes with mesh

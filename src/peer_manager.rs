@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Peer management for Eche BLE mesh
+//! Peer management for Peat BLE mesh
 //!
 //! This module provides centralized peer tracking, connection management,
 //! and sync scheduling. It replaces the duplicated peer management logic
@@ -22,15 +22,15 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::peer_manager::PeerManager;
-//! use eche_btle::peer::PeerManagerConfig;
-//! use eche_btle::NodeId;
+//! use peat_btle::peer_manager::PeerManager;
+//! use peat_btle::peer::PeerManagerConfig;
+//! use peat_btle::NodeId;
 //!
 //! let config = PeerManagerConfig::with_mesh_id("DEMO");
 //! let manager = PeerManager::new(NodeId::new(0x12345678), config);
 //!
 //! // Called by platform BLE adapter on discovery
-//! if let Some(node_id) = manager.on_discovered("device-uuid", Some("ECHE_DEMO-AABBCCDD"), -70, Some("DEMO")) {
+//! if let Some(node_id) = manager.on_discovered("device-uuid", Some("PEAT_DEMO-AABBCCDD"), -70, Some("DEMO")) {
 //!     println!("Discovered peer: {:08X}", node_id.as_u32());
 //! }
 //! ```
@@ -49,11 +49,11 @@ use std::sync::RwLock;
 #[cfg(not(feature = "std"))]
 use spin::RwLock;
 
-use crate::observer::{DisconnectReason, EcheEvent};
-use crate::peer::{EchePeer, PeerManagerConfig};
+use crate::observer::{DisconnectReason, PeatEvent};
+use crate::peer::{PeatPeer, PeerManagerConfig};
 use crate::NodeId;
 
-/// Centralized peer manager for Eche mesh
+/// Centralized peer manager for Peat mesh
 ///
 /// Tracks discovered peers, their connection state, and sync history.
 /// Thread-safe and designed for use from platform BLE callbacks.
@@ -66,9 +66,9 @@ pub struct PeerManager {
 
     /// Peers indexed by NodeId
     #[cfg(feature = "std")]
-    peers: RwLock<BTreeMap<NodeId, EchePeer>>,
+    peers: RwLock<BTreeMap<NodeId, PeatPeer>>,
     #[cfg(not(feature = "std"))]
-    peers: RwLock<BTreeMap<NodeId, EchePeer>>,
+    peers: RwLock<BTreeMap<NodeId, PeatPeer>>,
 
     /// Map from platform identifier to NodeId for quick lookup
     #[cfg(feature = "std")]
@@ -115,7 +115,7 @@ impl PeerManager {
     /// Called by the platform BLE adapter when a device is discovered during scanning.
     /// Parses the device name to extract NodeId and mesh ID.
     ///
-    /// Returns `Some((node_id, is_new))` if this is a Eche device on our mesh,
+    /// Returns `Some((node_id, is_new))` if this is a Peat device on our mesh,
     /// where `is_new` indicates if this is a newly discovered peer.
     /// Returns `None` if the device should be ignored.
     pub fn on_discovered(
@@ -131,7 +131,7 @@ impl PeerManager {
             return None;
         }
 
-        // Parse node ID from name (format: "ECHE_MESH-XXXXXXXX")
+        // Parse node ID from name (format: "PEAT_MESH-XXXXXXXX")
         let node_id = parse_node_id_from_name(name)?;
 
         // Don't track ourselves
@@ -159,7 +159,7 @@ impl PeerManager {
 
         // Update or insert peer
         let peer = peers.entry(node_id).or_insert_with(|| {
-            EchePeer::new(
+            PeatPeer::new(
                 node_id,
                 identifier.to_string(),
                 mesh_id.map(|s| s.to_string()),
@@ -255,7 +255,7 @@ impl PeerManager {
         let is_new = !peers.contains_key(&node_id);
 
         let peer = peers.entry(node_id).or_insert_with(|| {
-            EchePeer::new(
+            PeatPeer::new(
                 node_id,
                 identifier.to_string(),
                 Some(self.config.mesh_id.clone()),
@@ -325,25 +325,25 @@ impl PeerManager {
     }
 
     /// Get all known peers
-    pub fn get_peers(&self) -> Vec<EchePeer> {
+    pub fn get_peers(&self) -> Vec<PeatPeer> {
         let peers = self.peers.read().unwrap();
         peers.values().cloned().collect()
     }
 
     /// Get connected peers only
-    pub fn get_connected_peers(&self) -> Vec<EchePeer> {
+    pub fn get_connected_peers(&self) -> Vec<PeatPeer> {
         let peers = self.peers.read().unwrap();
         peers.values().filter(|p| p.is_connected).cloned().collect()
     }
 
     /// Get a specific peer by NodeId
-    pub fn get_peer(&self, node_id: NodeId) -> Option<EchePeer> {
+    pub fn get_peer(&self, node_id: NodeId) -> Option<PeatPeer> {
         let peers = self.peers.read().unwrap();
         peers.get(&node_id).cloned()
     }
 
     /// Get a peer by platform identifier
-    pub fn get_peer_by_identifier(&self, identifier: &str) -> Option<EchePeer> {
+    pub fn get_peer_by_identifier(&self, identifier: &str) -> Option<PeatPeer> {
         let id_map = self.identifier_map.read().unwrap();
         let node_id = id_map.get(identifier).copied()?;
         drop(id_map);
@@ -402,7 +402,7 @@ impl PeerManager {
     }
 
     /// Get peers that need sync (connected and past cooldown)
-    pub fn peers_needing_sync(&self, now_ms: u64) -> Vec<EchePeer> {
+    pub fn peers_needing_sync(&self, now_ms: u64) -> Vec<PeatPeer> {
         let peers = self.peers.read().unwrap();
         let history = self.sync_history.read().unwrap();
 
@@ -426,17 +426,17 @@ impl PeerManager {
     /// Generate events for current mesh state
     ///
     /// Useful for notifying observers of the current state after initialization.
-    pub fn generate_state_event(&self) -> EcheEvent {
-        EcheEvent::MeshStateChanged {
+    pub fn generate_state_event(&self) -> PeatEvent {
+        PeatEvent::MeshStateChanged {
             peer_count: self.peer_count(),
             connected_count: self.connected_count(),
         }
     }
 }
 
-/// Parse a NodeId from a Eche device name
+/// Parse a NodeId from a Peat device name
 ///
-/// Expected format: "ECHE_MESH-XXXXXXXX" where XXXXXXXX is the hex node ID
+/// Expected format: "PEAT_MESH-XXXXXXXX" where XXXXXXXX is the hex node ID
 fn parse_node_id_from_name(name: Option<&str>) -> Option<NodeId> {
     let name = name?;
 
@@ -459,15 +459,15 @@ mod tests {
     #[test]
     fn test_parse_node_id_from_name() {
         assert_eq!(
-            parse_node_id_from_name(Some("ECHE_DEMO-12345678")),
+            parse_node_id_from_name(Some("PEAT_DEMO-12345678")),
             Some(NodeId::new(0x12345678))
         );
         assert_eq!(
-            parse_node_id_from_name(Some("ECHE_ALPHA-AABBCCDD")),
+            parse_node_id_from_name(Some("PEAT_ALPHA-AABBCCDD")),
             Some(NodeId::new(0xAABBCCDD))
         );
         assert_eq!(parse_node_id_from_name(Some("Invalid")), None);
-        assert_eq!(parse_node_id_from_name(Some("ECHE_DEMO-123")), None); // Too short
+        assert_eq!(parse_node_id_from_name(Some("PEAT_DEMO-123")), None); // Too short
         assert_eq!(parse_node_id_from_name(None), None);
     }
 
@@ -479,7 +479,7 @@ mod tests {
         // Discover a peer
         let result = manager.on_discovered(
             "device-uuid-1",
-            Some("ECHE_DEMO-22222222"),
+            Some("PEAT_DEMO-22222222"),
             -65,
             Some("DEMO"),
             1000,
@@ -492,7 +492,7 @@ mod tests {
         // Same peer again - not new
         let result = manager.on_discovered(
             "device-uuid-1",
-            Some("ECHE_DEMO-22222222"),
+            Some("PEAT_DEMO-22222222"),
             -60,
             Some("DEMO"),
             2000,
@@ -515,7 +515,7 @@ mod tests {
         // Wrong mesh - ignored
         let result = manager.on_discovered(
             "device-uuid-1",
-            Some("ECHE_BETA-22222222"),
+            Some("PEAT_BETA-22222222"),
             -65,
             Some("BETA"),
             1000,
@@ -526,7 +526,7 @@ mod tests {
         // Correct mesh - accepted
         let result = manager.on_discovered(
             "device-uuid-2",
-            Some("ECHE_ALPHA-33333333"),
+            Some("PEAT_ALPHA-33333333"),
             -65,
             Some("ALPHA"),
             1000,
@@ -543,7 +543,7 @@ mod tests {
         // Discovering ourselves - ignored
         let result = manager.on_discovered(
             "my-device-uuid",
-            Some("ECHE_DEMO-12345678"),
+            Some("PEAT_DEMO-12345678"),
             -30,
             Some("DEMO"),
             1000,
@@ -560,7 +560,7 @@ mod tests {
         // Discover
         manager.on_discovered(
             "device-uuid-1",
-            Some("ECHE_DEMO-22222222"),
+            Some("PEAT_DEMO-22222222"),
             -65,
             Some("DEMO"),
             1000,
@@ -587,7 +587,7 @@ mod tests {
         // Discover at t=1000
         manager.on_discovered(
             "device-uuid-1",
-            Some("ECHE_DEMO-22222222"),
+            Some("PEAT_DEMO-22222222"),
             -65,
             Some("DEMO"),
             1000,
@@ -633,7 +633,7 @@ mod tests {
         // First two accepted
         let result = manager.on_discovered(
             "uuid-1",
-            Some("ECHE_DEMO-22222222"),
+            Some("PEAT_DEMO-22222222"),
             -65,
             Some("DEMO"),
             1000,
@@ -642,7 +642,7 @@ mod tests {
 
         let result = manager.on_discovered(
             "uuid-2",
-            Some("ECHE_DEMO-33333333"),
+            Some("PEAT_DEMO-33333333"),
             -65,
             Some("DEMO"),
             1000,
@@ -652,7 +652,7 @@ mod tests {
         // Third rejected - at capacity
         let result = manager.on_discovered(
             "uuid-3",
-            Some("ECHE_DEMO-44444444"),
+            Some("PEAT_DEMO-44444444"),
             -65,
             Some("DEMO"),
             1000,
@@ -686,7 +686,7 @@ mod tests {
         // Device first seen from address A
         let result = manager.on_discovered(
             "AA:BB:CC:DD:EE:01",
-            Some("ECHE_DEMO-22222222"),
+            Some("PEAT_DEMO-22222222"),
             -70,
             Some("DEMO"),
             1000,
@@ -700,7 +700,7 @@ mod tests {
         // Same device seen from rotated address B (same node ID in name)
         let result = manager.on_discovered(
             "AA:BB:CC:DD:EE:02",        // Different address
-            Some("ECHE_DEMO-22222222"), // Same node ID
+            Some("PEAT_DEMO-22222222"), // Same node ID
             -65,
             Some("DEMO"),
             2000,
@@ -731,7 +731,7 @@ mod tests {
         // First discovery with name-derived node ID
         let result = manager.on_discovered(
             "AA:BB:CC:DD:EE:01",
-            Some("ECHE_DEMO-AABBCCDD"),
+            Some("PEAT_DEMO-AABBCCDD"),
             -70,
             Some("DEMO"),
             1000,
@@ -743,7 +743,7 @@ mod tests {
         // Address rotation - same name, different address
         let result = manager.on_discovered(
             "11:22:33:44:55:66",        // Completely different address
-            Some("ECHE_DEMO-AABBCCDD"), // Same name = same node ID
+            Some("PEAT_DEMO-AABBCCDD"), // Same name = same node ID
             -75,
             Some("DEMO"),
             2000,

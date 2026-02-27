@@ -13,9 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Eche GATT Characteristic Definitions
+//! Peat GATT Characteristic Definitions
 //!
-//! Defines the characteristics exposed by the Eche GATT service.
+//! Defines the characteristics exposed by the Peat GATT service.
 
 #[cfg(not(feature = "std"))]
 use alloc::{borrow::ToOwned, vec::Vec};
@@ -24,7 +24,7 @@ use uuid::Uuid;
 
 use crate::{
     HierarchyLevel, NodeId, CHAR_COMMAND_UUID, CHAR_NODE_INFO_UUID, CHAR_STATUS_UUID,
-    CHAR_SYNC_DATA_UUID, CHAR_SYNC_STATE_UUID, ECHE_SERVICE_UUID,
+    CHAR_SYNC_DATA_UUID, CHAR_SYNC_STATE_UUID, PEAT_SERVICE_UUID,
 };
 
 /// Characteristic properties bitfield
@@ -74,10 +74,10 @@ impl CharacteristicProperties {
     }
 }
 
-/// Eche characteristic UUIDs derived from base service UUID
-pub struct EcheCharacteristicUuids;
+/// Peat characteristic UUIDs derived from base service UUID
+pub struct PeatCharacteristicUuids;
 
-impl EcheCharacteristicUuids {
+impl PeatCharacteristicUuids {
     /// Get Node Info characteristic UUID
     pub fn node_info() -> Uuid {
         Self::derive_uuid(CHAR_NODE_INFO_UUID)
@@ -108,7 +108,7 @@ impl EcheCharacteristicUuids {
     /// Uses the standard BLE approach of modifying the 3rd and 4th bytes
     /// of the base UUID with the 16-bit characteristic ID.
     fn derive_uuid(char_id: u16) -> Uuid {
-        let mut bytes = ECHE_SERVICE_UUID.as_bytes().to_owned();
+        let mut bytes = PEAT_SERVICE_UUID.as_bytes().to_owned();
         bytes[2] = (char_id >> 8) as u8;
         bytes[3] = char_id as u8;
         Uuid::from_bytes(bytes)
@@ -566,14 +566,14 @@ mod tests {
 
     #[test]
     fn test_characteristic_uuids() {
-        let node_info = EcheCharacteristicUuids::node_info();
-        let sync_state = EcheCharacteristicUuids::sync_state();
+        let node_info = PeatCharacteristicUuids::node_info();
+        let sync_state = PeatCharacteristicUuids::sync_state();
 
         // UUIDs should be different
         assert_ne!(node_info, sync_state);
 
         // Should be derived from base UUID
-        assert_ne!(node_info, ECHE_SERVICE_UUID);
+        assert_ne!(node_info, PEAT_SERVICE_UUID);
     }
 
     #[test]

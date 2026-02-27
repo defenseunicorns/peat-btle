@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Mesh genesis protocol for creating new Eche meshes
+//! Mesh genesis protocol for creating new Peat meshes
 //!
 //! A mesh is created through a genesis event where:
 //! - A cryptographic seed is generated (256 bits of entropy)
@@ -24,7 +24,7 @@
 //! # Example
 //!
 //! ```
-//! use eche_btle::security::{DeviceIdentity, MeshGenesis, MembershipPolicy};
+//! use peat_btle::security::{DeviceIdentity, MeshGenesis, MembershipPolicy};
 //!
 //! // Create the founder's identity
 //! let founder = DeviceIdentity::generate();
@@ -88,10 +88,10 @@ pub struct MeshGenesis {
 
 impl MeshGenesis {
     /// HKDF context for encryption key derivation
-    const ENCRYPTION_CONTEXT: &'static [u8] = b"ECHE-mesh-encryption-v1";
+    const ENCRYPTION_CONTEXT: &'static [u8] = b"PEAT-mesh-encryption-v1";
 
     /// HKDF context for beacon key derivation
-    const BEACON_CONTEXT: &'static [u8] = b"ECHE-beacon-key-v1";
+    const BEACON_CONTEXT: &'static [u8] = b"PEAT-beacon-key-v1";
 
     /// Create a new mesh as the founding controller
     ///

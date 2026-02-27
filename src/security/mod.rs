@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Security module for ECHE-BTLE
+//! Security module for PEAT-BTLE
 //!
 //! Provides two layers of encryption:
 //!
@@ -23,7 +23,7 @@
 //! Protects against external eavesdroppers.
 //!
 //! ```ignore
-//! use eche_btle::security::MeshEncryptionKey;
+//! use peat_btle::security::MeshEncryptionKey;
 //!
 //! let secret = [0x42u8; 32];
 //! let key = MeshEncryptionKey::from_shared_secret("DEMO", &secret);
@@ -36,8 +36,8 @@
 //! Only sender and recipient can decrypt - other mesh members cannot.
 //!
 //! ```ignore
-//! use eche_btle::security::PeerSessionManager;
-//! use eche_btle::NodeId;
+//! use peat_btle::security::PeerSessionManager;
+//! use peat_btle::NodeId;
 //!
 //! let mut alice = PeerSessionManager::new(NodeId::new(0x11111111));
 //! let mut bob = PeerSessionManager::new(NodeId::new(0x22222222));

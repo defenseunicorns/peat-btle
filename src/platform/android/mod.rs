@@ -16,18 +16,18 @@
 //! Android platform implementation
 //!
 //! This module provides stubs for the Android BLE adapter. The actual BLE
-//! operations are handled by the Kotlin EcheBtle class using Android APIs,
-//! with mesh logic provided by UniFFI bindings to Rust EcheMesh.
+//! operations are handled by the Kotlin PeatBtle class using Android APIs,
+//! with mesh logic provided by UniFFI bindings to Rust PeatMesh.
 //!
 //! ## Architecture
 //!
 //! ```text
 //! ┌─────────────────────────────────────────┐
-//! │        Kotlin EcheBtle (Android BLE)    │
+//! │        Kotlin PeatBtle (Android BLE)    │
 //! ├─────────────────────────────────────────┤
-//! │   UniFFI Bindings (uniffi.eche_btle)   │
+//! │   UniFFI Bindings (uniffi.peat_btle)   │
 //! ├─────────────────────────────────────────┤
-//! │           Rust EcheMesh Core            │
+//! │           Rust PeatMesh Core            │
 //! └─────────────────────────────────────────┘
 //! ```
 //!

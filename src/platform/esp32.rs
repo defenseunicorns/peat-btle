@@ -28,14 +28,14 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::platform::esp32::Esp32Adapter;
-//! use eche_btle::{BleConfig, NodeId};
+//! use peat_btle::platform::esp32::Esp32Adapter;
+//! use peat_btle::{BleConfig, NodeId};
 //!
 //! // Create adapter
-//! let adapter = Esp32Adapter::new(NodeId::new(0x12345678), "ECHE-Device")?;
+//! let adapter = Esp32Adapter::new(NodeId::new(0x12345678), "PEAT-Device")?;
 //!
 //! // Initialize
-//! adapter.init(&BleConfig::eche_lite(NodeId::new(0x12345678))).await?;
+//! adapter.init(&BleConfig::peat_lite(NodeId::new(0x12345678))).await?;
 //!
 //! // Start operations
 //! adapter.start().await?;
@@ -48,7 +48,7 @@ use async_trait::async_trait;
 use log::{debug, error, info, warn};
 
 use crate::config::{BleConfig, BlePhy, DiscoveryConfig};
-use crate::discovery::EcheBeacon;
+use crate::discovery::PeatBeacon;
 use crate::error::{BleError, Result};
 use crate::platform::{BleAdapter, ConnectionCallback, DiscoveryCallback};
 use crate::transport::BleConnection;
@@ -69,8 +69,8 @@ mod nimble {
     /// BLE_HS_FOREVER constant (INT32_MAX - advertise/scan forever)
     const BLE_HS_FOREVER: i32 = i32::MAX;
 
-    /// Eche Service UUID (128-bit) - matches Android/iOS
-    pub const ECHE_SERVICE_UUID: [u8; 16] = [
+    /// Peat Service UUID (128-bit) - matches Android/iOS
+    pub const PEAT_SERVICE_UUID: [u8; 16] = [
         0x79, 0xd4, 0xc3, 0xb2, 0x02, 0x0e, 0x67, 0xa5, 0x72, 0x43, 0xcc, 0x58, 0x0b, 0xc1, 0x7a,
         0xf4,
     ];
@@ -82,7 +82,7 @@ mod nimble {
     ];
 
     /// 16-bit alias for advertising
-    pub const ECHE_SERVICE_UUID_16: u16 = 0xF47A;
+    pub const PEAT_SERVICE_UUID_16: u16 = 0xF47A;
 
     const MAX_DOC_SIZE: usize = 256;
     const MAX_CONNECTIONS: usize = 4;
@@ -127,8 +127,8 @@ mod nimble {
     static mut DEVICE_NAME: [u8; 20] = [0; 20];
     static mut DEVICE_NAME_LEN: u8 = 0;
 
-    /// Check if advertising data contains Eche service UUID
-    unsafe fn has_eche_service(data: *const u8, len: u8) -> bool {
+    /// Check if advertising data contains Peat service UUID
+    unsafe fn has_peat_service(data: *const u8, len: u8) -> bool {
         if data.is_null() || len < 4 {
             return false;
         }
@@ -146,7 +146,7 @@ mod nimble {
                 let mut j = 2usize;
                 while j + 1 < field_len + 1 {
                     let uuid = u16::from_le_bytes([*data.add(i + j), *data.add(i + j + 1)]);
-                    if uuid == ECHE_SERVICE_UUID_16 {
+                    if uuid == PEAT_SERVICE_UUID_16 {
                         return true;
                     }
                     j += 2;
@@ -161,7 +161,7 @@ mod nimble {
                     for k in 0..16 {
                         uuid_bytes[k] = *data.add(i + j + k);
                     }
-                    if uuid_bytes == ECHE_SERVICE_UUID {
+                    if uuid_bytes == PEAT_SERVICE_UUID {
                         return true;
                     }
                     j += 16;
@@ -238,11 +238,11 @@ mod nimble {
             BLE_GAP_EVENT_DISC => {
                 let disc = &event.__bindgen_anon_1.disc;
 
-                if has_eche_service(disc.data, disc.length_data) {
+                if has_peat_service(disc.data, disc.length_data) {
                     let current = NUM_CONNECTIONS.load(Ordering::SeqCst) as usize;
                     if current < MAX_CONNECTIONS && !CONNECTING.load(Ordering::SeqCst) {
                         info!(
-                            "BLE: Found Eche peer, connecting... ({}/{} conns)",
+                            "BLE: Found Peat peer, connecting... ({}/{} conns)",
                             current, MAX_CONNECTIONS
                         );
                         CONNECTING.store(true, Ordering::SeqCst);
@@ -354,7 +354,7 @@ mod nimble {
             info!("BLE: Initializing NimBLE for node {:08X}", node_id.as_u32());
 
             // Build device name
-            let name = format!("ECHE-{:08X}", node_id.as_u32());
+            let name = format!("PEAT-{:08X}", node_id.as_u32());
             let name_bytes = name.as_bytes();
             let len = name_bytes.len().min(DEVICE_NAME.len());
             DEVICE_NAME[..len].copy_from_slice(&name_bytes[..len]);
@@ -389,7 +389,7 @@ mod nimble {
 
             // Set up service UUID
             SVC_UUID.u.type_ = BLE_UUID_TYPE_128 as u8;
-            SVC_UUID.value = ECHE_SERVICE_UUID;
+            SVC_UUID.value = PEAT_SERVICE_UUID;
 
             // Set up characteristic UUID
             CHR_UUID.u.type_ = BLE_UUID_TYPE_128 as u8;
@@ -717,7 +717,7 @@ pub struct Esp32Adapter {
     state: Arc<Mutex<Esp32AdapterState>>,
     node_id: NodeId,
     device_name: String,
-    beacon: Option<EcheBeacon>,
+    beacon: Option<PeatBeacon>,
     #[cfg(all(feature = "esp32", target_os = "espidf"))]
     initialized: std::sync::atomic::AtomicBool,
 }
@@ -739,11 +739,11 @@ impl Esp32Adapter {
         })
     }
 
-    pub fn eche_lite(node_id: NodeId) -> Result<Self> {
-        Self::new(node_id, &format!("ECHE-{:08X}", node_id.as_u32()))
+    pub fn peat_lite(node_id: NodeId) -> Result<Self> {
+        Self::new(node_id, &format!("PEAT-{:08X}", node_id.as_u32()))
     }
 
-    fn build_adv_data(&self, beacon: &EcheBeacon) -> Vec<u8> {
+    fn build_adv_data(&self, beacon: &PeatBeacon) -> Vec<u8> {
         let mut data = Vec::with_capacity(31);
 
         // Flags
@@ -754,13 +754,13 @@ impl Esp32Adapter {
         // 16-bit Service UUIDs
         data.push(0x03);
         data.push(0x03);
-        data.extend_from_slice(&crate::ECHE_SERVICE_UUID_16BIT.to_le_bytes());
+        data.extend_from_slice(&crate::PEAT_SERVICE_UUID_16BIT.to_le_bytes());
 
         // Service Data
         let beacon_data = beacon.encode_compact();
         data.push((beacon_data.len() + 3) as u8);
         data.push(0x16);
-        data.extend_from_slice(&crate::ECHE_SERVICE_UUID_16BIT.to_le_bytes());
+        data.extend_from_slice(&crate::PEAT_SERVICE_UUID_16BIT.to_le_bytes());
         data.extend_from_slice(&beacon_data);
 
         data
@@ -790,7 +790,7 @@ impl BleAdapter for Esp32Adapter {
     async fn init(&mut self, config: &BleConfig) -> Result<()> {
         info!("ESP32: Initializing with config {:?}", config);
 
-        self.beacon = Some(EcheBeacon::new(config.node_id));
+        self.beacon = Some(PeatBeacon::new(config.node_id));
 
         #[cfg(all(feature = "esp32", target_os = "espidf"))]
         {
@@ -982,7 +982,7 @@ impl BleAdapter for Esp32Adapter {
     }
 
     async fn unregister_gatt_service(&self) -> Result<()> {
-        info!("ESP32: Unregistering Eche GATT service");
+        info!("ESP32: Unregistering Peat GATT service");
         Ok(())
     }
 
@@ -1011,7 +1011,7 @@ mod tests {
 
     #[test]
     fn test_adv_data_size() {
-        let beacon = EcheBeacon::new(NodeId::new(0x12345678));
+        let beacon = PeatBeacon::new(NodeId::new(0x12345678));
         let expected_size = 3 + 4 + 3 + crate::discovery::BEACON_COMPACT_SIZE;
         assert!(
             expected_size <= 31,

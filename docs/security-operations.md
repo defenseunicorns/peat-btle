@@ -1,12 +1,12 @@
 # Security Operations Guide
 
-> For Users and Operators: Deploying, configuring, and managing secure Eche meshes
+> For Users and Operators: Deploying, configuring, and managing secure Peat meshes
 
 ## Concepts
 
 ### What is a Mesh?
 
-A **mesh** is a group of Eche devices that communicate with each other over Bluetooth Low Energy. Each mesh is identified by:
+A **mesh** is a group of Peat devices that communicate with each other over Bluetooth Low Energy. Each mesh is identified by:
 
 - **mesh_id**: A short identifier (e.g., "DEMO", "ALPHA", "OPS1")
 - **shared secret**: Optional 32-byte key for encryption
@@ -130,7 +130,7 @@ After configuration, verify encryption is working:
 
 ### Current Limitation
 
-**Important:** eche-btle does not currently support:
+**Important:** peat-btle does not currently support:
 - Removing specific devices from a mesh
 - Blocking compromised devices
 - Key rotation
@@ -302,5 +302,5 @@ with_strict_encryption()    # Also reject unencrypted
 
 - **Technical issues**: Check logs for error messages
 - **Configuration help**: Review this guide and examples
-- **Bug reports**: https://github.com/r-evolve/eche-btle/issues
+- **Bug reports**: https://github.com/r-evolve/peat-btle/issues
 - **Security concerns**: Contact security@revolveteam.com

@@ -1,12 +1,12 @@
 [package]
-name = "eche-btle"
+name = "peat-btle"
 version = "0.2.0"
 edition = "2021"
 authors = ["Kit Plummer <kitplummer@defenseunicorns.com>"]
 license = "Apache-2.0"
-description = "Bluetooth Low Energy mesh transport for Eche Protocol"
-repository = "https://github.com/defenseunicorns/eche-btle"
-keywords = ["bluetooth", "ble", "mesh", "eche", "tactical"]
+description = "Bluetooth Low Energy mesh transport for Peat Protocol"
+repository = "https://github.com/defenseunicorns/peat-btle"
+keywords = ["bluetooth", "ble", "mesh", "peat", "tactical"]
 categories = ["network-programming", "embedded"]
 
 [lib]
@@ -19,11 +19,7 @@ default = ["std"]
 # Standard library support (disable for embedded)
 std = ["thiserror/std", "uuid/std"]
 
-# Full eche-btle with eche-lite CRDTs (CannedMessage sync)
-# TODO: uncomment after eche-lite is published to crates.io
-# standalone = ["eche-lite-sync"]
-
-# Pure BLE transport, no app-layer CRDTs (no hive-lite dependency)
+# Pure BLE transport, no app-layer CRDTs
 transport-only = ["std"]
 
 # Legacy chat support (deprecated, will be removed in 0.2.0)
@@ -49,10 +45,6 @@ esp32 = ["embedded", "std", "dep:esp-idf-svc", "dep:esp-idf-hal"]
 # BLE 5.0 features
 coded-phy = []
 extended-adv = []
-
-# eche-lite integration for CannedMessage sync
-# TODO: restore dep:eche-lite after it's published to crates.io
-eche-lite-sync = ["std"]
 
 [dependencies]
 # Core dependencies (always included)
@@ -80,11 +72,6 @@ blake3 = "1.5"
 
 # no_std HashMap for IdentityRegistry
 hashbrown = "0.15"
-
-# eche-lite integration (optional)
-# Provides DocumentType impl for CannedMessageAckEvent
-# TODO: uncomment after eche-lite is published to crates.io
-# eche-lite = { version = "0.1.0", optional = true }
 
 # UniFFI for cross-language bindings (optional)
 uniffi = { version = "0.31", optional = true }
@@ -125,14 +112,10 @@ tokio-test = "0.4"
 env_logger = "0.11"
 tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "signal"] }
 base64 = "0.22"
+peat-lite = "0.2.0"
 
 [build-dependencies]
 uniffi = { version = "0.31", features = ["build"] }
-
-# Tests with feature-gated dependencies
-[[test]]
-name = "canned_message_sync"
-required-features = ["eche-lite-sync"]
 
 # Examples with platform-specific features
 [[example]]

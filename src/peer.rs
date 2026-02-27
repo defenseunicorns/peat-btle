@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Peer management types for Eche BLE mesh
+//! Peer management types for Peat BLE mesh
 //!
 //! This module provides the core peer representation and configuration
 //! for centralized peer management across all platforms (iOS, Android, ESP32).
@@ -25,11 +25,11 @@ use crate::NodeId;
 
 /// Unified peer representation across all platforms
 ///
-/// Represents a discovered or connected Eche mesh peer with all
+/// Represents a discovered or connected Peat mesh peer with all
 /// relevant metadata for mesh operations.
 #[derive(Debug, Clone)]
-pub struct EchePeer {
-    /// Eche node identifier (32-bit)
+pub struct PeatPeer {
+    /// Peat node identifier (32-bit)
     pub node_id: NodeId,
 
     /// Platform-specific BLE identifier
@@ -41,7 +41,7 @@ pub struct EchePeer {
     /// Mesh ID this peer belongs to (e.g., "DEMO")
     pub mesh_id: Option<String>,
 
-    /// Advertised device name (e.g., "ECHE_DEMO-12345678")
+    /// Advertised device name (e.g., "PEAT_DEMO-12345678")
     pub name: Option<String>,
 
     /// Last known signal strength (RSSI in dBm)
@@ -54,7 +54,7 @@ pub struct EchePeer {
     pub last_seen_ms: u64,
 }
 
-impl EchePeer {
+impl PeatPeer {
     /// Create a new peer from discovery data
     pub fn new(
         node_id: NodeId,
@@ -103,7 +103,7 @@ impl EchePeer {
     }
 }
 
-impl Default for EchePeer {
+impl Default for PeatPeer {
     fn default() -> Self {
         Self {
             node_id: NodeId::default(),
@@ -130,7 +130,7 @@ pub enum SignalStrength {
     Weak,
 }
 
-/// Connection state aligned with eche-protocol abstractions
+/// Connection state aligned with peat-protocol abstractions
 ///
 /// Represents the lifecycle states of a peer connection, from initial
 /// discovery through connection, degradation, and disconnection.
@@ -191,7 +191,7 @@ pub use crate::platform::DisconnectReason;
 /// data provenance.
 #[derive(Debug, Clone)]
 pub struct PeerConnectionState {
-    /// Eche node identifier
+    /// Peat node identifier
     pub node_id: NodeId,
 
     /// Platform-specific BLE identifier
@@ -259,8 +259,8 @@ impl PeerConnectionState {
         }
     }
 
-    /// Create from an existing EchePeer
-    pub fn from_peer(peer: &EchePeer, now_ms: u64) -> Self {
+    /// Create from an existing PeatPeer
+    pub fn from_peer(peer: &PeatPeer, now_ms: u64) -> Self {
         let state = if peer.is_connected {
             ConnectionState::Connected
         } else {
@@ -671,8 +671,8 @@ impl ConnectionStateGraph {
         to_remove
     }
 
-    /// Import state from a EchePeer
-    pub fn import_peer(&mut self, peer: &EchePeer, now_ms: u64) {
+    /// Import state from a PeatPeer
+    pub fn import_peer(&mut self, peer: &PeatPeer, now_ms: u64) {
         let state = PeerConnectionState::from_peer(peer, now_ms);
         self.peers.insert(peer.node_id, state);
     }
@@ -1144,11 +1144,11 @@ mod tests {
 
     #[test]
     fn test_peer_stale_detection() {
-        let mut peer = EchePeer::new(
+        let mut peer = PeatPeer::new(
             NodeId::new(0x12345678),
             "test-id".into(),
             Some("DEMO".into()),
-            Some("ECHE_DEMO-12345678".into()),
+            Some("PEAT_DEMO-12345678".into()),
             -70,
         );
 
@@ -1162,25 +1162,25 @@ mod tests {
 
     #[test]
     fn test_signal_strength() {
-        let peer_excellent = EchePeer {
+        let peer_excellent = PeatPeer {
             rssi: -45,
             ..Default::default()
         };
         assert_eq!(peer_excellent.signal_strength(), SignalStrength::Excellent);
 
-        let peer_good = EchePeer {
+        let peer_good = PeatPeer {
             rssi: -65,
             ..Default::default()
         };
         assert_eq!(peer_good.signal_strength(), SignalStrength::Good);
 
-        let peer_fair = EchePeer {
+        let peer_fair = PeatPeer {
             rssi: -80,
             ..Default::default()
         };
         assert_eq!(peer_fair.signal_strength(), SignalStrength::Fair);
 
-        let peer_weak = EchePeer {
+        let peer_weak = PeatPeer {
             rssi: -95,
             ..Default::default()
         };

@@ -13,19 +13,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Eche Discovery Module
+//! Peat Discovery Module
 //!
-//! This module implements BLE discovery for Eche mesh networks, including:
+//! This module implements BLE discovery for Peat mesh networks, including:
 //! - Beacon format encoding/decoding
 //! - Advertising for broadcasting presence
 //! - Scanning for discovering peers
 //!
 //! ## Discovery Flow
 //!
-//! 1. **Advertising**: Nodes broadcast their presence using Eche beacons
+//! 1. **Advertising**: Nodes broadcast their presence using Peat beacons
 //!    containing node ID, hierarchy level, capabilities, and battery status.
 //!
-//! 2. **Scanning**: Nodes scan for Eche beacons, filtering by hierarchy level
+//! 2. **Scanning**: Nodes scan for Peat beacons, filtering by hierarchy level
 //!    and signal strength to find potential parents.
 //!
 //! 3. **Parent Selection**: The scanner tracks discovered devices and selects
@@ -34,14 +34,14 @@
 //! ## Example
 //!
 //! ```ignore
-//! use eche_btle::discovery::{Advertiser, Scanner, ScanFilter};
-//! use eche_btle::{NodeId, HierarchyLevel};
-//! use eche_btle::config::DiscoveryConfig;
+//! use peat_btle::discovery::{Advertiser, Scanner, ScanFilter};
+//! use peat_btle::{NodeId, HierarchyLevel};
+//! use peat_btle::config::DiscoveryConfig;
 //!
 //! // Create advertiser
 //! let config = DiscoveryConfig::default();
 //! let mut advertiser = Advertiser::new(config.clone(), NodeId::new(0x12345678))
-//!     .with_name("ECHE-Node".to_string());
+//!     .with_name("PEAT-Node".to_string());
 //!
 //! advertiser.set_hierarchy_level(HierarchyLevel::Squad);
 //! advertiser.start();
@@ -59,7 +59,7 @@ mod scanner;
 
 pub use advertiser::{Advertiser, AdvertiserState, AdvertisingMode, AdvertisingPacket};
 pub use beacon::{
-    EcheBeacon, ParsedAdvertisement, BEACON_COMPACT_SIZE, BEACON_SIZE, BEACON_VERSION,
+    ParsedAdvertisement, PeatBeacon, BEACON_COMPACT_SIZE, BEACON_SIZE, BEACON_VERSION,
 };
 pub use encrypted_beacon::{
     mesh_id_to_bytes, BeaconKey, EncryptedBeacon, ENCRYPTED_BEACON_SIZE, ENCRYPTED_BEACON_VERSION,

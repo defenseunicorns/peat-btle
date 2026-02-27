@@ -1,6 +1,6 @@
 # Apple Platform Integration Guide (iOS/macOS)
 
-This guide covers integrating `eche-btle` into iOS and macOS applications using CoreBluetooth.
+This guide covers integrating `peat-btle` into iOS and macOS applications using CoreBluetooth.
 
 ## Requirements
 
@@ -54,11 +54,11 @@ Add required permissions:
 ```xml
 <!-- Bluetooth usage description -->
 <key>NSBluetoothAlwaysUsageDescription</key>
-<string>Eche uses Bluetooth to sync data with nearby devices</string>
+<string>Peat uses Bluetooth to sync data with nearby devices</string>
 
 <!-- For iOS 13+ -->
 <key>NSBluetoothPeripheralUsageDescription</key>
-<string>Eche uses Bluetooth to sync data with nearby devices</string>
+<string>Peat uses Bluetooth to sync data with nearby devices</string>
 
 <!-- Background modes (iOS) -->
 <key>UIBackgroundModes</key>
@@ -79,15 +79,15 @@ For sandboxed Mac apps, add to `*.entitlements`:
 
 ## Swift Implementation
 
-### EcheManager Class
+### PeatManager Class
 
 ```swift
 import CoreBluetooth
 import Combine
 
-class EcheManager: NSObject, ObservableObject {
+class PeatManager: NSObject, ObservableObject {
     // Published state
-    @Published var peers: [EchePeer] = []
+    @Published var peers: [PeatPeer] = []
     @Published var isScanning = false
     @Published var isAdvertising = false
     @Published var emergencyActive = false
@@ -96,8 +96,8 @@ class EcheManager: NSObject, ObservableObject {
     private var centralManager: CBCentralManager!
     private var peripheralManager: CBPeripheralManager!
 
-    // Eche UUIDs
-    private let echeServiceUUID = CBUUID(string: "F47AC10B-58CC-4372-A567-0E02B2C3D479")
+    // Peat UUIDs
+    private let peatServiceUUID = CBUUID(string: "F47AC10B-58CC-4372-A567-0E02B2C3D479")
     private let documentCharUUID = CBUUID(string: "F47AC10B-58CC-4372-A567-0E02B2C30003")
 
     // Connections
@@ -105,7 +105,7 @@ class EcheManager: NSObject, ObservableObject {
     private var documentCharacteristics: [UUID: CBCharacteristic] = [:]
 
     // Rust bridge
-    private var meshBridge: EcheMeshBridge?
+    private var meshBridge: PeatMeshBridge?
 
     override init() {
         super.init()
@@ -118,7 +118,7 @@ class EcheManager: NSObject, ObservableObject {
 
     private func initializeMesh() {
         let nodeId = generateNodeId()
-        meshBridge = EcheMeshBridge(
+        meshBridge = PeatMeshBridge(
             nodeId: nodeId,
             callsign: "IOS-\(UIDevice.current.name.prefix(4))",
             meshId: "DEMO"
@@ -140,7 +140,7 @@ class EcheManager: NSObject, ObservableObject {
     func startScanning() {
         guard centralManager.state == .poweredOn else { return }
         centralManager.scanForPeripherals(
-            withServices: [echeServiceUUID],
+            withServices: [peatServiceUUID],
             options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
         )
         isScanning = true
@@ -155,8 +155,8 @@ class EcheManager: NSObject, ObservableObject {
         guard peripheralManager.state == .poweredOn else { return }
 
         let advertisementData: [String: Any] = [
-            CBAdvertisementDataServiceUUIDsKey: [echeServiceUUID],
-            CBAdvertisementDataLocalNameKey: meshBridge?.deviceName ?? "Eche"
+            CBAdvertisementDataServiceUUIDsKey: [peatServiceUUID],
+            CBAdvertisementDataLocalNameKey: meshBridge?.deviceName ?? "Peat"
         ]
 
         peripheralManager.startAdvertising(advertisementData)
@@ -201,7 +201,7 @@ class EcheManager: NSObject, ObservableObject {
 
 // MARK: - CBCentralManagerDelegate
 
-extension EcheManager: CBCentralManagerDelegate {
+extension PeatManager: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
@@ -223,7 +223,7 @@ extension EcheManager: CBCentralManagerDelegate {
 
         // Parse mesh ID from name
         var meshId: String?
-        if let name = name, name.hasPrefix("ECHE_") {
+        if let name = name, name.hasPrefix("PEAT_") {
             let parts = name.dropFirst(5).split(separator: "-")
             if parts.count >= 1 {
                 meshId = String(parts[0])
@@ -238,7 +238,7 @@ extension EcheManager: CBCentralManagerDelegate {
             meshId: meshId
         ) {
             // Add to peers list
-            let peer = EchePeer(
+            let peer = PeatPeer(
                 nodeId: nodeId,
                 name: name ?? "Unknown",
                 rssi: RSSI.intValue
@@ -261,7 +261,7 @@ extension EcheManager: CBCentralManagerDelegate {
                         didConnect peripheral: CBPeripheral) {
         connectedPeripherals[peripheral.identifier] = peripheral
         peripheral.delegate = self
-        peripheral.discoverServices([echeServiceUUID])
+        peripheral.discoverServices([peatServiceUUID])
 
         meshBridge?.onConnected(identifier: peripheral.identifier.uuidString)
     }
@@ -281,13 +281,13 @@ extension EcheManager: CBCentralManagerDelegate {
 
 // MARK: - CBPeripheralDelegate
 
-extension EcheManager: CBPeripheralDelegate {
+extension PeatManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral,
                     didDiscoverServices error: Error?) {
         guard let services = peripheral.services else { return }
 
         for service in services {
-            if service.uuid == echeServiceUUID {
+            if service.uuid == peatServiceUUID {
                 peripheral.discoverCharacteristics([documentCharUUID], for: service)
             }
         }
@@ -339,7 +339,7 @@ extension EcheManager: CBPeripheralDelegate {
 
 // MARK: - CBPeripheralManagerDelegate
 
-extension EcheManager: CBPeripheralManagerDelegate {
+extension PeatManager: CBPeripheralManagerDelegate {
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         if peripheral.state == .poweredOn {
             setupGattService()
@@ -355,7 +355,7 @@ extension EcheManager: CBPeripheralManagerDelegate {
             permissions: [.readable, .writeable]
         )
 
-        let service = CBMutableService(type: echeServiceUUID, primary: true)
+        let service = CBMutableService(type: peatServiceUUID, primary: true)
         service.characteristics = [characteristic]
 
         peripheralManager.add(service)
@@ -398,7 +398,7 @@ extension EcheManager: CBPeripheralManagerDelegate {
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var echeManager = EcheManager()
+    @StateObject private var peatManager = PeatManager()
 
     var body: some View {
         NavigationView {
@@ -407,42 +407,42 @@ struct ContentView: View {
                 HStack {
                     StatusIndicator(
                         label: "Scanning",
-                        active: echeManager.isScanning
+                        active: peatManager.isScanning
                     )
                     StatusIndicator(
                         label: "Advertising",
-                        active: echeManager.isAdvertising
+                        active: peatManager.isAdvertising
                     )
                 }
 
                 // Peer list
-                List(echeManager.peers) { peer in
+                List(peatManager.peers) { peer in
                     PeerRow(peer: peer)
                 }
 
                 // Action buttons
                 HStack(spacing: 20) {
                     Button("EMERGENCY") {
-                        echeManager.sendEmergency()
+                        peatManager.sendEmergency()
                     }
                     .buttonStyle(EmergencyButtonStyle())
 
                     Button("ACK") {
-                        echeManager.sendAck()
+                        peatManager.sendAck()
                     }
                     .buttonStyle(AckButtonStyle())
 
                     Button("RESET") {
-                        echeManager.clearEmergency()
+                        peatManager.clearEmergency()
                     }
                     .buttonStyle(ResetButtonStyle())
                 }
             }
-            .navigationTitle("Eche Mesh")
+            .navigationTitle("Peat Mesh")
             .onAppear {
                 // Start tick timer
                 Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                    echeManager.tick()
+                    peatManager.tick()
                 }
             }
         }
@@ -457,18 +457,18 @@ For full Rust API exposure, use UniFFI bindings.
 ### 1. Create FFI Crate
 
 ```toml
-# eche-apple-ffi/Cargo.toml
+# peat-apple-ffi/Cargo.toml
 [package]
-name = "eche-apple-ffi"
+name = "peat-apple-ffi"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
 crate-type = ["staticlib", "cdylib"]
-name = "eche_apple_ffi"
+name = "peat_apple_ffi"
 
 [dependencies]
-eche-btle = { path = ".." }
+peat-btle = { path = ".." }
 uniffi = "0.25"
 
 [build-dependencies]
@@ -478,12 +478,12 @@ uniffi = { version = "0.25", features = ["build"] }
 ### 2. Define UDL Interface
 
 ```udl
-// eche-apple-ffi/src/eche.udl
-namespace eche_apple_ffi {
-    EcheMeshBridge create_mesh(u32 node_id, string callsign, string mesh_id);
+// peat-apple-ffi/src/peat.udl
+namespace peat_apple_ffi {
+    PeatMeshBridge create_mesh(u32 node_id, string callsign, string mesh_id);
 };
 
-interface EcheMeshBridge {
+interface PeatMeshBridge {
     constructor(u32 node_id, string callsign, string mesh_id);
 
     string device_name();
@@ -534,25 +534,25 @@ mkdir -p build
 
 # Generate Swift bindings
 cargo run --bin uniffi-bindgen generate \
-    src/eche.udl --language swift --out-dir build/
+    src/peat.udl --language swift --out-dir build/
 
 # Create fat libraries
 lipo -create \
-    target/aarch64-apple-ios-sim/release/libeche_apple_ffi.a \
-    target/x86_64-apple-ios/release/libeche_apple_ffi.a \
-    -output build/libeche_apple_ffi_sim.a
+    target/aarch64-apple-ios-sim/release/libpeat_apple_ffi.a \
+    target/x86_64-apple-ios/release/libpeat_apple_ffi.a \
+    -output build/libpeat_apple_ffi_sim.a
 
 # Create XCFramework
 xcodebuild -create-xcframework \
-    -library target/aarch64-apple-ios/release/libeche_apple_ffi.a \
+    -library target/aarch64-apple-ios/release/libpeat_apple_ffi.a \
     -headers build/ \
-    -library build/libeche_apple_ffi_sim.a \
+    -library build/libpeat_apple_ffi_sim.a \
     -headers build/ \
-    -library target/aarch64-apple-darwin/release/libeche_apple_ffi.a \
+    -library target/aarch64-apple-darwin/release/libpeat_apple_ffi.a \
     -headers build/ \
-    -output build/EcheFFI.xcframework
+    -output build/PeatFFI.xcframework
 
-echo "XCFramework created at build/EcheFFI.xcframework"
+echo "XCFramework created at build/PeatFFI.xcframework"
 ```
 
 ## Background Execution
@@ -580,17 +580,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 ### State Restoration
 
 ```swift
-// In EcheManager init
+// In PeatManager init
 centralManager = CBCentralManager(
     delegate: self,
     queue: nil,
-    options: [CBCentralManagerOptionRestoreIdentifierKey: "EcheCentral"]
+    options: [CBCentralManagerOptionRestoreIdentifierKey: "PeatCentral"]
 )
 
 peripheralManager = CBPeripheralManager(
     delegate: self,
     queue: nil,
-    options: [CBPeripheralManagerOptionRestoreIdentifierKey: "EchePeripheral"]
+    options: [CBPeripheralManagerOptionRestoreIdentifierKey: "PeatPeripheral"]
 )
 
 // Handle restoration

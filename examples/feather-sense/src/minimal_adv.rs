@@ -76,7 +76,7 @@ async fn main(spawner: Spawner) {
 
     info!("Starting advertising");
 
-    // Raw advertising data - match working Eche devices
+    // Raw advertising data - match working Peat devices
     #[rustfmt::skip]
     let adv_data: &[u8] = &[
         // Flags (3 bytes)

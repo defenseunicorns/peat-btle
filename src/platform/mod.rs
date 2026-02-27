@@ -76,9 +76,9 @@ pub struct DiscoveredDevice {
     pub name: Option<String>,
     /// RSSI in dBm
     pub rssi: i8,
-    /// Is this a Eche node?
-    pub is_eche_node: bool,
-    /// Parsed Eche node ID (if Eche node)
+    /// Is this a Peat node?
+    pub is_peat_node: bool,
+    /// Parsed Peat node ID (if Peat node)
     pub node_id: Option<NodeId>,
     /// Raw advertising data
     pub adv_data: Vec<u8>,
@@ -107,8 +107,8 @@ pub enum ConnectionEvent {
     },
     /// GATT services discovered
     ServicesDiscovered {
-        /// Whether the Eche service was found
-        has_eche_service: bool,
+        /// Whether the Peat service was found
+        has_peat_service: bool,
     },
     /// Data received from peer (characteristic read or notification)
     DataReceived {
@@ -209,10 +209,10 @@ pub trait BleAdapter: Send + Sync {
 
     // === GATT ===
 
-    /// Register the Eche GATT service
+    /// Register the Peat GATT service
     async fn register_gatt_service(&self) -> Result<()>;
 
-    /// Unregister the Eche GATT service
+    /// Unregister the Peat GATT service
     async fn unregister_gatt_service(&self) -> Result<()>;
 
     // === Data ===

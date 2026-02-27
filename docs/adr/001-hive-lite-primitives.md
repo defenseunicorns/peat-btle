@@ -3,11 +3,11 @@
 **Status**: Accepted
 **Date**: 2026-01-25
 **Authors**: Kit Plummer, Claude
-**Deciders**: HIVE Core Team, eche-btle Team
+**Deciders**: HIVE Core Team, peat-btle Team
 
 ## Context
 
-eche-btle currently conflates two responsibilities:
+peat-btle currently conflates two responsibilities:
 1. **BLE Transport** - Moving bytes over Bluetooth Low Energy
 2. **Document/CRDT Logic** - Defining and merging application data structures
 
@@ -29,7 +29,7 @@ Create **hive-lite** as a **separate repository** containing lightweight CRDT pr
 
 ### Key Design Decisions
 
-1. **Separate Repository**: Not a workspace member of eche-btle or hive. Enables reuse by multiple transports (eche-btle, hive-lora, ESP-NOW).
+1. **Separate Repository**: Not a workspace member of peat-btle or hive. Enables reuse by multiple transports (peat-btle, hive-lora, ESP-NOW).
 
 2. **Leaf Crate**: Zero dependencies on hive-schema, hive-protocol, or any HIVE crate. Prevents circular dependencies.
 
@@ -44,7 +44,7 @@ Create **hive-lite** as a **separate repository** containing lightweight CRDT pr
 ```
 hive-protocol
     │
-    ├── eche-btle (transport-only mode)
+    ├── peat-btle (transport-only mode)
     │       │
     │       └── hive-lite (standalone feature)
     │
@@ -111,7 +111,7 @@ New marker `0xAF` for CannedMessage events:
 
 ### Positive
 
-1. **Clean separation**: Transport (eche-btle) vs primitives (hive-lite) vs protocol (hive-protocol)
+1. **Clean separation**: Transport (peat-btle) vs primitives (hive-lite) vs protocol (hive-protocol)
 2. **Reusable**: hive-lora can use same primitives
 3. **Bounded memory**: Fits 256KB budget for ESP32/WearTAK
 4. **no_std**: Works on embedded without std library
@@ -119,14 +119,14 @@ New marker `0xAF` for CannedMessage events:
 
 ### Negative
 
-1. **Migration work**: Existing eche-btle users need to update
+1. **Migration work**: Existing peat-btle users need to update
 2. **New repo**: Additional maintenance overhead
 3. **ChatCRDT deprecated**: Full chat moves to HIVE-Full only
 
 ### Neutral
 
 1. **Translation layer needed**: hive-protocol must translate between hive-lite and Automerge
-2. **Feature flags**: eche-btle needs `standalone` vs `transport-only` modes
+2. **Feature flags**: peat-btle needs `standalone` vs `transport-only` modes
 
 ## Implementation
 
@@ -136,7 +136,7 @@ New marker `0xAF` for CannedMessage events:
 - Wire format encoding
 - `no_std` compatible
 
-### Phase 1: Integrate into eche-btle
+### Phase 1: Integrate into peat-btle
 - Add hive-lite as optional dependency
 - `standalone` feature flag
 - Replace EmergencyEvent with CannedMessage::Emergency
@@ -154,4 +154,4 @@ New marker `0xAF` for CannedMessage events:
 
 - [ARCHITECTURE_REFACTORING.md](../ARCHITECTURE_REFACTORING.md) - Full analysis
 - [HIVE ADR-035: HIVE-Lite Embedded Nodes](https://github.com/kitplummer/hive/blob/main/docs/adr/035-hive-lite-embedded-nodes.md)
-- [HIVE ADR-039: ECHE-BTLE Mesh Transport](https://github.com/kitplummer/hive/blob/main/docs/adr/039-eche-btle-mesh-transport.md)
+- [HIVE ADR-039: PEAT-BTLE Mesh Transport](https://github.com/kitplummer/hive/blob/main/docs/adr/039-peat-btle-mesh-transport.md)

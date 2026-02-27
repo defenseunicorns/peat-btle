@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Power Profiles for Eche-Lite
+//! Power Profiles for Peat-Lite
 //!
 //! Defines power consumption profiles for different use cases,
 //! from aggressive (low latency) to low-power (maximum battery life).
@@ -83,7 +83,7 @@ pub enum PowerProfile {
     Balanced,
 
     /// 2% duty cycle, ~20+ hour watch battery
-    /// Default for Eche-Lite, prioritizes battery life
+    /// Default for Peat-Lite, prioritizes battery life
     #[default]
     LowPower,
 

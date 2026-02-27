@@ -45,7 +45,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use eche_btle::security::{PersistedState, SecureStorage, DeviceIdentity, MeshGenesis};
+//! use peat_btle::security::{PersistedState, SecureStorage, DeviceIdentity, MeshGenesis};
 //!
 //! // On first boot: create and persist state
 //! let identity = DeviceIdentity::generate();
@@ -55,7 +55,7 @@
 //!
 //! // On subsequent boots: restore state
 //! let state = PersistedState::load(&storage)?;
-//! let mesh = EcheMesh::from_persisted(state, config)?;
+//! let mesh = PeatMesh::from_persisted(state, config)?;
 //! ```
 
 #[cfg(not(feature = "std"))]
@@ -71,7 +71,7 @@ use super::{DeviceIdentity, IdentityRegistry, MeshGenesis};
 pub const PERSISTED_STATE_VERSION: u32 = 1;
 
 /// Magic bytes to identify persisted state files.
-const MAGIC: [u8; 4] = *b"ECHE";
+const MAGIC: [u8; 4] = *b"PEAT";
 
 /// Errors that can occur during persistence operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,7 +151,7 @@ pub trait SecureStorage {
     }
 }
 
-/// Complete persisted state for an Eche node.
+/// Complete persisted state for a Peat node.
 ///
 /// Contains all security-critical data needed to restore a node
 /// after reboot without network access.
@@ -282,7 +282,7 @@ impl PersistedState {
     /// Encode the state to bytes.
     ///
     /// Format:
-    /// - Magic (4 bytes): "ECHE"
+    /// - Magic (4 bytes): "PEAT"
     /// - Version (4 bytes): u32 LE
     /// - Private key (32 bytes)
     /// - Persisted at (8 bytes): u64 LE timestamp
