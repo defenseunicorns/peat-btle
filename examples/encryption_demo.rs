@@ -20,8 +20,8 @@
 //!
 //! Run with: cargo run --example encryption_demo
 
-use eche_btle::observer::{EcheEvent, EcheObserver, SecurityViolationKind};
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
+use peat_btle::observer::{PeatEvent, PeatObserver, SecurityViolationKind};
+use peat_btle::{NodeId, PeatMesh, PeatMeshConfig};
 use std::sync::Arc;
 
 /// Observer that reports security events
@@ -35,17 +35,17 @@ impl SecurityObserver {
     }
 }
 
-impl EcheObserver for SecurityObserver {
-    fn on_event(&self, event: EcheEvent) {
+impl PeatObserver for SecurityObserver {
+    fn on_event(&self, event: PeatEvent) {
         match event {
-            EcheEvent::EmergencyReceived { from_node } => {
+            PeatEvent::EmergencyReceived { from_node } => {
                 println!(
                     "[{}] Received EMERGENCY from {:08X}",
                     self.name,
                     from_node.as_u32()
                 );
             }
-            EcheEvent::SecurityViolation { kind, source } => {
+            PeatEvent::SecurityViolation { kind, source } => {
                 let kind_str = match kind {
                     SecurityViolationKind::DecryptionFailed => "Decryption failed (wrong key?)",
                     SecurityViolationKind::UnencryptedInStrictMode => "Unencrypted in strict mode",
@@ -57,7 +57,7 @@ impl EcheObserver for SecurityObserver {
                     self.name, kind_str, source
                 );
             }
-            EcheEvent::DocumentSynced { from_node, .. } => {
+            PeatEvent::DocumentSynced { from_node, .. } => {
                 println!(
                     "[{}] Successfully synced with {:08X}",
                     self.name,
@@ -70,7 +70,7 @@ impl EcheObserver for SecurityObserver {
 }
 
 fn main() {
-    println!("=== ECHE-BTLE Mesh-Wide Encryption Example ===\n");
+    println!("=== PEAT-BTLE Mesh-Wide Encryption Example ===\n");
 
     // Shared secret for the mesh (in practice, distribute securely)
     let mesh_secret: [u8; 32] = [
@@ -85,13 +85,13 @@ fn main() {
     println!("--- Creating Encrypted Mesh Nodes ---");
 
     // Create encrypted mesh nodes with shared secret
-    let config_alpha = EcheMeshConfig::new(NodeId::new(0x11111111), "ALPHA-1", "SECURE")
+    let config_alpha = PeatMeshConfig::new(NodeId::new(0x11111111), "ALPHA-1", "SECURE")
         .with_encryption(mesh_secret);
-    let config_bravo = EcheMeshConfig::new(NodeId::new(0x22222222), "BRAVO-1", "SECURE")
+    let config_bravo = PeatMeshConfig::new(NodeId::new(0x22222222), "BRAVO-1", "SECURE")
         .with_encryption(mesh_secret);
 
-    let mesh_alpha = EcheMesh::new(config_alpha);
-    let mesh_bravo = EcheMesh::new(config_bravo);
+    let mesh_alpha = PeatMesh::new(config_alpha);
+    let mesh_bravo = PeatMesh::new(config_bravo);
 
     mesh_alpha.add_observer(Arc::new(SecurityObserver::new("ALPHA")));
     mesh_bravo.add_observer(Arc::new(SecurityObserver::new("BRAVO")));
@@ -107,14 +107,14 @@ fn main() {
     println!();
 
     // Create an outsider with wrong key
-    let config_eve = EcheMeshConfig::new(NodeId::new(0xEEEEEEEE), "EVE-1", "SECURE")
+    let config_eve = PeatMeshConfig::new(NodeId::new(0xEEEEEEEE), "EVE-1", "SECURE")
         .with_encryption(wrong_secret);
-    let mesh_eve = EcheMesh::new(config_eve);
+    let mesh_eve = PeatMesh::new(config_eve);
     mesh_eve.add_observer(Arc::new(SecurityObserver::new("EVE")));
 
     // Create an unencrypted node
-    let config_plain = EcheMeshConfig::new(NodeId::new(0xAAAAAAAA), "PLAIN-1", "SECURE");
-    let mesh_plain = EcheMesh::new(config_plain);
+    let config_plain = PeatMeshConfig::new(NodeId::new(0xAAAAAAAA), "PLAIN-1", "SECURE");
+    let mesh_plain = PeatMesh::new(config_plain);
     mesh_plain.add_observer(Arc::new(SecurityObserver::new("PLAIN")));
 
     println!("--- Scenario 1: Encrypted Communication ---");
@@ -170,10 +170,10 @@ fn main() {
     println!("--- Scenario 4: Strict Encryption Mode ---");
 
     // Create strict mode node
-    let config_strict = EcheMeshConfig::new(NodeId::new(0x33333333), "STRICT-1", "SECURE")
+    let config_strict = PeatMeshConfig::new(NodeId::new(0x33333333), "STRICT-1", "SECURE")
         .with_encryption(mesh_secret)
         .with_strict_encryption();
-    let mesh_strict = EcheMesh::new(config_strict);
+    let mesh_strict = PeatMesh::new(config_strict);
     mesh_strict.add_observer(Arc::new(SecurityObserver::new("STRICT")));
 
     println!(
@@ -192,7 +192,7 @@ fn main() {
 
     println!("--- Encryption Overhead ---");
     // Create unencrypted version of Alpha's state for comparison
-    let mesh_alpha_unencrypted = EcheMesh::new(EcheMeshConfig::new(
+    let mesh_alpha_unencrypted = PeatMesh::new(PeatMeshConfig::new(
         NodeId::new(0x11111111),
         "ALPHA-1",
         "SECURE",

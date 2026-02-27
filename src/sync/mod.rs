@@ -13,13 +13,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Eche-Lite Sync Protocol
+//! Peat-Lite Sync Protocol
 //!
 //! Efficient CRDT synchronization over BLE GATT characteristics.
 //!
 //! ## Overview
 //!
-//! This module provides the sync layer for Eche-Lite nodes, enabling
+//! This module provides the sync layer for Peat-Lite nodes, enabling
 //! efficient state synchronization over bandwidth-constrained BLE links.
 //!
 //! ## Key Components
@@ -56,8 +56,8 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::sync::{GattSyncProtocol, SyncConfig, CrdtOperation, Position};
-//! use eche_btle::NodeId;
+//! use peat_btle::sync::{GattSyncProtocol, SyncConfig, CrdtOperation, Position};
+//! use peat_btle::NodeId;
 //!
 //! // Create sync protocol
 //! let mut sync = GattSyncProtocol::new(

@@ -17,9 +17,9 @@
 //!
 //! Tests the EmergencyEvent CRDT and its merge semantics across multiple nodes.
 
-use eche_btle::document::EcheDocument;
-use eche_btle::sync::crdt::{Peripheral, PeripheralType};
-use eche_btle::NodeId;
+use peat_btle::document::PeatDocument;
+use peat_btle::sync::crdt::{Peripheral, PeripheralType};
+use peat_btle::NodeId;
 
 // Valid timestamp for testing (2024-01-15 00:00:00 UTC)
 const TEST_TIMESTAMP: u64 = 1705276800000;
@@ -27,7 +27,7 @@ const TEST_TIMESTAMP: u64 = 1705276800000;
 /// Test basic emergency creation and encoding
 #[test]
 fn test_emergency_event_creation() {
-    let mut doc = EcheDocument::new(NodeId::new(0x111));
+    let mut doc = PeatDocument::new(NodeId::new(0x111));
     let peripheral = Peripheral::new(0x111, PeripheralType::SoldierSensor);
     doc.peripheral = Some(peripheral);
 
@@ -47,7 +47,7 @@ fn test_emergency_event_creation() {
 /// Test ACK recording
 #[test]
 fn test_emergency_ack_recording() {
-    let mut doc = EcheDocument::new(NodeId::new(0x111));
+    let mut doc = PeatDocument::new(NodeId::new(0x111));
     doc.set_emergency(0x111, TEST_TIMESTAMP, &[0x222, 0x333]);
 
     // ACK from node 0x222
@@ -67,17 +67,17 @@ fn test_emergency_ack_recording() {
 #[test]
 fn test_emergency_propagation() {
     // Node A initiates emergency
-    let mut doc_a = EcheDocument::new(NodeId::new(0xAAA));
+    let mut doc_a = PeatDocument::new(NodeId::new(0xAAA));
     let peripheral = Peripheral::new(0xAAA, PeripheralType::SoldierSensor);
     doc_a.peripheral = Some(peripheral);
     doc_a.set_emergency(0xAAA, TEST_TIMESTAMP, &[0xBBB, 0xCCC]);
 
     // Node B receives emergency
-    let mut doc_b = EcheDocument::new(NodeId::new(0xBBB));
+    let mut doc_b = PeatDocument::new(NodeId::new(0xBBB));
 
     // Encode and decode to simulate transmission
     let data = doc_a.encode();
-    let received = EcheDocument::decode(&data).unwrap();
+    let received = PeatDocument::decode(&data).unwrap();
     let changed = doc_b.merge(&received);
 
     assert!(changed);
@@ -92,23 +92,23 @@ fn test_ack_propagation() {
     // Setup: A initiates, B and C receive
     let known_peers = vec![0xBBB, 0xCCC];
 
-    let mut doc_a = EcheDocument::new(NodeId::new(0xAAA));
+    let mut doc_a = PeatDocument::new(NodeId::new(0xAAA));
     doc_a.set_emergency(0xAAA, TEST_TIMESTAMP, &known_peers);
 
-    let mut doc_b = EcheDocument::new(NodeId::new(0xBBB));
-    let mut doc_c = EcheDocument::new(NodeId::new(0xCCC));
+    let mut doc_b = PeatDocument::new(NodeId::new(0xBBB));
+    let mut doc_c = PeatDocument::new(NodeId::new(0xCCC));
 
     // Propagate emergency to B and C
     let data = doc_a.encode();
-    doc_b.merge(&EcheDocument::decode(&data).unwrap());
-    doc_c.merge(&EcheDocument::decode(&data).unwrap());
+    doc_b.merge(&PeatDocument::decode(&data).unwrap());
+    doc_c.merge(&PeatDocument::decode(&data).unwrap());
 
     // B sends ACK
     doc_b.ack_emergency(0xBBB);
 
     // Propagate B's ACK back to A
     let data = doc_b.encode();
-    let changed = doc_a.merge(&EcheDocument::decode(&data).unwrap());
+    let changed = doc_a.merge(&PeatDocument::decode(&data).unwrap());
     assert!(changed);
 
     // A should now see B's ACK
@@ -121,7 +121,7 @@ fn test_ack_propagation() {
 
     // Propagate C's ACK to A
     let data = doc_c.encode();
-    doc_a.merge(&EcheDocument::decode(&data).unwrap());
+    doc_a.merge(&PeatDocument::decode(&data).unwrap());
 
     // A should now see both ACKs
     let emergency = doc_a.get_emergency().unwrap();
@@ -135,18 +135,18 @@ fn test_ack_merge_from_multiple_paths() {
     // A initiates, B and C ACK independently, D collects both
     let known_peers = vec![0xBBB, 0xCCC, 0xDDD];
 
-    let mut doc_a = EcheDocument::new(NodeId::new(0xAAA));
+    let mut doc_a = PeatDocument::new(NodeId::new(0xAAA));
     doc_a.set_emergency(0xAAA, TEST_TIMESTAMP, &known_peers);
 
-    let mut doc_b = EcheDocument::new(NodeId::new(0xBBB));
-    let mut doc_c = EcheDocument::new(NodeId::new(0xCCC));
-    let mut doc_d = EcheDocument::new(NodeId::new(0xDDD));
+    let mut doc_b = PeatDocument::new(NodeId::new(0xBBB));
+    let mut doc_c = PeatDocument::new(NodeId::new(0xCCC));
+    let mut doc_d = PeatDocument::new(NodeId::new(0xDDD));
 
     // All receive emergency from A
     let data = doc_a.encode();
-    doc_b.merge(&EcheDocument::decode(&data).unwrap());
-    doc_c.merge(&EcheDocument::decode(&data).unwrap());
-    doc_d.merge(&EcheDocument::decode(&data).unwrap());
+    doc_b.merge(&PeatDocument::decode(&data).unwrap());
+    doc_c.merge(&PeatDocument::decode(&data).unwrap());
+    doc_d.merge(&PeatDocument::decode(&data).unwrap());
 
     // B and C ACK independently
     doc_b.ack_emergency(0xBBB);
@@ -156,8 +156,8 @@ fn test_ack_merge_from_multiple_paths() {
     let data_b = doc_b.encode();
     let data_c = doc_c.encode();
 
-    doc_d.merge(&EcheDocument::decode(&data_b).unwrap());
-    doc_d.merge(&EcheDocument::decode(&data_c).unwrap());
+    doc_d.merge(&PeatDocument::decode(&data_b).unwrap());
+    doc_d.merge(&PeatDocument::decode(&data_c).unwrap());
 
     // D should have both ACKs
     let emergency = doc_d.get_emergency().unwrap();
@@ -170,7 +170,7 @@ fn test_ack_merge_from_multiple_paths() {
 
     // Now propagate D's full state back to A
     let data_d = doc_d.encode();
-    doc_a.merge(&EcheDocument::decode(&data_d).unwrap());
+    doc_a.merge(&PeatDocument::decode(&data_d).unwrap());
 
     // A should have all ACKs
     let emergency = doc_a.get_emergency().unwrap();
@@ -182,7 +182,7 @@ fn test_ack_merge_from_multiple_paths() {
 /// Test emergency clear
 #[test]
 fn test_emergency_clear() {
-    let mut doc = EcheDocument::new(NodeId::new(0x111));
+    let mut doc = PeatDocument::new(NodeId::new(0x111));
     doc.set_emergency(0x111, TEST_TIMESTAMP, &[0x222]);
 
     assert!(doc.has_emergency());
@@ -199,18 +199,18 @@ fn test_emergency_supersede() {
     let known_peers = vec![0xBBB, 0xCCC];
 
     // A creates emergency at TEST_TIMESTAMP
-    let mut doc_a = EcheDocument::new(NodeId::new(0xAAA));
+    let mut doc_a = PeatDocument::new(NodeId::new(0xAAA));
     doc_a.set_emergency(0xAAA, TEST_TIMESTAMP, &known_peers);
 
     // B receives it
-    let mut doc_b = EcheDocument::new(NodeId::new(0xBBB));
-    doc_b.merge(&EcheDocument::decode(&doc_a.encode()).unwrap());
+    let mut doc_b = PeatDocument::new(NodeId::new(0xBBB));
+    doc_b.merge(&PeatDocument::decode(&doc_a.encode()).unwrap());
 
     // B creates a NEWER emergency at TEST_TIMESTAMP + 1000
     doc_b.set_emergency(0xBBB, TEST_TIMESTAMP + 1000, &known_peers);
 
     // A receives B's newer emergency
-    doc_a.merge(&EcheDocument::decode(&doc_b.encode()).unwrap());
+    doc_a.merge(&PeatDocument::decode(&doc_b.encode()).unwrap());
 
     // A should have B's newer emergency
     let emergency = doc_a.get_emergency().unwrap();
@@ -221,9 +221,9 @@ fn test_emergency_supersede() {
 /// Test document size with emergency data
 #[test]
 fn test_emergency_document_size() {
-    use eche_btle::document::TARGET_DOCUMENT_SIZE;
+    use peat_btle::document::TARGET_DOCUMENT_SIZE;
 
-    let mut doc = EcheDocument::new(NodeId::new(0x111));
+    let mut doc = PeatDocument::new(NodeId::new(0x111));
     let peripheral = Peripheral::new(0x111, PeripheralType::SoldierSensor);
     doc.peripheral = Some(peripheral);
 
@@ -239,7 +239,7 @@ fn test_emergency_document_size() {
 
     // Verify encoding/decoding preserves emergency
     let data = doc.encode();
-    let decoded = EcheDocument::decode(&data).unwrap();
+    let decoded = PeatDocument::decode(&data).unwrap();
     assert!(decoded.has_emergency());
     assert_eq!(decoded.get_emergency().unwrap().source_node(), 0x111);
 }
@@ -247,16 +247,16 @@ fn test_emergency_document_size() {
 /// Test idempotent ACK merges
 #[test]
 fn test_ack_idempotent_merge() {
-    let mut doc_a = EcheDocument::new(NodeId::new(0xAAA));
+    let mut doc_a = PeatDocument::new(NodeId::new(0xAAA));
     doc_a.set_emergency(0xAAA, TEST_TIMESTAMP, &[0xBBB]);
 
-    let mut doc_b = EcheDocument::new(NodeId::new(0xBBB));
-    doc_b.merge(&EcheDocument::decode(&doc_a.encode()).unwrap());
+    let mut doc_b = PeatDocument::new(NodeId::new(0xBBB));
+    doc_b.merge(&PeatDocument::decode(&doc_a.encode()).unwrap());
     doc_b.ack_emergency(0xBBB);
 
     // Merge same ACK multiple times
     for _ in 0..5 {
-        doc_a.merge(&EcheDocument::decode(&doc_b.encode()).unwrap());
+        doc_a.merge(&PeatDocument::decode(&doc_b.encode()).unwrap());
     }
 
     // Should still only have one ACK

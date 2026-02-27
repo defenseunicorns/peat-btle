@@ -1,7 +1,7 @@
 # Cargo configuration for cross-compilation
 #
 # This file configures the linkers and build settings for cross-compiling
-# eche-btle to various Android and iOS targets.
+# peat-btle to various Android and iOS targets.
 #
 # Android NDK Setup:
 # 1. Download the NDK from Android Studio or https://developer.android.com/ndk

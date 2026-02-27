@@ -22,7 +22,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use eche_btle::peer_lifetime::{PeerLifetimeManager, PeerLifetimeConfig};
+//! use peat_btle::peer_lifetime::{PeerLifetimeManager, PeerLifetimeConfig};
 //!
 //! let config = PeerLifetimeConfig::default();
 //! let mut manager = PeerLifetimeManager::new(config);

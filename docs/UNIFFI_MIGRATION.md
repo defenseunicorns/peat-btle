@@ -4,7 +4,7 @@ This document describes the migration from manual JNI bindings to UniFFI for And
 
 ## Overview
 
-Starting with rc.28, eche-btle uses [UniFFI](https://mozilla.github.io/uniffi-rs/) for cross-language bindings instead of manual JNI. This provides:
+Starting with rc.28, peat-btle uses [UniFFI](https://mozilla.github.io/uniffi-rs/) for cross-language bindings instead of manual JNI. This provides:
 
 - **Type safety**: Automatic type conversions between Rust and Kotlin/Swift
 - **Reduced boilerplate**: No more manual JNI bridge code
@@ -15,16 +15,16 @@ Starting with rc.28, eche-btle uses [UniFFI](https://mozilla.github.io/uniffi-rs
 
 ```
 ┌─────────────────────────────────────────┐
-│     Kotlin EcheBtle (Android BLE)       │
+│     Kotlin PeatBtle (Android BLE)       │
 │   - BLE scanning and advertising        │
 │   - GATT client/server operations       │
 │   - Android permission management       │
 ├─────────────────────────────────────────┤
-│   UniFFI Bindings (uniffi.eche_btle)    │
+│   UniFFI Bindings (uniffi.peat_btle)    │
 │   - Auto-generated Kotlin/Swift code    │
 │   - Type-safe FFI layer                 │
 ├─────────────────────────────────────────┤
-│          Rust EcheMesh Core             │
+│          Rust PeatMesh Core             │
 │   - Mesh state management               │
 │   - CRDT document sync                  │
 │   - Encryption/decryption               │
@@ -38,27 +38,27 @@ Starting with rc.28, eche-btle uses [UniFFI](https://mozilla.github.io/uniffi-rs
 
 **Before:**
 ```kotlin
-import com.revolveteam.hive.EcheMesh
+import com.revolveteam.hive.PeatMesh
 import com.revolveteam.hive.DeviceIdentity
 import com.revolveteam.hive.MeshGenesis
 ```
 
 **After:**
 ```kotlin
-import uniffi.eche_btle.EcheMesh
-import uniffi.eche_btle.DeviceIdentity
-import uniffi.eche_btle.MeshGenesis
-import uniffi.eche_btle.PeripheralType
-import uniffi.eche_btle.EventType
-import uniffi.eche_btle.DisconnectReason
+import uniffi.peat_btle.PeatMesh
+import uniffi.peat_btle.DeviceIdentity
+import uniffi.peat_btle.MeshGenesis
+import uniffi.peat_btle.PeripheralType
+import uniffi.peat_btle.EventType
+import uniffi.peat_btle.DisconnectReason
 ```
 
-### 2. EcheMesh Construction
+### 2. PeatMesh Construction
 
 **Before:**
 ```kotlin
 // Direct constructor
-val mesh = EcheMesh(
+val mesh = PeatMesh(
     nodeId = nodeId,
     callsign = "ANDROID",
     meshId = meshId,
@@ -66,13 +66,13 @@ val mesh = EcheMesh(
 )
 
 // From genesis
-val mesh = EcheMesh.createFromGenesis(genesis, identity, "ANDROID")
+val mesh = PeatMesh.createFromGenesis(genesis, identity, "ANDROID")
 ```
 
 **After:**
 ```kotlin
 // Factory method with peripheral type
-val mesh = EcheMesh.newWithPeripheral(
+val mesh = PeatMesh.newWithPeripheral(
     nodeId.toUInt(),
     "ANDROID",
     meshId,
@@ -80,7 +80,7 @@ val mesh = EcheMesh.newWithPeripheral(
 )
 
 // From genesis (note: argument order changed)
-val mesh = EcheMesh.newFromGenesis("ANDROID", identity, genesis)
+val mesh = PeatMesh.newFromGenesis("ANDROID", identity, genesis)
 ```
 
 ### 3. Unsigned Type Conversions
@@ -193,7 +193,7 @@ val json: String = mesh.getChatMessagesSince(sinceTimestamp.toULong())
 Standalone function to derive node ID from MAC address:
 
 ```kotlin
-import uniffi.eche_btle.deriveNodeIdFromMac
+import uniffi.peat_btle.deriveNodeIdFromMac
 
 val nodeId: UInt = deriveNodeIdFromMac("AA:BB:CC:DD:EE:FF")
 ```
@@ -245,12 +245,12 @@ val encoded: ByteArray = genesis.encode()
 New types for connection state tracking:
 
 ```kotlin
-import uniffi.eche_btle.ConnectionState
-import uniffi.eche_btle.PeerConnectionState
-import uniffi.eche_btle.StateCountSummary
-import uniffi.eche_btle.FullStateCountSummary
-import uniffi.eche_btle.IndirectPeer
-import uniffi.eche_btle.ViaPeerRoute
+import uniffi.peat_btle.ConnectionState
+import uniffi.peat_btle.PeerConnectionState
+import uniffi.peat_btle.StateCountSummary
+import uniffi.peat_btle.FullStateCountSummary
+import uniffi.peat_btle.IndirectPeer
+import uniffi.peat_btle.ViaPeerRoute
 
 // Get connection state for a specific peer
 val peerState: PeerConnectionState? = mesh.getPeerConnectionState(nodeId.toUInt())
@@ -298,13 +298,13 @@ enum class ConnectionState {
 }
 ```
 
-## EcheBtle Integration
+## PeatBtle Integration
 
-The `EcheBtle` class in `com.revolveteam.hive` has been updated to use UniFFI internally. If you're using `EcheBtle` directly, the public API remains largely the same - the changes are internal.
+The `PeatBtle` class in `com.revolveteam.hive` has been updated to use UniFFI internally. If you're using `PeatBtle` directly, the public API remains largely the same - the changes are internal.
 
-Key internal changes in EcheBtle:
+Key internal changes in PeatBtle:
 - Removed `nativeInit`/`nativeShutdown` calls
-- EcheMesh created via UniFFI factory methods
+- PeatMesh created via UniFFI factory methods
 - All BLE callbacks updated with proper type conversions
 
 ## Library Loading
@@ -317,7 +317,7 @@ UniFFI uses JNA instead of manual `System.loadLibrary`. The native library is lo
 
 Ensure you've added the UniFFI imports:
 ```kotlin
-import uniffi.eche_btle.*
+import uniffi.peat_btle.*
 ```
 
 ### Type mismatch errors
@@ -330,7 +330,7 @@ Add appropriate conversions:
 
 ### UnsatisfiedLinkError
 
-Ensure the native library (`libeche_btle.so`) is included in your APK's `jniLibs` folder for the correct ABI (arm64-v8a, armeabi-v7a, x86_64).
+Ensure the native library (`libpeat_btle.so`) is included in your APK's `jniLibs` folder for the correct ABI (arm64-v8a, armeabi-v7a, x86_64).
 
 ## Building the Library
 
@@ -340,11 +340,11 @@ cargo build --target aarch64-linux-android --features android --release
 
 # Regenerate Kotlin bindings (if needed)
 uniffi-bindgen generate \
-    --library target/aarch64-linux-android/release/libeche_btle.so \
+    --library target/aarch64-linux-android/release/libpeat_btle.so \
     --language kotlin \
     --out-dir android/src/main/kotlin/
 ```
 
 ## Questions?
 
-Contact the eche-btle team or open an issue on Radicle.
+Contact the peat-btle team or open an issue on Radicle.

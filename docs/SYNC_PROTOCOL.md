@@ -1,6 +1,6 @@
-# ECHE-BTLE Sync Protocol Specification
+# PEAT-BTLE Sync Protocol Specification
 
-This document specifies the CRDT synchronization protocol used by `eche-btle` for mesh state replication over BLE.
+This document specifies the CRDT synchronization protocol used by `peat-btle` for mesh state replication over BLE.
 
 ## Table of Contents
 
@@ -30,7 +30,7 @@ This document specifies the CRDT synchronization protocol used by `eche-btle` fo
 
 ## Overview
 
-ECHE-BTLE uses Conflict-free Replicated Data Types (CRDTs) to enable mesh synchronization without coordination. The protocol is designed for:
+PEAT-BTLE uses Conflict-free Replicated Data Types (CRDTs) to enable mesh synchronization without coordination. The protocol is designed for:
 
 - **Low bandwidth**: Optimized for BLE's constrained MTU
 - **Eventual consistency**: All nodes converge to the same state
@@ -47,7 +47,7 @@ ECHE-BTLE uses Conflict-free Replicated Data Types (CRDTs) to enable mesh synchr
                       │
                       ▼
 ┌────────────────────────────────────────────────────┐
-│              EcheDocument                           │
+│              PeatDocument                           │
 │  ┌──────────────┐  ┌────────────┐  ┌────────────┐  │
 │  │  G-Counter   │  │ Peripheral │  │  Emergency │  │
 │  │   (CRDT)     │  │   (LWW)    │  │   (CRDT)   │  │
@@ -171,7 +171,7 @@ acks[N]:
 
 ### Document Structure
 
-The Eche document has a layered structure:
+The Peat document has a layered structure:
 
 ```
 ┌────────────────────────────────────────────────────┐
@@ -405,7 +405,7 @@ ciphertext + tag: variable (includes 16-byte auth tag)
 **Key Derivation:**
 - HKDF-SHA256 from shared secret
 - Salt: mesh_id bytes
-- Info: "ECHE-BTLE-MESH-KEY"
+- Info: "PEAT-BTLE-MESH-KEY"
 
 **Overhead:** 30 bytes (2 marker + 12 nonce + 16 tag)
 

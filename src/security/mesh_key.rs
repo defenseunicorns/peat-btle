@@ -50,7 +50,7 @@ impl core::fmt::Display for EncryptionError {
 #[cfg(feature = "std")]
 impl std::error::Error for EncryptionError {}
 
-/// An encrypted Eche document
+/// An encrypted Peat document
 ///
 /// Contains the nonce and ciphertext (which includes the 16-byte Poly1305 auth tag).
 #[derive(Debug, Clone)]
@@ -91,7 +91,7 @@ impl EncryptedDocument {
     }
 }
 
-/// Mesh-wide encryption key for Eche documents
+/// Mesh-wide encryption key for Peat documents
 ///
 /// All nodes sharing the same formation secret derive the same key,
 /// enabling encrypted communication across the mesh.
@@ -103,7 +103,7 @@ pub struct MeshEncryptionKey {
 
 impl MeshEncryptionKey {
     /// HKDF info context for mesh encryption key derivation
-    const HKDF_INFO: &'static [u8] = b"ECHE-BTLE-mesh-encryption-v1";
+    const HKDF_INFO: &'static [u8] = b"PEAT-BTLE-mesh-encryption-v1";
 
     /// Derive a mesh encryption key from a shared secret
     ///
@@ -245,7 +245,7 @@ mod tests {
         let secret = [0x42u8; 32];
         let key = MeshEncryptionKey::from_shared_secret("DEMO", &secret);
 
-        let plaintext = b"Hello, Eche mesh!";
+        let plaintext = b"Hello, Peat mesh!";
         let encrypted = key.encrypt(plaintext).unwrap();
         let decrypted = key.decrypt(&encrypted).unwrap();
 
@@ -396,7 +396,7 @@ mod tests {
         let secret = [0x42u8; 32];
         let key = MeshEncryptionKey::from_shared_secret("DEMO", &secret);
 
-        // Simulate a typical Eche document (100 bytes)
+        // Simulate a typical Peat document (100 bytes)
         let doc = vec![0xABu8; 100];
         let encrypted = key.encrypt(&doc).unwrap();
         let wire_bytes = encrypted.encode();

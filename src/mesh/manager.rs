@@ -27,7 +27,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(feature = "std")]
 use std::sync::RwLock;
 
-use crate::discovery::EcheBeacon;
+use crate::discovery::PeatBeacon;
 use crate::error::{BleError, Result};
 use crate::{HierarchyLevel, NodeId};
 
@@ -220,7 +220,7 @@ impl MeshManager {
     /// Process a beacon from a discovered node
     ///
     /// This updates our list of potential parents
-    pub fn process_beacon(&self, beacon: &EcheBeacon, rssi: i8) {
+    pub fn process_beacon(&self, beacon: &PeatBeacon, rssi: i8) {
         // Only consider nodes at higher hierarchy levels as parent candidates
         if beacon.hierarchy_level > self.my_level {
             let candidate = ParentCandidate {
@@ -608,7 +608,7 @@ mod tests {
         let manager = create_manager();
         manager.start().unwrap();
 
-        let beacon = EcheBeacon {
+        let beacon = PeatBeacon {
             node_id: NodeId::new(0x5678),
             hierarchy_level: HierarchyLevel::Squad,
             version: 1,
@@ -631,7 +631,7 @@ mod tests {
         manager.start().unwrap();
 
         // Add two candidates
-        let beacon1 = EcheBeacon {
+        let beacon1 = PeatBeacon {
             node_id: NodeId::new(0x1111),
             hierarchy_level: HierarchyLevel::Squad,
             version: 1,
@@ -641,7 +641,7 @@ mod tests {
             geohash: 0,
         };
 
-        let beacon2 = EcheBeacon {
+        let beacon2 = PeatBeacon {
             node_id: NodeId::new(0x2222),
             hierarchy_level: HierarchyLevel::Squad,
             version: 1,
@@ -723,7 +723,7 @@ mod tests {
         let manager = create_manager();
         manager.start().unwrap();
 
-        let beacon = EcheBeacon {
+        let beacon = PeatBeacon {
             node_id: NodeId::new(0x5678),
             hierarchy_level: HierarchyLevel::Squad,
             version: 1,

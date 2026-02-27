@@ -1,8 +1,8 @@
-# Claude Code Project Guide - eche-btle
+# Claude Code Project Guide - peat-btle
 
 ## Project Overview
 
-eche-btle is a Bluetooth Low Energy mesh networking library with CRDT-based state synchronization. It's designed to be **fully self-sufficient** - complete security, identity, and mesh management without external dependencies.
+peat-btle is a Bluetooth Low Energy mesh networking library with CRDT-based state synchronization. It's designed to be **fully self-sufficient** - complete security, identity, and mesh management without external dependencies.
 
 ## Radicle Workflow
 
@@ -202,7 +202,7 @@ goa radicle \
   --watch-patches \
   --delay 60 \
   --timeout 600 \
-  --local-path /home/kit/Code/revolve/eche-btle &
+  --local-path /home/kit/Code/revolve/peat-btle &
 ```
 
 ## Build Commands
@@ -244,7 +244,7 @@ git push rad main --tags
 
 ## Architecture Notes
 
-- **Self-sufficient**: eche-btle works standalone or as transport for HIVE framework
+- **Self-sufficient**: peat-btle works standalone or as transport for HIVE framework
 - **CRDT sync**: Counter, Emergency, Chat CRDTs for mesh state
 - **Multi-platform**: Linux (BlueZ), Android, iOS, macOS, Windows, ESP32
 - **Security**: ChaCha20-Poly1305 encryption, X25519 key exchange, Ed25519 identity
@@ -254,7 +254,7 @@ git push rad main --tags
 | Path | Purpose |
 |------|---------|
 | `src/lib.rs` | Public API exports |
-| `src/eche_mesh.rs` | Core mesh logic |
+| `src/peat_mesh.rs` | Core mesh logic |
 | `src/sync/crdt.rs` | CRDT implementations |
 | `src/security/` | Encryption, key management |
 | `android/` | Android/Kotlin bindings |

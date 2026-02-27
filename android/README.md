@@ -1,12 +1,12 @@
-# ECHE-BTLE Android Library
+# PEAT-BTLE Android Library
 
-Android library providing Bluetooth Low Energy mesh transport for the Eche Protocol.
+Android library providing Bluetooth Low Energy mesh transport for the Peat Protocol.
 
 ## Overview
 
-This library is a **transport-only** layer for Eche mesh networking over BLE on Android devices, including Wear OS smartwatches. It provides:
+This library is a **transport-only** layer for Peat mesh networking over BLE on Android devices, including Wear OS smartwatches. It provides:
 
-- **BLE Scanning & Advertising**: Discover and advertise Eche nodes
+- **BLE Scanning & Advertising**: Discover and advertise Peat nodes
 - **GATT Client & Server**: Bidirectional BLE connections
 - **Encryption/Decryption**: ChaCha20-Poly1305 mesh-wide encryption
 - **Mesh Peer Management**: Automatic peer discovery and connection management
@@ -29,7 +29,7 @@ For app-layer messaging (CannedMessage, tactical status codes), use **hive-lite*
 dependencyResolutionManagement {
     repositories {
         maven {
-            url = uri("https://maven.pkg.github.com/Ascent-Integrated-Tech/eche-btle")
+            url = uri("https://maven.pkg.github.com/Ascent-Integrated-Tech/peat-btle")
             credentials {
                 username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
                 password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
@@ -40,14 +40,14 @@ dependencyResolutionManagement {
 
 // build.gradle.kts
 dependencies {
-    implementation("com.eche:eche-btle-android:0.1.0-SNAPSHOT")
+    implementation("com.peat:peat-btle-android:0.1.0-SNAPSHOT")
 }
 ```
 
 ### Local Build & Publish
 
 ```bash
-# From eche-btle root directory
+# From peat-btle root directory
 cd android
 
 # Build AAR with native libraries (all-in-one)
@@ -57,7 +57,7 @@ cd android
 ./gradlew publishLocal
 
 # The AAR will be at:
-# build/outputs/aar/eche-btle-android-release.aar
+# build/outputs/aar/peat-btle-android-release.aar
 ```
 
 ### Use Local AAR in wearos-tak
@@ -77,7 +77,7 @@ Then in `app/build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.eche:eche-btle-android:0.1.0-SNAPSHOT")
+    implementation("com.peat:peat-btle-android:0.1.0-SNAPSHOT")
 }
 ```
 
@@ -88,38 +88,38 @@ dependencies {
 ```kotlin
 import com.revolveteam.hive.*
 
-class MainActivity : AppCompatActivity(), EcheMeshListener {
+class MainActivity : AppCompatActivity(), PeatMeshListener {
 
-    private lateinit var echeBtle: EcheBtle
+    private lateinit var peatBtle: PeatBtle
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize Eche BLE with optional node ID and mesh ID
-        echeBtle = EcheBtle(
+        // Initialize Peat BLE with optional node ID and mesh ID
+        peatBtle = PeatBtle(
             context = this,
             nodeId = null,  // Auto-generated from Bluetooth MAC
             meshId = "DEMO" // Mesh isolation ID
         )
 
         // Initialize and check permissions
-        if (echeBtle.hasPermissions()) {
-            echeBtle.init()
-            echeBtle.startMesh(this)
+        if (peatBtle.hasPermissions()) {
+            peatBtle.init()
+            peatBtle.startMesh(this)
         } else {
             // Request permissions
-            requestPermissions(echeBtle.getRequiredPermissions(), REQUEST_CODE)
+            requestPermissions(peatBtle.getRequiredPermissions(), REQUEST_CODE)
         }
     }
 
-    // EcheMeshListener callbacks
-    override fun onMeshUpdated(peers: List<EchePeer>) {
+    // PeatMeshListener callbacks
+    override fun onMeshUpdated(peers: List<PeatPeer>) {
         // Update UI with peer list
-        Log.d("ECHE", "Peers: ${peers.size}")
+        Log.d("PEAT", "Peers: ${peers.size}")
     }
 
     // Transport layer callback - receives raw decrypted bytes
-    override fun onDecryptedData(peer: EchePeer?, data: ByteArray) {
+    override fun onDecryptedData(peer: PeatPeer?, data: ByteArray) {
         if (data.isEmpty()) return
 
         when (data[0]) {
@@ -132,32 +132,32 @@ class MainActivity : AppCompatActivity(), EcheMeshListener {
     }
 
     // Legacy callback - still works for backward compatibility
-    override fun onPeerEvent(peer: EchePeer, eventType: EcheEventType) {
+    override fun onPeerEvent(peer: PeatPeer, eventType: PeatEventType) {
         when (eventType) {
-            EcheEventType.EMERGENCY -> handleEmergency(peer)
-            EcheEventType.ACK -> handleAck(peer)
+            PeatEventType.EMERGENCY -> handleEmergency(peer)
+            PeatEventType.ACK -> handleAck(peer)
             else -> {}
         }
     }
 
     override fun onDestroy() {
-        echeBtle.stopMesh()
-        echeBtle.shutdown()
+        peatBtle.stopMesh()
+        peatBtle.shutdown()
         super.onDestroy()
     }
 }
 ```
 
-### Using Native Rust EcheMesh
+### Using Native Rust PeatMesh
 
 For direct access to the native Rust mesh implementation:
 
 ```kotlin
-import com.revolveteam.hive.EcheMesh
+import com.revolveteam.hive.PeatMesh
 import com.revolveteam.hive.PeripheralType
 
 // Create mesh with configuration
-val mesh = EcheMesh(
+val mesh = PeatMesh(
     nodeId = 0x12345678,
     callsign = "ALPHA-1",
     meshId = "DEMO",
@@ -223,7 +223,7 @@ export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
 ### Build
 
 ```bash
-# From eche-btle root directory
+# From peat-btle root directory
 ./android/gradlew buildNativeLibs
 ```
 
@@ -234,8 +234,8 @@ cargo build --release --target aarch64-linux-android --features android
 cargo build --release --target armv7-linux-androideabi --features android
 
 # Copy to jniLibs
-cp target/aarch64-linux-android/release/libeche_btle.so android/src/main/jniLibs/arm64-v8a/
-cp target/armv7-linux-androideabi/release/libeche_btle.so android/src/main/jniLibs/armeabi-v7a/
+cp target/aarch64-linux-android/release/libpeat_btle.so android/src/main/jniLibs/arm64-v8a/
+cp target/armv7-linux-androideabi/release/libpeat_btle.so android/src/main/jniLibs/armeabi-v7a/
 ```
 
 ## Architecture
@@ -244,14 +244,14 @@ cp target/armv7-linux-androideabi/release/libeche_btle.so android/src/main/jniLi
 ┌─────────────────────────────────────────────────────────────┐
 │                    Your Application                          │
 ├─────────────────────────────────────────────────────────────┤
-│  EcheBtle (Pure Kotlin)    │    EcheMesh (JNI Wrapper)      │
+│  PeatBtle (Pure Kotlin)    │    PeatMesh (JNI Wrapper)      │
 │  - BLE scanning/advertising│    - Native Rust mesh logic    │
 │  - GATT client/server      │    - CRDT document sync        │
 │  - Peer management         │    - Cross-platform consistent │
 ├────────────────────────────┴────────────────────────────────┤
 │              Android BLE APIs (BluetoothGatt, etc.)          │
 ├─────────────────────────────────────────────────────────────┤
-│                 Native libeche_btle.so (Rust)                │
+│                 Native libpeat_btle.so (Rust)                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -260,7 +260,7 @@ cp target/armv7-linux-androideabi/release/libeche_btle.so android/src/main/jniLi
 ### Default MTU Limitation
 
 BLE has a default ATT MTU of 23 bytes, allowing only ~20 bytes of payload after
-headers. This is insufficient for `EcheDocument` structures which can be:
+headers. This is insufficient for `PeatDocument` structures which can be:
 
 - **12 bytes minimum**: Header only (no GCounter entries)
 - **24+ bytes**: With 1 GCounter entry
@@ -294,7 +294,7 @@ This indicates MTU negotiation failed or wasn't performed. Check:
 
 ## API Reference
 
-### EcheBtle
+### PeatBtle
 
 Main entry point for BLE operations (transport layer).
 
@@ -308,7 +308,7 @@ Main entry point for BLE operations (transport layer).
 | `getPeers()` | Get list of known peers |
 | `shutdown()` | Clean up resources |
 
-### EcheMeshListener
+### PeatMeshListener
 
 Callback interface for mesh events.
 
@@ -318,7 +318,7 @@ Callback interface for mesh events.
 | `onMeshUpdated(peers)` | Peer list changed |
 | `onPeerEvent(peer, type)` | Legacy callback for events |
 
-### EcheMesh
+### PeatMesh
 
 Native Rust mesh implementation wrapper.
 
@@ -332,7 +332,7 @@ Native Rust mesh implementation wrapper.
 | `getPeerCount()` | Total known peers |
 | `getConnectedCount()` | Currently connected peers |
 
-### EcheEventType
+### PeatEventType
 
 | Event | Value | Description |
 |-------|-------|-------------|
@@ -346,14 +346,14 @@ Native Rust mesh implementation wrapper.
 
 ## Mesh ID Isolation
 
-Mesh IDs allow multiple independent Eche networks to coexist:
+Mesh IDs allow multiple independent Peat networks to coexist:
 
 ```kotlin
 // Only discover/connect to nodes in same mesh
-val echeBtle = EcheBtle(context, meshId = "ALPHA")
+val peatBtle = PeatBtle(context, meshId = "ALPHA")
 
 // Check if a device matches our mesh
-if (EcheBtle.matchesMesh("ALPHA", device.meshId)) {
+if (PeatBtle.matchesMesh("ALPHA", device.meshId)) {
     // Connect
 }
 ```
@@ -364,4 +364,4 @@ Apache License 2.0
 
 ## Contributing
 
-See the main [eche-btle repository](https://github.com/Ascent-Integrated-Tech/eche-btle) for contribution guidelines.
+See the main [peat-btle repository](https://github.com/Ascent-Integrated-Tech/peat-btle) for contribution guidelines.

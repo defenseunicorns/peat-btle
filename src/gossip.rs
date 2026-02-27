@@ -26,7 +26,7 @@
 //! - **Pull gossip**: Nodes periodically request updates from peers
 //! - **Push-pull**: Combines both for faster convergence
 //!
-//! For Eche BLE mesh, we use push gossip with configurable fanout.
+//! For Peat BLE mesh, we use push gossip with configurable fanout.
 //!
 //! ## Convergence Guarantees
 //!
@@ -39,14 +39,14 @@
 //! ## Usage
 //!
 //! ```rust
-//! use eche_btle::gossip::{GossipStrategy, RandomFanout};
-//! use eche_btle::peer::EchePeer;
+//! use peat_btle::gossip::{GossipStrategy, RandomFanout};
+//! use peat_btle::peer::PeatPeer;
 //!
 //! // Create a strategy with fanout of 2
 //! let strategy = RandomFanout::new(2);
 //!
 //! // Select peers to gossip to
-//! let peers: Vec<EchePeer> = vec![]; // your connected peers
+//! let peers: Vec<PeatPeer> = vec![]; // your connected peers
 //! let selected = strategy.select_peers(&peers);
 //! ```
 
@@ -54,7 +54,7 @@
 use alloc::vec::Vec;
 
 use crate::document::MergeResult;
-use crate::peer::EchePeer;
+use crate::peer::PeatPeer;
 
 /// Trait for gossip peer selection strategies
 ///
@@ -68,7 +68,7 @@ pub trait GossipStrategy: Send + Sync {
     /// receive the next gossip message. The selection should balance:
     /// - Convergence speed (more peers = faster)
     /// - Resource usage (fewer peers = less battery/bandwidth)
-    fn select_peers<'a>(&self, peers: &'a [EchePeer]) -> Vec<&'a EchePeer>;
+    fn select_peers<'a>(&self, peers: &'a [PeatPeer]) -> Vec<&'a PeatPeer>;
 
     /// Determine if an update should be forwarded after a merge
     ///
@@ -94,7 +94,7 @@ pub trait GossipStrategy: Send + Sync {
 /// - **fanout=2**: Standard, O(log N) convergence, good balance
 /// - **fanout=3+**: Fast convergence, higher overhead
 ///
-/// For most Eche deployments, fanout=2 is recommended.
+/// For most Peat deployments, fanout=2 is recommended.
 #[derive(Debug, Clone)]
 pub struct RandomFanout {
     /// Number of peers to select per round
@@ -153,7 +153,7 @@ impl Default for RandomFanout {
 }
 
 impl GossipStrategy for RandomFanout {
-    fn select_peers<'a>(&self, peers: &'a [EchePeer]) -> Vec<&'a EchePeer> {
+    fn select_peers<'a>(&self, peers: &'a [PeatPeer]) -> Vec<&'a PeatPeer> {
         if peers.is_empty() {
             return Vec::new();
         }
@@ -216,7 +216,7 @@ impl BroadcastAll {
 }
 
 impl GossipStrategy for BroadcastAll {
-    fn select_peers<'a>(&self, peers: &'a [EchePeer]) -> Vec<&'a EchePeer> {
+    fn select_peers<'a>(&self, peers: &'a [PeatPeer]) -> Vec<&'a PeatPeer> {
         peers.iter().collect()
     }
 
@@ -258,7 +258,7 @@ impl Default for SignalBasedFanout {
 }
 
 impl GossipStrategy for SignalBasedFanout {
-    fn select_peers<'a>(&self, peers: &'a [EchePeer]) -> Vec<&'a EchePeer> {
+    fn select_peers<'a>(&self, peers: &'a [PeatPeer]) -> Vec<&'a PeatPeer> {
         if peers.is_empty() {
             return Vec::new();
         }
@@ -272,7 +272,7 @@ impl GossipStrategy for SignalBasedFanout {
         sorted.sort_by(|a, b| b.rssi.cmp(&a.rssi));
 
         // Take the best ones, but add some randomness for diversity
-        let mut selected: Vec<&EchePeer> = Vec::with_capacity(self.fanout);
+        let mut selected: Vec<&PeatPeer> = Vec::with_capacity(self.fanout);
 
         // Always include the strongest peer
         if let Some(best) = sorted.first() {
@@ -301,7 +301,7 @@ impl GossipStrategy for SignalBasedFanout {
             if selected.len() >= self.fanout {
                 break;
             }
-            // Check by node_id to avoid requiring PartialEq on EchePeer
+            // Check by node_id to avoid requiring PartialEq on PeatPeer
             let already_selected = selected.iter().any(|p| p.node_id == peer.node_id);
             if !already_selected {
                 selected.push(peer);
@@ -390,7 +390,7 @@ impl Default for EmergencyAware {
 }
 
 impl GossipStrategy for EmergencyAware {
-    fn select_peers<'a>(&self, peers: &'a [EchePeer]) -> Vec<&'a EchePeer> {
+    fn select_peers<'a>(&self, peers: &'a [PeatPeer]) -> Vec<&'a PeatPeer> {
         let fanout = self.effective_fanout();
 
         if peers.len() <= fanout {
@@ -428,12 +428,12 @@ mod tests {
     use super::*;
     use crate::NodeId;
 
-    fn make_peer(id: u32, rssi: i8) -> EchePeer {
-        EchePeer {
+    fn make_peer(id: u32, rssi: i8) -> PeatPeer {
+        PeatPeer {
             node_id: NodeId::new(id),
             identifier: format!("device-{}", id),
             mesh_id: Some("TEST".to_string()),
-            name: Some(format!("ECHE-{:08X}", id)),
+            name: Some(format!("PEAT-{:08X}", id)),
             rssi,
             is_connected: true,
             last_seen_ms: 0,
@@ -445,7 +445,7 @@ mod tests {
         let strategy = RandomFanout::new(2);
 
         // Empty peers
-        let peers: Vec<EchePeer> = vec![];
+        let peers: Vec<PeatPeer> = vec![];
         assert!(strategy.select_peers(&peers).is_empty());
 
         // Fewer peers than fanout

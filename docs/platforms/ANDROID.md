@@ -1,6 +1,6 @@
 # Android Platform Integration Guide
 
-This guide covers integrating `eche-btle` into Android applications using JNI bindings.
+This guide covers integrating `peat-btle` into Android applications using JNI bindings.
 
 ## Requirements
 
@@ -59,7 +59,7 @@ Add to `AndroidManifest.xml`:
 crate-type = ["cdylib"]
 
 [dependencies]
-eche-btle = { version = "0.1", features = ["android"] }
+peat-btle = { version = "0.1", features = ["android"] }
 jni = "0.21"
 log = "0.4"
 android_logger = "0.13"
@@ -74,17 +74,17 @@ use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jlong, jbyteArray, jint};
 
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
-use eche_btle::observer::DisconnectReason;
+use peat_btle::{PeatMesh, PeatMeshConfig, NodeId};
+use peat_btle::observer::DisconnectReason;
 
 use std::sync::Arc;
 use std::panic;
 
 // Store mesh instance pointer
-static mut MESH: Option<Arc<EcheMesh>> = None;
+static mut MESH: Option<Arc<PeatMesh>> = None;
 
 #[no_mangle]
-pub extern "C" fn Java_com_example_hive_EcheBridge_init(
+pub extern "C" fn Java_com_example_hive_PeatBridge_init(
     mut env: JNIEnv,
     _class: JClass,
     node_id: jlong,
@@ -95,7 +95,7 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_init(
     android_logger::init_once(
         android_logger::Config::default()
             .with_max_level(log::LevelFilter::Debug)
-            .with_tag("eche-btle"),
+            .with_tag("peat-btle"),
     );
 
     panic::catch_unwind(|| {
@@ -106,13 +106,13 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_init(
             .expect("Invalid mesh_id")
             .into();
 
-        let config = EcheMeshConfig::new(
+        let config = PeatMeshConfig::new(
             NodeId::new(node_id as u32),
             &callsign,
             &mesh_id,
         );
 
-        let mesh = EcheMesh::new(config);
+        let mesh = PeatMesh::new(config);
 
         unsafe {
             MESH = Some(Arc::new(mesh));
@@ -123,7 +123,7 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_init(
 }
 
 #[no_mangle]
-pub extern "C" fn Java_com_example_hive_EcheBridge_onDiscovered(
+pub extern "C" fn Java_com_example_hive_PeatBridge_onDiscovered(
     mut env: JNIEnv,
     _class: JClass,
     identifier: JString,
@@ -157,7 +157,7 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_onDiscovered(
 }
 
 #[no_mangle]
-pub extern "C" fn Java_com_example_hive_EcheBridge_onConnected(
+pub extern "C" fn Java_com_example_hive_PeatBridge_onConnected(
     mut env: JNIEnv,
     _class: JClass,
     identifier: JString,
@@ -180,7 +180,7 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_onConnected(
 }
 
 #[no_mangle]
-pub extern "C" fn Java_com_example_hive_EcheBridge_onDisconnected(
+pub extern "C" fn Java_com_example_hive_PeatBridge_onDisconnected(
     mut env: JNIEnv,
     _class: JClass,
     identifier: JString,
@@ -211,7 +211,7 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_onDisconnected(
 }
 
 #[no_mangle]
-pub extern "C" fn Java_com_example_hive_EcheBridge_onDataReceived(
+pub extern "C" fn Java_com_example_hive_PeatBridge_onDataReceived(
     mut env: JNIEnv,
     _class: JClass,
     identifier: JString,
@@ -244,7 +244,7 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_onDataReceived(
 }
 
 #[no_mangle]
-pub extern "C" fn Java_com_example_hive_EcheBridge_sendEmergency(
+pub extern "C" fn Java_com_example_hive_PeatBridge_sendEmergency(
     env: JNIEnv,
     _class: JClass,
     timestamp: jlong,
@@ -263,7 +263,7 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_sendEmergency(
 }
 
 #[no_mangle]
-pub extern "C" fn Java_com_example_hive_EcheBridge_sendAck(
+pub extern "C" fn Java_com_example_hive_PeatBridge_sendAck(
     env: JNIEnv,
     _class: JClass,
     timestamp: jlong,
@@ -282,7 +282,7 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_sendAck(
 }
 
 #[no_mangle]
-pub extern "C" fn Java_com_example_hive_EcheBridge_tick(
+pub extern "C" fn Java_com_example_hive_PeatBridge_tick(
     env: JNIEnv,
     _class: JClass,
     now_ms: jlong,
@@ -302,7 +302,7 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_tick(
 }
 
 #[no_mangle]
-pub extern "C" fn Java_com_example_hive_EcheBridge_buildDocument(
+pub extern "C" fn Java_com_example_hive_PeatBridge_buildDocument(
     env: JNIEnv,
     _class: JClass,
 ) -> jbyteArray {
@@ -325,7 +325,7 @@ pub extern "C" fn Java_com_example_hive_EcheBridge_buildDocument(
 ```kotlin
 package com.example.hive
 
-class EcheBridge {
+class PeatBridge {
     companion object {
         init {
             System.loadLibrary("hive_android")
@@ -403,13 +403,13 @@ done
 # Copy libraries to Android project
 mkdir -p app/src/main/jniLibs/{arm64-v8a,armeabi-v7a,x86_64}
 
-cp target/aarch64-linux-android/release/libeche_android.so \
+cp target/aarch64-linux-android/release/libpeat_android.so \
    app/src/main/jniLibs/arm64-v8a/
 
-cp target/armv7-linux-androideabi/release/libeche_android.so \
+cp target/armv7-linux-androideabi/release/libpeat_android.so \
    app/src/main/jniLibs/armeabi-v7a/
 
-cp target/x86_64-linux-android/release/libeche_android.so \
+cp target/x86_64-linux-android/release/libpeat_android.so \
    app/src/main/jniLibs/x86_64/
 
 echo "Done! Libraries copied to app/src/main/jniLibs/"
@@ -420,7 +420,7 @@ echo "Done! Libraries copied to app/src/main/jniLibs/"
 ### BLE Scanner Implementation
 
 ```kotlin
-class EcheBleManager(private val context: Context) {
+class PeatBleManager(private val context: Context) {
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
     }
@@ -428,7 +428,7 @@ class EcheBleManager(private val context: Context) {
     private val scanner: BluetoothLeScanner?
         get() = bluetoothAdapter?.bluetoothLeScanner
 
-    private val echeServiceUuid = ParcelUuid.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479")
+    private val peatServiceUuid = ParcelUuid.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -436,15 +436,15 @@ class EcheBleManager(private val context: Context) {
             val name = result.scanRecord?.deviceName
             val rssi = result.rssi
 
-            // Parse mesh ID from device name (ECHE_MESHID-NODEID)
+            // Parse mesh ID from device name (PEAT_MESHID-NODEID)
             val meshId = name?.let {
-                if (it.startsWith("ECHE_")) {
-                    it.substringAfter("ECHE_").substringBefore("-")
+                if (it.startsWith("PEAT_")) {
+                    it.substringAfter("PEAT_").substringBefore("-")
                 } else null
             }
 
             // Notify Rust layer
-            EcheBridge.onDiscovered(
+            PeatBridge.onDiscovered(
                 device.address,
                 name,
                 rssi,
@@ -454,7 +454,7 @@ class EcheBleManager(private val context: Context) {
         }
 
         override fun onScanFailed(errorCode: Int) {
-            Log.e("EcheBLE", "Scan failed: $errorCode")
+            Log.e("PeatBLE", "Scan failed: $errorCode")
         }
     }
 
@@ -465,7 +465,7 @@ class EcheBleManager(private val context: Context) {
 
         val filters = listOf(
             ScanFilter.Builder()
-                .setServiceUuid(echeServiceUuid)
+                .setServiceUuid(peatServiceUuid)
                 .build()
         )
 
@@ -481,32 +481,32 @@ class EcheBleManager(private val context: Context) {
 ### GATT Client Implementation
 
 ```kotlin
-class EcheGattClient(
+class PeatGattClient(
     private val context: Context,
     private val onDataReceived: (ByteArray) -> Unit
 ) {
     private var gatt: BluetoothGatt? = null
     private var documentCharacteristic: BluetoothGattCharacteristic? = null
 
-    private val echeServiceUuid = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479")
+    private val peatServiceUuid = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479")
     private val documentCharUuid = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479")
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    EcheBridge.onConnected(gatt.device.address, System.currentTimeMillis())
+                    PeatBridge.onConnected(gatt.device.address, System.currentTimeMillis())
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    EcheBridge.onDisconnected(gatt.device.address, 1)
+                    PeatBridge.onDisconnected(gatt.device.address, 1)
                 }
             }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                val service = gatt.getService(echeServiceUuid)
+                val service = gatt.getService(peatServiceUuid)
                 documentCharacteristic = service?.getCharacteristic(documentCharUuid)
 
                 // Enable notifications
@@ -527,7 +527,7 @@ class EcheGattClient(
         ) {
             if (characteristic.uuid == documentCharUuid) {
                 val data = characteristic.value
-                EcheBridge.onDataReceived(
+                PeatBridge.onDataReceived(
                     gatt.device.address,
                     data,
                     System.currentTimeMillis()
@@ -565,7 +565,7 @@ val encryptionSecret = ByteArray(32).also {
 }
 
 // Initialize with encryption
-EcheBridge.initWithEncryption(
+PeatBridge.initWithEncryption(
     nodeId = getNodeId(),
     callsign = "ALPHA-1",
     meshId = "DEMO",
@@ -576,17 +576,17 @@ EcheBridge.initWithEncryption(
 ## Lifecycle Integration
 
 ```kotlin
-class EcheService : Service() {
-    private lateinit var bleManager: EcheBleManager
+class PeatService : Service() {
+    private lateinit var bleManager: PeatBleManager
 
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize Eche
+        // Initialize Peat
         val nodeId = generateNodeId()
-        EcheBridge.init(nodeId, "ANDROID-1", "DEMO")
+        PeatBridge.init(nodeId, "ANDROID-1", "DEMO")
 
-        bleManager = EcheBleManager(this)
+        bleManager = PeatBleManager(this)
 
         // Start periodic tick
         handler.postDelayed(tickRunnable, 1000)
@@ -594,7 +594,7 @@ class EcheService : Service() {
 
     private val tickRunnable = object : Runnable {
         override fun run() {
-            EcheBridge.tick(System.currentTimeMillis())?.let { doc ->
+            PeatBridge.tick(System.currentTimeMillis())?.let { doc ->
                 // Broadcast to connected peers
                 broadcastDocument(doc)
             }
@@ -622,15 +622,15 @@ class EcheService : Service() {
 
 ```kotlin
 @Test
-fun testEcheBridgeInit() {
-    val result = EcheBridge.init(0x12345678, "TEST-1", "TEST")
+fun testPeatBridgeInit() {
+    val result = PeatBridge.init(0x12345678, "TEST-1", "TEST")
     assertEquals(0, result)
 }
 
 @Test
 fun testBuildDocument() {
-    EcheBridge.init(0x12345678, "TEST-1", "TEST")
-    val doc = EcheBridge.buildDocument()
+    PeatBridge.init(0x12345678, "TEST-1", "TEST")
+    val doc = PeatBridge.buildDocument()
     assertNotNull(doc)
     assertTrue(doc.isNotEmpty())
 }
@@ -653,7 +653,7 @@ Use Android Emulator with BLE support or real devices:
 |-------|-------|----------|
 | Scan returns no results | Missing permissions | Request runtime permissions |
 | Connection fails | Device out of range | Move devices closer |
-| Data not syncing | Wrong service UUID | Verify UUID matches ECHE_SERVICE_UUID |
+| Data not syncing | Wrong service UUID | Verify UUID matches PEAT_SERVICE_UUID |
 | Library load error | Missing .so file | Check jniLibs directory structure |
 
 ### Debug Logging
@@ -665,13 +665,13 @@ Enable native logging:
 android_logger.init_once(
     android_logger.Config.default()
         .with_max_level(log.LevelFilter.Debug)
-        .with_tag("eche-btle"),
+        .with_tag("peat-btle"),
 )
 ```
 
 View logs:
 ```bash
-adb logcat -s eche-btle
+adb logcat -s peat-btle
 ```
 
 ## References

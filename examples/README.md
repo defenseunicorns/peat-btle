@@ -1,6 +1,6 @@
-# ECHE-BTLE Examples
+# PEAT-BTLE Examples
 
-This directory contains runnable examples demonstrating various features of the ECHE-BTLE library.
+This directory contains runnable examples demonstrating various features of the PEAT-BTLE library.
 
 ## Running Examples
 
@@ -18,19 +18,19 @@ cargo run --example linux_scanner --features linux
 
 ### basic_mesh.rs
 
-Demonstrates the core `EcheMesh` API for CRDT-based mesh synchronization:
+Demonstrates the core `PeatMesh` API for CRDT-based mesh synchronization:
 
-- Creating mesh nodes with `EcheMeshConfig`
+- Creating mesh nodes with `PeatMeshConfig`
 - Adding observers for mesh events
 - Simulating BLE discovery and connection
 - Document synchronization between nodes
 - Emergency and ACK flow
 
 **Key concepts:**
-- `EcheMesh` - Main entry point for mesh operations
-- `EcheMeshConfig` - Configuration including node ID, callsign, mesh ID
-- `EcheObserver` - Trait for receiving mesh events
-- `EcheEvent` - Events like `PeerDiscovered`, `EmergencyReceived`, etc.
+- `PeatMesh` - Main entry point for mesh operations
+- `PeatMeshConfig` - Configuration including node ID, callsign, mesh ID
+- `PeatObserver` - Trait for receiving mesh events
+- `PeatEvent` - Events like `PeerDiscovered`, `EmergencyReceived`, etc.
 
 ### encryption_demo.rs
 
@@ -43,7 +43,7 @@ Demonstrates mesh-wide encryption using ChaCha20-Poly1305:
 - Strict encryption mode
 
 **Key concepts:**
-- `EcheMeshConfig::with_encryption()` - Enable mesh-wide encryption
+- `PeatMeshConfig::with_encryption()` - Enable mesh-wide encryption
 - `with_strict_encryption()` - Reject unencrypted documents
 - `SecurityViolation` events for security issues
 
@@ -66,8 +66,8 @@ Demonstrates per-peer end-to-end encryption (E2EE):
 Demonstrates BLE scanning on Linux using BlueZ:
 
 - Initializing the BlueZ adapter
-- Scanning for Eche devices
-- Integrating with `EcheMesh` for state management
+- Scanning for Peat devices
+- Integrating with `PeatMesh` for state management
 
 **Requirements:**
 - Linux OS
@@ -80,28 +80,28 @@ Demonstrates BLE scanning on Linux using BlueZ:
 ### Creating a Mesh Node
 
 ```rust
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
+use peat_btle::{PeatMesh, PeatMeshConfig, NodeId};
 
-let config = EcheMeshConfig::new(
+let config = PeatMeshConfig::new(
     NodeId::new(0x12345678),  // Unique node ID
     "ALPHA-1",                 // Callsign
     "DEMO",                    // Mesh ID
 );
-let mesh = EcheMesh::new(config);
+let mesh = PeatMesh::new(config);
 ```
 
 ### Adding an Observer
 
 ```rust
-use eche_btle::observer::{EcheEvent, EcheObserver};
+use peat_btle::observer::{PeatEvent, PeatObserver};
 use std::sync::Arc;
 
 struct MyObserver;
 
-impl EcheObserver for MyObserver {
-    fn on_event(&self, event: EcheEvent) {
+impl PeatObserver for MyObserver {
+    fn on_event(&self, event: PeatEvent) {
         match event {
-            EcheEvent::EmergencyReceived { from_node } => {
+            PeatEvent::EmergencyReceived { from_node } => {
                 println!("EMERGENCY from {:08X}", from_node.as_u32());
             }
             _ => {}
@@ -118,7 +118,7 @@ mesh.add_observer(Arc::new(MyObserver));
 // When a device is discovered
 mesh.on_ble_discovered(
     "device-uuid",           // Platform identifier
-    Some("ECHE_DEMO-AABB"),  // Device name
+    Some("PEAT_DEMO-AABB"),  // Device name
     -65,                     // RSSI in dBm
     Some("DEMO"),            // Mesh ID from advertisement
     timestamp_ms,
@@ -150,7 +150,7 @@ if let Some(sync_doc) = mesh.tick(timestamp_ms) {
 ┌─────────────────────────────────────────────────────────────┐
 │                     Your Application                        │
 ├─────────────────────────────────────────────────────────────┤
-│                        EcheMesh                             │
+│                        PeatMesh                             │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
 │  │  PeerManager    │  │  DocumentSync   │  │  Security   │ │
 │  │  (connections)  │  │  (CRDT state)   │  │  (E2EE)     │ │

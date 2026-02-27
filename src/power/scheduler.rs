@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Radio Scheduler for Eche-Lite
+//! Radio Scheduler for Peat-Lite
 //!
 //! Coordinates radio activities (scan, advertise, sync) to minimize
 //! power consumption while maintaining connectivity.

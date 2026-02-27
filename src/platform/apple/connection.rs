@@ -67,7 +67,7 @@ impl CoreBluetoothConnection {
     /// Create a new connection wrapper
     ///
     /// # Arguments
-    /// * `peer_id` - Eche node ID of the remote peer
+    /// * `peer_id` - Peat node ID of the remote peer
     /// * `identifier` - CoreBluetooth peripheral identifier (UUID)
     pub(super) fn new(peer_id: NodeId, identifier: String) -> Self {
         let (event_tx, event_rx) = mpsc::channel(100);

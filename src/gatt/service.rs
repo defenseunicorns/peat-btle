@@ -13,19 +13,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Eche GATT Service Implementation
+//! Peat GATT Service Implementation
 //!
-//! Provides the GATT service structure and handlers for Eche Protocol BLE communication.
+//! Provides the GATT service structure and handlers for Peat Protocol BLE communication.
 //!
 //! Note: This module requires the `std` feature for full functionality.
 
 use std::sync::{Arc, RwLock};
 
 use crate::error::Result;
-use crate::{HierarchyLevel, NodeId, ECHE_SERVICE_UUID};
+use crate::{HierarchyLevel, NodeId, PEAT_SERVICE_UUID};
 
 use super::characteristics::{
-    CharacteristicProperties, Command, CommandType, EcheCharacteristicUuids, NodeInfo, StatusData,
+    CharacteristicProperties, Command, CommandType, NodeInfo, PeatCharacteristicUuids, StatusData,
     StatusFlags, SyncDataHeader, SyncDataOp, SyncState, SyncStateData,
 };
 
@@ -89,14 +89,14 @@ pub struct CharacteristicDescriptor {
     pub encrypted: bool,
 }
 
-/// Characteristic definitions for Eche GATT service
-pub struct EcheCharacteristics;
+/// Characteristic definitions for Peat GATT service
+pub struct PeatCharacteristics;
 
-impl EcheCharacteristics {
+impl PeatCharacteristics {
     /// Node Info characteristic descriptor
     pub fn node_info() -> CharacteristicDescriptor {
         CharacteristicDescriptor {
-            uuid: EcheCharacteristicUuids::node_info(),
+            uuid: PeatCharacteristicUuids::node_info(),
             name: "Node Info",
             properties: CharacteristicProperties::new(CharacteristicProperties::READ),
             encrypted: true,
@@ -106,7 +106,7 @@ impl EcheCharacteristics {
     /// Sync State characteristic descriptor
     pub fn sync_state() -> CharacteristicDescriptor {
         CharacteristicDescriptor {
-            uuid: EcheCharacteristicUuids::sync_state(),
+            uuid: PeatCharacteristicUuids::sync_state(),
             name: "Sync State",
             properties: CharacteristicProperties::new(
                 CharacteristicProperties::READ | CharacteristicProperties::NOTIFY,
@@ -118,7 +118,7 @@ impl EcheCharacteristics {
     /// Sync Data characteristic descriptor
     pub fn sync_data() -> CharacteristicDescriptor {
         CharacteristicDescriptor {
-            uuid: EcheCharacteristicUuids::sync_data(),
+            uuid: PeatCharacteristicUuids::sync_data(),
             name: "Sync Data",
             properties: CharacteristicProperties::new(
                 CharacteristicProperties::WRITE | CharacteristicProperties::INDICATE,
@@ -130,7 +130,7 @@ impl EcheCharacteristics {
     /// Command characteristic descriptor
     pub fn command() -> CharacteristicDescriptor {
         CharacteristicDescriptor {
-            uuid: EcheCharacteristicUuids::command(),
+            uuid: PeatCharacteristicUuids::command(),
             name: "Command",
             properties: CharacteristicProperties::new(CharacteristicProperties::WRITE),
             encrypted: true,
@@ -140,7 +140,7 @@ impl EcheCharacteristics {
     /// Status characteristic descriptor
     pub fn status() -> CharacteristicDescriptor {
         CharacteristicDescriptor {
-            uuid: EcheCharacteristicUuids::status(),
+            uuid: PeatCharacteristicUuids::status(),
             name: "Status",
             properties: CharacteristicProperties::new(
                 CharacteristicProperties::READ | CharacteristicProperties::NOTIFY,
@@ -193,10 +193,10 @@ impl ServiceState {
     }
 }
 
-/// Eche GATT Service
+/// Peat GATT Service
 ///
 /// Manages the GATT service lifecycle and provides handlers for characteristic operations.
-pub struct EcheGattService {
+pub struct PeatGattService {
     /// Service UUID
     pub uuid: uuid::Uuid,
     /// Internal state
@@ -206,11 +206,11 @@ pub struct EcheGattService {
     event_callback: Option<GattEventCallback>,
 }
 
-impl EcheGattService {
-    /// Create a new Eche GATT service
+impl PeatGattService {
+    /// Create a new Peat GATT service
     pub fn new(node_id: NodeId, hierarchy_level: HierarchyLevel, capabilities: u16) -> Self {
         Self {
-            uuid: ECHE_SERVICE_UUID,
+            uuid: PEAT_SERVICE_UUID,
             state: Arc::new(RwLock::new(ServiceState::new(
                 node_id,
                 hierarchy_level,
@@ -232,7 +232,7 @@ impl EcheGattService {
 
     /// Get all characteristic descriptors
     pub fn characteristics(&self) -> Vec<CharacteristicDescriptor> {
-        EcheCharacteristics::all()
+        PeatCharacteristics::all()
     }
 
     // === Read Handlers ===
@@ -509,19 +509,19 @@ mod tests {
 
     #[test]
     fn test_gatt_service_creation() {
-        let service = EcheGattService::new(
+        let service = PeatGattService::new(
             NodeId::new(0x12345678),
             HierarchyLevel::Squad,
             capabilities::CAN_RELAY,
         );
 
-        assert_eq!(service.service_uuid(), ECHE_SERVICE_UUID);
+        assert_eq!(service.service_uuid(), PEAT_SERVICE_UUID);
         assert_eq!(service.characteristics().len(), 5);
     }
 
     #[test]
     fn test_read_node_info() {
-        let service = EcheGattService::new(
+        let service = PeatGattService::new(
             NodeId::new(0x12345678),
             HierarchyLevel::Squad,
             capabilities::CAN_RELAY,
@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn test_write_command() {
-        let service = EcheGattService::new(NodeId::new(0x12345678), HierarchyLevel::Platform, 0);
+        let service = PeatGattService::new(NodeId::new(0x12345678), HierarchyLevel::Platform, 0);
 
         // Set hierarchy command
         let cmd = Command::with_payload(CommandType::SetHierarchy, vec![2]); // Platoon
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_sync_data_flow() {
-        let service = EcheGattService::new(NodeId::new(0x12345678), HierarchyLevel::Platform, 0);
+        let service = PeatGattService::new(NodeId::new(0x12345678), HierarchyLevel::Platform, 0);
 
         // Start sync
         let cmd = Command::new(CommandType::StartSync);
@@ -581,7 +581,7 @@ mod tests {
 
     #[test]
     fn test_battery_update() {
-        let service = EcheGattService::new(NodeId::new(0x12345678), HierarchyLevel::Platform, 0);
+        let service = PeatGattService::new(NodeId::new(0x12345678), HierarchyLevel::Platform, 0);
 
         service.update_battery(15);
 
@@ -596,7 +596,7 @@ mod tests {
 
     #[test]
     fn test_client_connection() {
-        let service = EcheGattService::new(NodeId::new(0x12345678), HierarchyLevel::Platform, 0);
+        let service = PeatGattService::new(NodeId::new(0x12345678), HierarchyLevel::Platform, 0);
 
         service.on_client_connected("AA:BB:CC:DD:EE:FF".to_string());
         assert_eq!(service.connected_client_count(), 1);
@@ -607,7 +607,7 @@ mod tests {
 
     #[test]
     fn test_mtu_negotiation() {
-        let service = EcheGattService::new(NodeId::new(0x12345678), HierarchyLevel::Platform, 0);
+        let service = PeatGattService::new(NodeId::new(0x12345678), HierarchyLevel::Platform, 0);
 
         assert_eq!(service.mtu(), 23); // Default
 
@@ -616,15 +616,15 @@ mod tests {
     }
 
     #[test]
-    fn test_eche_characteristics() {
-        let chars = EcheCharacteristics::all();
+    fn test_peat_characteristics() {
+        let chars = PeatCharacteristics::all();
         assert_eq!(chars.len(), 5);
 
-        let node_info = EcheCharacteristics::node_info();
+        let node_info = PeatCharacteristics::node_info();
         assert!(node_info.properties.can_read());
         assert!(!node_info.properties.can_write());
 
-        let sync_data = EcheCharacteristics::sync_data();
+        let sync_data = PeatCharacteristics::sync_data();
         assert!(sync_data.properties.can_write());
         assert!(sync_data.properties.can_indicate());
     }

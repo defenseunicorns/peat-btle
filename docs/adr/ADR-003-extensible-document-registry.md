@@ -2,11 +2,11 @@
 
 **Status**: Draft
 **Date**: 2026-02-01
-**Context**: Enable external crates (hive-lite, app-layer) to register custom CRDT document types that sync through eche-btle's delta mechanism.
+**Context**: Enable external crates (hive-lite, app-layer) to register custom CRDT document types that sync through peat-btle's delta mechanism.
 
 ## Problem
 
-Currently, eche-btle has hardcoded document types (`Peripheral`, `EmergencyEvent`, `ChatCRDT`) in `EcheDocument`. External crates like hive-lite define their own CRDT types (e.g., `CannedMessageEvent`) that need to sync across the mesh.
+Currently, peat-btle has hardcoded document types (`Peripheral`, `EmergencyEvent`, `ChatCRDT`) in `PeatDocument`. External crates like hive-lite define their own CRDT types (e.g., `CannedMessageEvent`) that need to sync across the mesh.
 
 The current workaround uses app-layer relay (0xAF marker) which:
 1. Bypasses CRDT delta sync, causing unnecessary re-transmissions
@@ -162,10 +162,10 @@ impl DocumentRegistry {
 }
 ```
 
-### Integration with EcheMesh
+### Integration with PeatMesh
 
 ```rust
-impl EcheMesh {
+impl PeatMesh {
     /// Get the document registry for registering app-layer types.
     pub fn document_registry(&self) -> &DocumentRegistry;
 
@@ -187,7 +187,7 @@ impl EcheMesh {
 
 ### Wire Format for App-Layer Sections
 
-When an app-layer document is included in a EcheDocument:
+When an app-layer document is included in a PeatDocument:
 
 ```text
 [marker: 1B]     - 0xC0-0xCF (type ID)
@@ -283,9 +283,9 @@ hiveMesh.onDocumentUpdate<CannedMessageEvent> { event, isNew ->
 ## Migration Path
 
 ### Phase 1: Add Registry Infrastructure
-- Add `DocumentType` trait and `DocumentRegistry` to eche-btle
+- Add `DocumentType` trait and `DocumentRegistry` to peat-btle
 - Add `AppOperation` to delta_document.rs
-- Expose registry via `EcheMesh::document_registry()`
+- Expose registry via `PeatMesh::document_registry()`
 
 ### Phase 2: Wire Format Support
 - Update document decoder to handle 0xC0-0xCF markers
@@ -304,8 +304,8 @@ hiveMesh.onDocumentUpdate<CannedMessageEvent> { event, isNew ->
 
 ## Alternatives Considered
 
-### A. Hardcode CannedMessage in eche-btle
-**Rejected**: Creates circular dependency, violates eche-btle's standalone design.
+### A. Hardcode CannedMessage in peat-btle
+**Rejected**: Creates circular dependency, violates peat-btle's standalone design.
 
 ### B. Use Protobuf/Cap'n Proto for extensibility
 **Rejected**: Adds dependencies, increases code size for embedded targets.

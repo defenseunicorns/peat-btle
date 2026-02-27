@@ -24,7 +24,7 @@ use windows::Devices::Bluetooth::Advertisement::{
 use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
 
 use crate::config::DiscoveryConfig;
-use crate::discovery::EcheBeacon;
+use crate::discovery::PeatBeacon;
 use crate::error::{BleError, Result};
 use crate::NodeId;
 
@@ -73,7 +73,7 @@ impl BleAdvertiser {
             manufacturer_data.Clear().ok();
         }
 
-        // Add Eche service UUID (16-bit short form in advertisement)
+        // Add Peat service UUID (16-bit short form in advertisement)
         // The 16-bit UUID 0xF47A is encoded as data type 0x03 (Complete List of 16-bit UUIDs)
         if let Ok(data_sections) = advertisement.DataSections() {
             if let Ok(section) = Self::create_service_uuid_section() {
@@ -81,9 +81,9 @@ impl BleAdvertiser {
             }
         }
 
-        // Add manufacturer-specific data with Eche beacon
+        // Add manufacturer-specific data with Peat beacon
         if let Ok(manufacturer_data) = advertisement.ManufacturerData() {
-            if let Ok(data) = Self::create_eche_beacon_data(node_id) {
+            if let Ok(data) = Self::create_peat_beacon_data(node_id) {
                 manufacturer_data.Append(&data).ok();
             }
         }
@@ -127,7 +127,7 @@ impl BleAdvertiser {
             .map_err(|e| BleError::PlatformError(format!("Failed to get status: {}", e)))
     }
 
-    /// Create a data section for the 16-bit Eche service UUID
+    /// Create a data section for the 16-bit Peat service UUID
     fn create_service_uuid_section() -> Result<BluetoothLEAdvertisementDataSection> {
         let section = BluetoothLEAdvertisementDataSection::new()
             .map_err(|e| BleError::PlatformError(format!("Failed to create section: {}", e)))?;
@@ -143,7 +143,7 @@ impl BleAdvertiser {
         let writer = DataWriter::CreateDataWriter(&stream)
             .map_err(|e| BleError::PlatformError(format!("Failed to create writer: {}", e)))?;
 
-        // Eche service UUID 16-bit: 0xF47A (little-endian: 0x7A, 0xF4)
+        // Peat service UUID 16-bit: 0xF47A (little-endian: 0x7A, 0xF4)
         writer
             .WriteBytes(&[0x7A, 0xF4])
             .map_err(|e| BleError::PlatformError(format!("Failed to write UUID: {}", e)))?;
@@ -159,8 +159,8 @@ impl BleAdvertiser {
         Ok(section)
     }
 
-    /// Create manufacturer-specific data with Eche beacon
-    fn create_eche_beacon_data(node_id: NodeId) -> Result<BluetoothLEManufacturerData> {
+    /// Create manufacturer-specific data with Peat beacon
+    fn create_peat_beacon_data(node_id: NodeId) -> Result<BluetoothLEManufacturerData> {
         let data = BluetoothLEManufacturerData::new().map_err(|e| {
             BleError::PlatformError(format!("Failed to create manufacturer data: {}", e))
         })?;
@@ -169,8 +169,8 @@ impl BleAdvertiser {
         data.SetCompanyId(0xFFFF)
             .map_err(|e| BleError::PlatformError(format!("Failed to set company ID: {}", e)))?;
 
-        // Create Eche beacon
-        let beacon = EcheBeacon::new(node_id);
+        // Create Peat beacon
+        let beacon = PeatBeacon::new(node_id);
         let beacon_bytes = beacon.encode();
 
         // Create buffer with beacon data

@@ -22,8 +22,8 @@
 //! # Example
 //!
 //! ```
-//! use eche_btle::address_rotation::AddressRotationHandler;
-//! use eche_btle::NodeId;
+//! use peat_btle::address_rotation::AddressRotationHandler;
+//! use peat_btle::NodeId;
 //!
 //! let mut handler = AddressRotationHandler::new();
 //!
@@ -50,8 +50,8 @@ pub enum DevicePattern {
     WearTak,
     /// Generic WearOS device (WEAROS-XXXX)
     WearOs,
-    /// Eche mesh device (ECHE_MESH-XXXX or ECHE-XXXX)
-    Eche,
+    /// Peat mesh device (PEAT_MESH-XXXX or PEAT-XXXX)
+    Peat,
     /// Unknown pattern (may still rotate addresses)
     Unknown,
 }
@@ -69,8 +69,8 @@ pub fn detect_device_pattern(name: &str) -> DevicePattern {
         DevicePattern::WearTak
     } else if name.starts_with("WEAROS-") {
         DevicePattern::WearOs
-    } else if name.starts_with("ECHE_") || name.starts_with("ECHE-") {
-        DevicePattern::Eche
+    } else if name.starts_with("PEAT_") || name.starts_with("PEAT-") {
+        DevicePattern::Peat
     } else {
         DevicePattern::Unknown
     }
@@ -341,10 +341,10 @@ mod tests {
         );
         assert_eq!(detect_device_pattern("WEAROS-1234"), DevicePattern::WearOs);
         assert_eq!(
-            detect_device_pattern("ECHE_MESH-12345678"),
-            DevicePattern::Eche
+            detect_device_pattern("PEAT_MESH-12345678"),
+            DevicePattern::Peat
         );
-        assert_eq!(detect_device_pattern("ECHE-12345678"), DevicePattern::Eche);
+        assert_eq!(detect_device_pattern("PEAT-12345678"), DevicePattern::Peat);
         assert_eq!(
             detect_device_pattern("SomeOtherDevice"),
             DevicePattern::Unknown
@@ -355,7 +355,7 @@ mod tests {
     fn test_weartak_detection() {
         assert!(is_weartak_device("WT-WEAROS-ABCD"));
         assert!(is_weartak_device("WEAROS-1234"));
-        assert!(!is_weartak_device("ECHE-12345678"));
+        assert!(!is_weartak_device("PEAT-12345678"));
     }
 
     #[test]

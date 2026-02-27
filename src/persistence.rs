@@ -13,9 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Persistence abstraction for Eche documents
+//! Persistence abstraction for Peat documents
 //!
-//! This module provides traits for persisting Eche mesh state across restarts.
+//! This module provides traits for persisting Peat mesh state across restarts.
 //! Platform implementations can use platform-specific storage backends:
 //!
 //! - **ESP32**: NVS (Non-Volatile Storage)
@@ -26,15 +26,15 @@
 //! ## Usage
 //!
 //! ```rust,no_run
-//! use eche_btle::persistence::{DocumentStore, MemoryStore};
-//! use eche_btle::document::EcheDocument;
-//! use eche_btle::NodeId;
+//! use peat_btle::persistence::{DocumentStore, MemoryStore};
+//! use peat_btle::document::PeatDocument;
+//! use peat_btle::NodeId;
 //!
 //! // Use the in-memory store for testing
 //! let mut store = MemoryStore::new();
 //!
 //! // Save a document
-//! let doc = EcheDocument::new(NodeId::new(0x12345678));
+//! let doc = PeatDocument::new(NodeId::new(0x12345678));
 //! store.save(&doc).unwrap();
 //!
 //! // Load it back
@@ -42,13 +42,13 @@
 //! assert!(loaded.is_some());
 //! ```
 
-use crate::document::EcheDocument;
+use crate::document::PeatDocument;
 use crate::error::Result;
 
 #[cfg(feature = "std")]
 use std::sync::{Arc, RwLock};
 
-/// Trait for persisting Eche documents
+/// Trait for persisting Peat documents
 ///
 /// Implementations of this trait provide durable storage for mesh state,
 /// allowing nodes to recover their document after restarts.
@@ -65,13 +65,13 @@ pub trait DocumentStore: Send + Sync {
     /// This should serialize the document and write it to durable storage.
     /// Implementations should handle errors gracefully and return appropriate
     /// error types.
-    fn save(&mut self, doc: &EcheDocument) -> Result<()>;
+    fn save(&mut self, doc: &PeatDocument) -> Result<()>;
 
     /// Load a previously saved document
     ///
     /// Returns `Ok(Some(doc))` if a document was found, `Ok(None)` if no
     /// document exists (first run), or `Err` if loading failed.
-    fn load(&self) -> Result<Option<EcheDocument>>;
+    fn load(&self) -> Result<Option<PeatDocument>>;
 
     /// Clear any stored document
     ///
@@ -91,7 +91,7 @@ pub trait DocumentStore: Send + Sync {
 #[cfg(feature = "std")]
 #[derive(Default)]
 pub struct MemoryStore {
-    document: RwLock<Option<EcheDocument>>,
+    document: RwLock<Option<PeatDocument>>,
 }
 
 #[cfg(feature = "std")]
@@ -102,7 +102,7 @@ impl MemoryStore {
     }
 
     /// Create a memory store pre-populated with a document
-    pub fn with_document(doc: EcheDocument) -> Self {
+    pub fn with_document(doc: PeatDocument) -> Self {
         Self {
             document: RwLock::new(Some(doc)),
         }
@@ -111,13 +111,13 @@ impl MemoryStore {
 
 #[cfg(feature = "std")]
 impl DocumentStore for MemoryStore {
-    fn save(&mut self, doc: &EcheDocument) -> Result<()> {
+    fn save(&mut self, doc: &PeatDocument) -> Result<()> {
         let mut stored = self.document.write().unwrap();
         *stored = Some(doc.clone());
         Ok(())
     }
 
-    fn load(&self) -> Result<Option<EcheDocument>> {
+    fn load(&self) -> Result<Option<PeatDocument>> {
         let stored = self.document.read().unwrap();
         Ok(stored.clone())
     }
@@ -153,7 +153,7 @@ impl FileStore {
 
 #[cfg(feature = "std")]
 impl DocumentStore for FileStore {
-    fn save(&mut self, doc: &EcheDocument) -> Result<()> {
+    fn save(&mut self, doc: &PeatDocument) -> Result<()> {
         let data = doc.encode();
         std::fs::write(&self.path, data).map_err(|e| {
             crate::error::BleError::NotSupported(format!("Failed to write document: {}", e))
@@ -161,9 +161,9 @@ impl DocumentStore for FileStore {
         Ok(())
     }
 
-    fn load(&self) -> Result<Option<EcheDocument>> {
+    fn load(&self) -> Result<Option<PeatDocument>> {
         match std::fs::read(&self.path) {
-            Ok(data) => Ok(EcheDocument::decode(&data)),
+            Ok(data) => Ok(PeatDocument::decode(&data)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(crate::error::BleError::NotSupported(format!(
                 "Failed to read document: {}",
@@ -211,12 +211,12 @@ impl<S: DocumentStore> Clone for SharedStore<S> {
 
 #[cfg(feature = "std")]
 impl<S: DocumentStore> DocumentStore for SharedStore<S> {
-    fn save(&mut self, doc: &EcheDocument) -> Result<()> {
+    fn save(&mut self, doc: &PeatDocument) -> Result<()> {
         let mut inner = self.inner.write().unwrap();
         inner.save(doc)
     }
 
-    fn load(&self) -> Result<Option<EcheDocument>> {
+    fn load(&self) -> Result<Option<PeatDocument>> {
         let inner = self.inner.read().unwrap();
         inner.load()
     }
@@ -241,7 +241,7 @@ mod tests {
         assert!(!store.has_document());
 
         // Save a document
-        let doc = EcheDocument::new(NodeId::new(0x12345678));
+        let doc = PeatDocument::new(NodeId::new(0x12345678));
         store.save(&doc).unwrap();
 
         // Load it back
@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn test_file_store() {
         let temp_dir = std::env::temp_dir();
-        let path = temp_dir.join("eche_test_doc.bin");
+        let path = temp_dir.join("peat_test_doc.bin");
 
         // Clean up from any previous test
         let _ = std::fs::remove_file(&path);
@@ -268,7 +268,7 @@ mod tests {
         assert!(store.load().unwrap().is_none());
 
         // Save a document
-        let mut doc = EcheDocument::new(NodeId::new(0xAABBCCDD));
+        let mut doc = PeatDocument::new(NodeId::new(0xAABBCCDD));
         doc.increment_counter();
         store.save(&doc).unwrap();
 
@@ -287,7 +287,7 @@ mod tests {
         let store = MemoryStore::new();
         let mut shared = SharedStore::new(store);
 
-        let doc = EcheDocument::new(NodeId::new(0x11111111));
+        let doc = PeatDocument::new(NodeId::new(0x11111111));
         shared.save(&doc).unwrap();
 
         // Clone and read from the clone

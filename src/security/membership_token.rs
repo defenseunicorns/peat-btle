@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Membership tokens for tactical trust in Eche meshes
+//! Membership tokens for tactical trust in Peat meshes
 //!
 //! A `MembershipToken` is an authority-signed credential that binds:
 //! - A device's public key to a human-readable callsign
@@ -36,7 +36,7 @@
 //! # Example
 //!
 //! ```
-//! use eche_btle::security::{DeviceIdentity, MembershipToken, MeshGenesis, MembershipPolicy};
+//! use peat_btle::security::{DeviceIdentity, MembershipToken, MeshGenesis, MembershipPolicy};
 //!
 //! // Authority creates the mesh
 //! let authority = DeviceIdentity::generate();

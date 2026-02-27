@@ -11,7 +11,7 @@
 
 ## Executive Summary
 
-This ADR proposes a unified trust architecture for eche-btle that addresses four critical security gaps: identity binding, encrypted advertisements, membership control, and key rotation. Rather than treating these as independent features, we present a cohesive cryptographic identity model where each component builds upon the others.
+This ADR proposes a unified trust architecture for peat-btle that addresses four critical security gaps: identity binding, encrypted advertisements, membership control, and key rotation. Rather than treating these as independent features, we present a cohesive cryptographic identity model where each component builds upon the others.
 
 The architecture introduces **device-bound Ed25519 identities** as the foundation, enabling:
 - Cryptographic proof of node identity (eliminates impersonation)
@@ -27,7 +27,7 @@ The architecture introduces **device-bound Ed25519 identities** as the foundatio
 
 ### The Problem
 
-eche-btle currently operates on a **shared secret model**: if you know the 32-byte mesh secret, you're a member. This creates a binary trust boundary with no gradations:
+peat-btle currently operates on a **shared secret model**: if you know the 32-byte mesh secret, you're a member. This creates a binary trust boundary with no gradations:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -51,13 +51,13 @@ This model has four critical vulnerabilities:
 | Vulnerability | Impact | Exploitability |
 |--------------|--------|----------------|
 | **Identity Spoofing** | Attacker with secret impersonates any node | High - no verification |
-| **Mesh Detection** | Adversary maps all Eche networks in area | High - cleartext ads |
+| **Mesh Detection** | Adversary maps all Peat networks in area | High - cleartext ads |
 | **No Revocation** | Compromised device = permanent breach | Critical - no recovery |
 | **Static Keys** | Key compromise decrypts all past traffic | High - no rotation |
 
 ### Why Now?
 
-As eche-btle moves toward production deployment with ATAK/WearTAK integration, the stakes increase. A mesh network carrying tactical situational awareness data requires trust guarantees beyond "you have the password."
+As peat-btle moves toward production deployment with ATAK/WearTAK integration, the stakes increase. A mesh network carrying tactical situational awareness data requires trust guarantees beyond "you have the password."
 
 ### Guiding Principles
 
@@ -218,11 +218,11 @@ BLE advertisements reveal nothing to passive observers:
 │ BLE ADVERTISEMENT (31 bytes max)                                │
 ├─────────────────────────────────────────────────────────────────┤
 │ Flags:              3 bytes (0x02 0x01 0x06)                    │
-│ Complete Local Name: 6 bytes (0x05 0x09 "ECHE")                 │
+│ Complete Local Name: 6 bytes (0x05 0x09 "PEAT")                 │
 │ Service Data:       22 bytes                                    │
 │   └─ Length:        1 byte  (0x15 = 21)                         │
 │   └─ Type:          1 byte  (0x16 = Service Data)               │
-│   └─ UUID:          2 bytes (0x7AF4 = Eche service)             │
+│   └─ UUID:          2 bytes (0x7AF4 = Peat service)             │
 │   └─ Version:       1 byte  (0x01)                              │
 │   └─ Encrypted:     12 bytes (ChaCha8 ciphertext)               │
 │   └─ MAC:           4 bytes (truncated Poly1305)                │
@@ -247,7 +247,7 @@ struct BeaconPayload {
 ```rust
 // Beacon key rotates with time slot (default: 15 minutes)
 fn derive_beacon_key(mesh_secret: &[u8; 32], time_slot: u64) -> [u8; 32] {
-    let mut hasher = blake3::Hasher::new_derive_key("ECHE-beacon-v1");
+    let mut hasher = blake3::Hasher::new_derive_key("PEAT-beacon-v1");
     hasher.update(mesh_secret);
     hasher.update(&time_slot.to_le_bytes());
     *hasher.finalize().as_bytes()
@@ -257,7 +257,7 @@ fn derive_beacon_key(mesh_secret: &[u8; 32], time_slot: u64) -> [u8; 32] {
 **Scanning Behavior**:
 
 ```rust
-impl EcheMesh {
+impl PeatMesh {
     /// Attempt to decrypt beacon; returns None for non-mesh devices
     pub fn try_decrypt_beacon(&self, service_data: &[u8]) -> Option<BeaconInfo>;
 
@@ -393,7 +393,7 @@ fn derive_epoch_key(
     mesh_id: &str,
     epoch: u32,
 ) -> [u8; 32] {
-    let mut hasher = blake3::Hasher::new_derive_key("ECHE-epoch-key-v1");
+    let mut hasher = blake3::Hasher::new_derive_key("PEAT-epoch-key-v1");
     hasher.update(base_secret);
     hasher.update(mesh_id.as_bytes());
     hasher.update(&epoch.to_le_bytes());
@@ -418,7 +418,7 @@ fn derive_epoch_key(
 | Android Keystore implementation | 2d | `src/platform/android/keystore.rs` |
 | iOS Keychain implementation | 2d | `src/platform/ios/keychain.rs` |
 | ESP32 NVS implementation | 1d | `src/platform/esp32/nvs_identity.rs` |
-| Node ID derivation migration | 1d | Update `EcheMeshConfig` |
+| Node ID derivation migration | 1d | Update `PeatMeshConfig` |
 | Identity attestation wire format | 1d | `src/identity/attestation.rs` |
 | TOFU registry | 1d | `src/identity/registry.rs` |
 | Integration tests | 2d | `tests/identity_*.rs` |
@@ -443,14 +443,14 @@ fn derive_epoch_key(
 | `BeaconPayload` struct | 0.5d | `src/beacon/mod.rs` |
 | ChaCha8 beacon encryption | 1d | `src/beacon/crypto.rs` |
 | Time-slotted key derivation | 0.5d | `src/beacon/keys.rs` |
-| Android advertisement update | 1d | `EcheBtle.kt` |
-| iOS advertisement update | 1d | `EcheBLE.swift` |
+| Android advertisement update | 1d | `PeatBtle.kt` |
+| iOS advertisement update | 1d | `PeatBLE.swift` |
 | ESP32 NimBLE update | 1d | Platform adapter |
 | Backward compat scanner | 1d | Detect old vs new format |
 | Integration tests | 1d | `tests/beacon_*.rs` |
 
 **Acceptance Criteria**:
-- [ ] Device name is generic "ECHE" (no identifiers)
+- [ ] Device name is generic "PEAT" (no identifiers)
 - [ ] Mesh identity encrypted in service data
 - [ ] Only secret-holders can identify mesh members
 - [ ] Scanning still works with service UUID filter
@@ -499,7 +499,7 @@ fn derive_epoch_key(
 | Multi-epoch decryption support | 1d | Accept old + new during transition |
 | E2EE key distribution | 2d | Leverage existing per-peer E2EE |
 | Rotation state machine | 2d | `src/rotation/state.rs` |
-| Leader rotation initiation | 1d | `EcheMesh::initiate_rotation()` |
+| Leader rotation initiation | 1d | `PeatMesh::initiate_rotation()` |
 | Automatic old-key purge | 1d | After transition period |
 | Platform API exposure | 1d | JNI + Swift bindings |
 | Integration tests | 2d | `tests/rotation_*.rs` |
@@ -569,7 +569,7 @@ fn derive_epoch_key(
 
 ## HIVE Framework Integration
 
-eche-btle is the BLE transport layer within the broader HIVE (Hierarchical Intelligence for Versatile Entities) framework. This trust architecture must integrate seamlessly with HIVE's existing security model while supporting standalone operation.
+peat-btle is the BLE transport layer within the broader HIVE (Hierarchical Intelligence for Versatile Entities) framework. This trust architecture must integrate seamlessly with HIVE's existing security model while supporting standalone operation.
 
 ### Credential Integration
 
@@ -584,9 +584,9 @@ pub struct HiveCredentials {
 }
 ```
 
-eche-btle maps these credentials as follows:
+peat-btle maps these credentials as follows:
 
-| HIVE Credential | eche-btle Mapping | Usage |
+| HIVE Credential | peat-btle Mapping | Usage |
 |-----------------|-------------------|-------|
 | `HIVE_APP_ID` | `mesh_id` derivation | `mesh_id = BLAKE3(app_id)[0..4]` as hex |
 | `HIVE_SECRET_KEY` | `encryption_secret` | Mesh-wide encryption key |
@@ -596,10 +596,10 @@ eche-btle maps these credentials as follows:
 
 #### Mode 1: HIVE-Managed (Recommended)
 
-When eche-btle operates as a transport under hive-protocol:
+When peat-btle operates as a transport under hive-protocol:
 
 ```rust
-impl EcheBtleTransport {
+impl PeatBtleTransport {
     /// Create transport from HIVE credentials
     pub fn from_hive_credentials(
         creds: &HiveCredentials,
@@ -611,7 +611,7 @@ impl EcheBtleTransport {
             .try_into()
             .map_err(|_| Error::InvalidSecret)?;
 
-        Ok(Self::new(EcheMeshConfig::new(
+        Ok(Self::new(PeatMeshConfig::new(
             device_identity.node_id(),
             &device_identity.callsign(),
             &mesh_id,
@@ -624,11 +624,11 @@ impl EcheBtleTransport {
 In this mode:
 - Credentials flow from hive-protocol
 - Device identity may be provisioned by higher-level PKI (ADR-006)
-- eche-btle provides transport-layer trust; hive-protocol provides application-layer trust
+- peat-btle provides transport-layer trust; hive-protocol provides application-layer trust
 
 #### Mode 2: Standalone Operation
 
-When eche-btle operates independently (e.g., pure BLE mesh without HIVE backend):
+When peat-btle operates independently (e.g., pure BLE mesh without HIVE backend):
 
 ```rust
 // Environment variables for standalone operation
@@ -636,7 +636,7 @@ When eche-btle operates independently (e.g., pure BLE mesh without HIVE backend)
 // HIVE_BTLE_SECRET      - 32-byte hex-encoded encryption secret
 // HIVE_BTLE_CALLSIGN    - Human-readable device name
 
-impl EcheMeshConfig {
+impl PeatMeshConfig {
     /// Load configuration from environment (standalone mode)
     pub fn from_env() -> Result<Self> {
         let mesh_id = env::var("HIVE_BTLE_MESH_ID")
@@ -653,7 +653,7 @@ impl EcheMeshConfig {
 
         let mut config = Self::new(
             identity.node_id(),
-            &env::var("ECHE_BTLE_CALLSIGN").unwrap_or_else(|_| "ECHE".to_string()),
+            &env::var("PEAT_BTLE_CALLSIGN").unwrap_or_else(|_| "PEAT".to_string()),
             &mesh_id,
         ).with_identity(identity);
 
@@ -685,7 +685,7 @@ When connected to HIVE-protocol, device identities can be upgraded:
 │                              │ (pubkey attestation)             │
 │                              ▼                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │           eche-btle Transport Layer (This ADR)           │   │
+│  │           peat-btle Transport Layer (This ADR)           │   │
 │  │  Ed25519 Device Identity, TOFU, Mesh-Scoped Trust       │   │
 │  │  NodeId → pubkey hash (standalone) or cert-bound        │   │
 │  └─────────────────────────────────────────────────────────┘   │
@@ -695,12 +695,12 @@ When connected to HIVE-protocol, device identities can be upgraded:
 
 **Identity Binding Protocol**:
 
-When a node has both eche-btle identity and hive-protocol identity:
+When a node has both peat-btle identity and hive-protocol identity:
 
 ```rust
-/// Bind eche-btle identity to hive-protocol certificate
+/// Bind peat-btle identity to hive-protocol certificate
 pub struct IdentityBinding {
-    /// eche-btle Ed25519 public key
+    /// peat-btle Ed25519 public key
     btle_pubkey: [u8; 32],
 
     /// hive-protocol X.509 certificate hash
@@ -718,7 +718,7 @@ This allows:
 
 ### Membership Synchronization
 
-When eche-btle is managed by hive-protocol:
+When peat-btle is managed by hive-protocol:
 
 ```rust
 /// Callback interface for HIVE-managed membership
@@ -729,11 +729,11 @@ pub trait MembershipDelegate {
     /// Called to get current membership roster
     fn get_roster(&self) -> Vec<[u8; 32]>;
 
-    /// Called when eche-btle wants to revoke a node
+    /// Called when peat-btle wants to revoke a node
     fn request_revocation(&self, pubkey: &[u8; 32], reason: RevocationReason);
 }
 
-impl EcheMesh {
+impl PeatMesh {
     /// Set delegate for HIVE-managed membership
     pub fn set_membership_delegate(&mut self, delegate: Arc<dyn MembershipDelegate>);
 }
@@ -742,7 +742,7 @@ impl EcheMesh {
 This allows hive-protocol to:
 - Approve/deny join requests based on PKI verification
 - Push roster updates from cell membership changes
-- Coordinate revocations across HIVE and eche-btle layers
+- Coordinate revocations across HIVE and peat-btle layers
 
 ### Key Rotation Coordination
 
@@ -751,14 +751,14 @@ When rotation is initiated at the HIVE level:
 ```rust
 /// Key rotation can be initiated by either layer
 pub enum RotationSource {
-    /// Initiated by eche-btle (e.g., local compromise detected)
+    /// Initiated by peat-btle (e.g., local compromise detected)
     BtleLocal,
 
     /// Initiated by hive-protocol (e.g., cell key rotation)
     HiveProtocol { new_secret: [u8; 32] },
 }
 
-impl EcheMesh {
+impl PeatMesh {
     /// Handle rotation from HIVE protocol layer
     pub fn on_hive_key_rotation(&mut self, new_secret: &[u8; 32]) -> Result<()> {
         // Skip announcement phase - HIVE already coordinated

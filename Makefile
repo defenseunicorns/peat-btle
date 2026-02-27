@@ -6,7 +6,7 @@
         range-macos range-linux
 
 # ============================================
-# ECHE-BTLE Build System
+# PEAT-BTLE Build System
 # ============================================
 
 # Configuration
@@ -23,7 +23,7 @@ ANDROID_TARGETS = arm64-v8a armeabi-v7a x86_64
 # ============================================
 
 help:
-	@echo "ECHE-BTLE Build System"
+	@echo "PEAT-BTLE Build System"
 	@echo ""
 	@echo "Rust Targets:"
 	@echo "  build          - Build library (linux feature)"
@@ -63,7 +63,7 @@ help:
 # ============================================
 
 build:
-	@echo "Building eche-btle (linux)..."
+	@echo "Building peat-btle (linux)..."
 	cargo build --features linux
 	@echo "✓ Build complete"
 
@@ -90,7 +90,7 @@ fmt-check:
 doc:
 	@echo "Generating documentation..."
 	cargo doc --features linux --no-deps
-	@echo "✓ Docs generated: target/doc/eche_btle/index.html"
+	@echo "✓ Docs generated: target/doc/peat_btle/index.html"
 
 # ============================================
 # Android Targets
@@ -102,15 +102,15 @@ build-android:
 		-o android/src/main/jniLibs \
 		build --release --features android
 	@echo "✓ Native libraries built:"
-	@ls -la android/src/main/jniLibs/*/libeche_btle.so
+	@ls -la android/src/main/jniLibs/*/libpeat_btle.so
 
 generate-bindings: build-android
 	@echo "Generating Kotlin bindings from UniFFI..."
 	uniffi-bindgen generate \
-		--library android/src/main/jniLibs/arm64-v8a/libeche_btle.so \
+		--library android/src/main/jniLibs/arm64-v8a/libpeat_btle.so \
 		--language kotlin \
 		--out-dir android/src/main/kotlin
-	@echo "✓ Kotlin bindings generated: android/src/main/kotlin/uniffi/eche_btle/eche_btle.kt"
+	@echo "✓ Kotlin bindings generated: android/src/main/kotlin/uniffi/peat_btle/peat_btle.kt"
 
 build-aar: generate-bindings
 	@echo "Building AAR..."
@@ -123,24 +123,24 @@ publish-maven-local: build-android
 	@echo "✓ Published to ~/.m2/repository/com/revolveteam/hive/"
 
 # Verify JNI symbols match Kotlin native method declarations
-# Focus on EcheMesh class which has the critical peripheral state methods
+# Focus on PeatMesh class which has the critical peripheral state methods
 verify-jni: build-android
-	@echo "Verifying JNI symbols for EcheMesh..."
+	@echo "Verifying JNI symbols for PeatMesh..."
 	@echo ""
-	@echo "Extracting EcheMesh native method declarations from Kotlin..."
-	@grep "private external fun native" android/src/main/java/com/revolveteam/hive/EcheMesh.kt \
+	@echo "Extracting PeatMesh native method declarations from Kotlin..."
+	@grep "private external fun native" android/src/main/java/com/revolveteam/hive/PeatMesh.kt \
 		| sed 's/.*fun \(native[^(]*\).*/\1/' \
 		| sort -u > /tmp/kotlin_natives.txt
-	@echo "Found $$(wc -l < /tmp/kotlin_natives.txt) EcheMesh native declarations"
+	@echo "Found $$(wc -l < /tmp/kotlin_natives.txt) PeatMesh native declarations"
 	@cat /tmp/kotlin_natives.txt
 	@echo ""
-	@echo "Extracting EcheMesh JNI symbols from .so..."
-	@nm -D android/src/main/jniLibs/arm64-v8a/libeche_btle.so \
-		| grep "T Java_com_revolveteam_hive_EcheMesh_native" \
-		| sed 's/.*EcheMesh_//' \
+	@echo "Extracting PeatMesh JNI symbols from .so..."
+	@nm -D android/src/main/jniLibs/arm64-v8a/libpeat_btle.so \
+		| grep "T Java_com_revolveteam_hive_PeatMesh_native" \
+		| sed 's/.*PeatMesh_//' \
 		| sed 's/<.*//' \
 		| sort -u > /tmp/jni_symbols.txt
-	@echo "Found $$(wc -l < /tmp/jni_symbols.txt) EcheMesh JNI symbols"
+	@echo "Found $$(wc -l < /tmp/jni_symbols.txt) PeatMesh JNI symbols"
 	@cat /tmp/jni_symbols.txt
 	@echo ""
 	@echo "Checking for missing implementations..."
@@ -154,7 +154,7 @@ verify-jni: build-android
 		echo "Add implementations in src/platform/android/jni_bridge.rs"; \
 		exit 1; \
 	else \
-		echo "✓ All EcheMesh native methods have JNI implementations"; \
+		echo "✓ All PeatMesh native methods have JNI implementations"; \
 	fi
 
 # ============================================
@@ -217,7 +217,7 @@ publish-maven-central: build-android
 clean:
 	@echo "Cleaning build artifacts..."
 	cargo clean
-	rm -rf android/src/main/jniLibs/*/libeche_btle.so
+	rm -rf android/src/main/jniLibs/*/libpeat_btle.so
 	rm -rf android/build
 	rm -rf ../examples/android-hive-demo/app/build
 	@echo "✓ Clean complete"

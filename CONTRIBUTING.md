@@ -1,11 +1,11 @@
-# Contributing to eche-btle
+# Contributing to peat-btle
 
-Thank you for your interest in contributing to eche-btle! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to peat-btle! This document provides guidelines and information for contributors.
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/eche-btle.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/peat-btle.git`
 3. Create a feature branch: `git checkout -b feature/your-feature-name`
 4. Make your changes
 5. Run tests: `cargo test`

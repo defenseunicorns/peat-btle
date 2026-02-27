@@ -24,8 +24,8 @@ import android.util.Log
  * Proxy class that handles BLE advertising events.
  *
  * This class extends Android's AdvertiseCallback and logs advertising
- * start/stop events. The actual mesh state management happens in EcheBtle
- * via UniFFI bindings to the Rust EcheMesh.
+ * start/stop events. The actual mesh state management happens in PeatBtle
+ * via UniFFI bindings to the Rust PeatMesh.
  *
  * Usage:
  * ```kotlin
@@ -36,7 +36,7 @@ import android.util.Log
 class AdvertiseCallbackProxy : AdvertiseCallback() {
 
     companion object {
-        private const val TAG = "EcheBtle.AdvertiseCb"
+        private const val TAG = "PeatBtle.AdvertiseCb"
     }
 
     /**

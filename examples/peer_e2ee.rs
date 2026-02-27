@@ -21,9 +21,9 @@
 //!
 //! Run with: cargo run --example peer_e2ee
 
-use eche_btle::observer::{EcheEvent, EcheObserver};
-use eche_btle::security::PeerSessionManager;
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
+use peat_btle::observer::{PeatEvent, PeatObserver};
+use peat_btle::security::PeerSessionManager;
+use peat_btle::{NodeId, PeatMesh, PeatMeshConfig};
 use std::sync::Arc;
 
 /// Observer that tracks E2EE events
@@ -37,17 +37,17 @@ impl E2eeObserver {
     }
 }
 
-impl EcheObserver for E2eeObserver {
-    fn on_event(&self, event: EcheEvent) {
+impl PeatObserver for E2eeObserver {
+    fn on_event(&self, event: PeatEvent) {
         match event {
-            EcheEvent::PeerE2eeEstablished { peer_node_id } => {
+            PeatEvent::PeerE2eeEstablished { peer_node_id } => {
                 println!(
                     "[{}] E2EE session ESTABLISHED with {:08X}",
                     self.name,
                     peer_node_id.as_u32()
                 );
             }
-            EcheEvent::PeerE2eeMessageReceived { from_node, data } => {
+            PeatEvent::PeerE2eeMessageReceived { from_node, data } => {
                 let message = String::from_utf8_lossy(&data);
                 println!(
                     "[{}] E2EE message from {:08X}: \"{}\"",
@@ -56,7 +56,7 @@ impl EcheObserver for E2eeObserver {
                     message
                 );
             }
-            EcheEvent::PeerE2eeClosed { peer_node_id } => {
+            PeatEvent::PeerE2eeClosed { peer_node_id } => {
                 println!(
                     "[{}] E2EE session CLOSED with {:08X}",
                     self.name,
@@ -69,14 +69,14 @@ impl EcheObserver for E2eeObserver {
 }
 
 fn main() {
-    println!("=== ECHE-BTLE Per-Peer E2EE Example ===\n");
+    println!("=== PEAT-BTLE Per-Peer E2EE Example ===\n");
 
-    // Create mesh nodes (using EcheMesh's built-in E2EE support)
-    let config_alice = EcheMeshConfig::new(NodeId::new(0xAAAA1111), "ALICE", "DEMO");
-    let config_bob = EcheMeshConfig::new(NodeId::new(0xBBBB2222), "BOB", "DEMO");
+    // Create mesh nodes (using PeatMesh's built-in E2EE support)
+    let config_alice = PeatMeshConfig::new(NodeId::new(0xAAAA1111), "ALICE", "DEMO");
+    let config_bob = PeatMeshConfig::new(NodeId::new(0xBBBB2222), "BOB", "DEMO");
 
-    let mesh_alice = EcheMesh::new(config_alice);
-    let mesh_bob = EcheMesh::new(config_bob);
+    let mesh_alice = PeatMesh::new(config_alice);
+    let mesh_bob = PeatMesh::new(config_bob);
 
     mesh_alice.add_observer(Arc::new(E2eeObserver::new("ALICE")));
     mesh_bob.add_observer(Arc::new(E2eeObserver::new("BOB")));
@@ -102,7 +102,7 @@ fn main() {
     }
     println!();
 
-    println!("--- EcheMesh E2EE API ---");
+    println!("--- PeatMesh E2EE API ---");
     let now_ms = 1000u64;
 
     // Alice initiates E2EE session with Bob
@@ -122,7 +122,7 @@ fn main() {
     // For demonstration, let's show the low-level API directly
     demonstrate_low_level_e2ee();
 
-    println!("--- Closing EcheMesh Session ---");
+    println!("--- Closing PeatMesh Session ---");
     mesh_alice.close_peer_e2ee(NodeId::new(0xBBBB2222));
     println!("Alice sessions: {}", mesh_alice.peer_e2ee_session_count());
 

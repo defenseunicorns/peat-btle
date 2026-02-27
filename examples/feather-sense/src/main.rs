@@ -1,4 +1,4 @@
-//! Eche SOS Beacon for Adafruit Feather nRF52840 Sense
+//! Peat SOS Beacon for Adafruit Feather nRF52840 Sense
 //!
 //! - User switch triggers SOS
 //! - Red LED = SOS active
@@ -31,7 +31,7 @@ use portable_atomic::AtomicU64;
 // Constants
 // =============================================================================
 
-/// Eche service UUID 16-bit (matches Android EcheBtle.kt)
+/// Peat service UUID 16-bit (matches Android PeatBtle.kt)
 const HIVE_SERVICE_UUID_16: u16 = 0xF47A;
 
 /// Device name for SD config
@@ -59,7 +59,7 @@ const BEACON_KEY: [u8; 32] = [
 const STATIC_LATITUDE: f32 = 33.7384;
 const STATIC_LONGITUDE: f32 = -84.4168;
 
-/// Build Eche beacon service data (10 bytes)
+/// Build Peat beacon service data (10 bytes)
 /// Format: version|caps_hi, caps_lo, node_id[4], hierarchy, battery, seq[2]
 fn build_beacon(seq: u16, battery: u8) -> [u8; 10] {
     let mut beacon = [0u8; 10];
@@ -94,12 +94,12 @@ static LED_UPDATE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 // =============================================================================
 
 #[nrf_softdevice::gatt_server]
-struct EcheServer {
-    hive: EcheService,
+struct PeatServer {
+    hive: PeatService,
 }
 
 #[nrf_softdevice::gatt_service(uuid = "f47ac10b-58cc-4372-a567-0e02b2c3d479")]
-struct EcheService {
+struct PeatService {
     #[characteristic(uuid = "f47a0003-58cc-4372-a567-0e02b2c3d479", read, write, notify)]
     document: [u8; 128],
 
@@ -222,7 +222,7 @@ async fn main(spawner: Spawner) {
     let node_id = unsafe { core::ptr::read_volatile(0x10000060 as *const u32) };
     NODE_ID.store(node_id, Ordering::SeqCst);
 
-    info!("ECHE-SENSE starting... NodeID: {:08X}", node_id);
+    info!("PEAT-SENSE starting... NodeID: {:08X}", node_id);
     info!("Position: {}, {}", STATIC_LATITUDE, STATIC_LONGITUDE);
 
     // Use default embassy config like adafruit-clue example
@@ -271,7 +271,7 @@ async fn main(spawner: Spawner) {
     let sd = Softdevice::enable(&sd_config);
     info!("SoftDevice enabled");
 
-    let server = EcheServer::new(sd).unwrap();
+    let server = PeatServer::new(sd).unwrap();
 
     server.hive.position_set(&encode_position()).unwrap();
     server.hive.emergency_set(&encode_emergency()).unwrap();
@@ -354,18 +354,18 @@ async fn main(spawner: Spawner) {
                 LED_UPDATE.signal(());
 
                 let res = gatt_server::run(&conn, &server, |event| match event {
-                    EcheServerEvent::Eche(e) => match e {
-                        EcheServiceEvent::DocumentWrite(data) => {
+                    PeatServerEvent::Peat(e) => match e {
+                        PeatServiceEvent::DocumentWrite(data) => {
                             info!("Document: {} bytes", data.len());
                         }
-                        EcheServiceEvent::EmergencyWrite(data) => {
+                        PeatServiceEvent::EmergencyWrite(data) => {
                             if data.len() >= 13 && SOS_ACTIVE.load(Ordering::SeqCst) {
                                 SOS_ACKS.fetch_add(1, Ordering::SeqCst);
                                 info!("ACK received! Total: {}", SOS_ACKS.load(Ordering::SeqCst));
                                 LED_UPDATE.signal(());
                             }
                         }
-                        EcheServiceEvent::EmergencyCccdWrite { notifications } => {
+                        PeatServiceEvent::EmergencyCccdWrite { notifications } => {
                             if notifications && SOS_ACTIVE.load(Ordering::SeqCst) {
                                 let _ = server.hive.emergency_notify(&conn, &encode_emergency());
                             }

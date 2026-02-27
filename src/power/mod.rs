@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Power Management for Eche-Lite
+//! Power Management for Peat-Lite
 //!
 //! Provides power-efficient radio scheduling and profile management
 //! for battery-constrained BLE devices.
@@ -21,7 +21,7 @@
 //! ## Overview
 //!
 //! This module implements the power management layer that enables
-//! Eche-Lite devices to achieve 20+ hour battery life on typical
+//! Peat-Lite devices to achieve 20+ hour battery life on typical
 //! smartwatch hardware (300mAh battery).
 //!
 //! ## Key Components
@@ -65,8 +65,8 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use eche_btle::power::{RadioScheduler, PowerProfile, SyncPriority};
-//! use eche_btle::NodeId;
+//! use peat_btle::power::{RadioScheduler, PowerProfile, SyncPriority};
+//! use peat_btle::NodeId;
 //!
 //! // Create scheduler with low-power profile
 //! let mut scheduler = RadioScheduler::with_profile(PowerProfile::LowPower);

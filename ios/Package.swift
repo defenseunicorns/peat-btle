@@ -4,27 +4,27 @@
 import PackageDescription
 
 let package = Package(
-    name: "EcheTest",
+    name: "PeatTest",
     platforms: [
         .iOS(.v16),
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "EcheTest", targets: ["EcheTest"]),
+        .executable(name: "PeatTest", targets: ["PeatTest"]),
     ],
     dependencies: [],
     targets: [
         // Binary target for the Rust FFI library
         .binaryTarget(
-            name: "EcheFFI",
-            path: "build/EcheFFI.xcframework"
+            name: "PeatFFI",
+            path: "build/PeatFFI.xcframework"
         ),
         .executableTarget(
-            name: "EcheTest",
+            name: "PeatTest",
             dependencies: [
-                "EcheFFI",
+                "PeatFFI",
             ],
-            path: "EcheTest",
+            path: "PeatTest",
             exclude: ["Info.plist"],
             linkerSettings: [
                 .linkedFramework("CoreBluetooth"),

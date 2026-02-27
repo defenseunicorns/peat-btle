@@ -7,19 +7,19 @@
 ### Minimal Secure Mesh
 
 ```rust
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
+use peat_btle::{PeatMesh, PeatMeshConfig, NodeId};
 
 // 1. Generate or load shared secret (32 bytes)
 let secret: [u8; 32] = load_from_secure_storage();
 
 // 2. Create mesh with encryption
-let config = EcheMeshConfig::new(
+let config = PeatMeshConfig::new(
     NodeId::new(0x12345678),  // Unique node ID
     "ALPHA-1",                 // Human-readable callsign
     "DEMO",                    // Mesh identifier
 ).with_encryption(secret);
 
-let mesh = EcheMesh::new(config);
+let mesh = PeatMesh::new(config);
 
 // 3. All documents are now encrypted automatically
 let encrypted_doc = mesh.build_document();  // Ready for transmission
@@ -27,10 +27,10 @@ let encrypted_doc = mesh.build_document();  // Ready for transmission
 
 ## Mesh Configuration
 
-### EcheMeshConfig
+### PeatMeshConfig
 
 ```rust
-pub struct EcheMeshConfig {
+pub struct PeatMeshConfig {
     pub node_id: NodeId,              // 32-bit unique identifier
     pub callsign: String,             // Display name (e.g., "ALPHA-1")
     pub mesh_id: String,              // Network identifier (e.g., "DEMO")
@@ -45,7 +45,7 @@ pub struct EcheMeshConfig {
 ### Configuration Builder Pattern
 
 ```rust
-let config = EcheMeshConfig::new(node_id, "ALPHA-1", "DEMO")
+let config = PeatMeshConfig::new(node_id, "ALPHA-1", "DEMO")
     .with_encryption(secret)                    // Enable encryption
     .with_peripheral_type(PeripheralType::SoldierSensor)
     .with_sync_interval(10_000)                 // 10 second sync
@@ -59,14 +59,14 @@ let config = EcheMeshConfig::new(node_id, "ALPHA-1", "DEMO")
 
 **Option A: At Construction**
 ```rust
-let config = EcheMeshConfig::new(node_id, callsign, mesh_id)
+let config = PeatMeshConfig::new(node_id, callsign, mesh_id)
     .with_encryption(secret);
-let mesh = EcheMesh::new(config);
+let mesh = PeatMesh::new(config);
 ```
 
 **Option B: After Construction**
 ```rust
-let mut mesh = EcheMesh::new(config);
+let mut mesh = PeatMesh::new(config);
 mesh.enable_encryption(&secret);
 
 // Later, if needed:
@@ -93,11 +93,11 @@ if mesh.is_strict_encryption_enabled() {
 Strict mode rejects unencrypted documents when encryption is enabled, preventing downgrade attacks:
 
 ```rust
-let config = EcheMeshConfig::new(node_id, callsign, mesh_id)
+let config = PeatMeshConfig::new(node_id, callsign, mesh_id)
     .with_encryption(secret)
     .with_strict_encryption();  // Reject unencrypted docs
 
-let mesh = EcheMesh::new(config);
+let mesh = PeatMesh::new(config);
 ```
 
 **When to use strict mode:**
@@ -177,8 +177,8 @@ let key_exchange_msg = mesh_a.initiate_peer_e2ee(peer_node_id, now_ms)
 
 ```rust
 // === Setup ===
-let mesh_a = EcheMesh::new(config_a);
-let mesh_b = EcheMesh::new(config_b);
+let mesh_a = PeatMesh::new(config_a);
+let mesh_b = PeatMesh::new(config_b);
 
 mesh_a.enable_peer_e2ee();
 mesh_b.enable_peer_e2ee();
@@ -225,17 +225,17 @@ Decryption is automatic when using standard receive methods:
 let result = mesh.on_ble_data_received(identifier, &data, now_ms);
 
 // For E2EE messages, observers are notified:
-impl EcheObserver for MyObserver {
-    fn on_event(&self, event: EcheEvent) {
+impl PeatObserver for MyObserver {
+    fn on_event(&self, event: PeatEvent) {
         match event {
-            EcheEvent::PeerE2eeEstablished { peer_node_id } => {
+            PeatEvent::PeerE2eeEstablished { peer_node_id } => {
                 println!("E2EE session ready with {:08X}", peer_node_id.as_u32());
             }
-            EcheEvent::PeerE2eeMessageReceived { from_node, data } => {
+            PeatEvent::PeerE2eeMessageReceived { from_node, data } => {
                 println!("Got E2EE message from {:08X}: {:?}",
                     from_node.as_u32(), data);
             }
-            EcheEvent::PeerE2eeClosed { peer_node_id } => {
+            PeatEvent::PeerE2eeClosed { peer_node_id } => {
                 println!("E2EE session closed with {:08X}", peer_node_id.as_u32());
             }
             _ => {}
@@ -310,10 +310,10 @@ mesh.on_ble_disconnected("device-uuid", DisconnectReason::RemoteRequest);
 
 ```rust
 // All known peers
-let all_peers: Vec<EchePeer> = mesh.get_peers();
+let all_peers: Vec<PeatPeer> = mesh.get_peers();
 
 // Connected peers only
-let connected: Vec<EchePeer> = mesh.get_connected_peers();
+let connected: Vec<PeatPeer> = mesh.get_connected_peers();
 
 // Specific peer
 if let Some(peer) = mesh.get_peer(node_id) {
@@ -352,53 +352,53 @@ use std::sync::Arc;
 
 struct MyObserver;
 
-impl EcheObserver for MyObserver {
-    fn on_event(&self, event: EcheEvent) {
+impl PeatObserver for MyObserver {
+    fn on_event(&self, event: PeatEvent) {
         match event {
             // Peer events
-            EcheEvent::PeerDiscovered { peer } => {
+            PeatEvent::PeerDiscovered { peer } => {
                 println!("Found: {} (RSSI: {})", peer.display_name(), peer.rssi);
             }
-            EcheEvent::PeerConnected { node_id } => {
+            PeatEvent::PeerConnected { node_id } => {
                 println!("Connected: {:08X}", node_id.as_u32());
             }
-            EcheEvent::PeerDisconnected { node_id, reason } => {
+            PeatEvent::PeerDisconnected { node_id, reason } => {
                 println!("Disconnected: {:08X} ({:?})", node_id.as_u32(), reason);
             }
-            EcheEvent::PeerLost { node_id } => {
+            PeatEvent::PeerLost { node_id } => {
                 println!("Lost (stale): {:08X}", node_id.as_u32());
             }
 
             // Mesh events
-            EcheEvent::MeshStateChanged { peer_count, connected_count } => {
+            PeatEvent::MeshStateChanged { peer_count, connected_count } => {
                 println!("Mesh: {}/{} connected", connected_count, peer_count);
             }
 
             // Sync events
-            EcheEvent::DocumentSynced { from_node, total_count } => {
+            PeatEvent::DocumentSynced { from_node, total_count } => {
                 println!("Synced from {:08X}, count={}", from_node.as_u32(), total_count);
             }
-            EcheEvent::EmergencyReceived { from_node } => {
+            PeatEvent::EmergencyReceived { from_node } => {
                 println!("EMERGENCY from {:08X}!", from_node.as_u32());
             }
-            EcheEvent::AckReceived { from_node } => {
+            PeatEvent::AckReceived { from_node } => {
                 println!("ACK from {:08X}", from_node.as_u32());
             }
 
             // E2EE events
-            EcheEvent::PeerE2eeEstablished { peer_node_id } => {
+            PeatEvent::PeerE2eeEstablished { peer_node_id } => {
                 println!("E2EE ready: {:08X}", peer_node_id.as_u32());
             }
-            EcheEvent::PeerE2eeMessageReceived { from_node, data } => {
+            PeatEvent::PeerE2eeMessageReceived { from_node, data } => {
                 println!("E2EE msg from {:08X}: {} bytes",
                     from_node.as_u32(), data.len());
             }
-            EcheEvent::PeerE2eeClosed { peer_node_id } => {
+            PeatEvent::PeerE2eeClosed { peer_node_id } => {
                 println!("E2EE closed: {:08X}", peer_node_id.as_u32());
             }
 
             // Security events
-            EcheEvent::SecurityViolation { kind, source } => {
+            PeatEvent::SecurityViolation { kind, source } => {
                 log::warn!("Security violation: {:?} from {:?}", kind, source);
                 // Handle violations:
                 // - UnencryptedInStrictMode: downgrade attack attempt
@@ -423,7 +423,7 @@ mesh.remove_observer(&observer);
 ### Encryption Errors
 
 ```rust
-use eche_btle::security::EncryptionError;
+use peat_btle::security::EncryptionError;
 
 match mesh_encryption_key.decrypt(&encrypted_doc) {
     Ok(plaintext) => { /* process */ }
@@ -459,19 +459,19 @@ if result.is_none() && data[0] == ENCRYPTED_MARKER {
 ### iOS (Swift via UniFFI)
 
 ```swift
-import EcheBTLE
+import PeatBTLE
 
 // Create mesh
-let config = EcheMeshConfig(
+let config = PeatMeshConfig(
     nodeId: NodeId(value: 0x12345678),
     callsign: "ALPHA-1",
     meshId: "DEMO"
 )
 config.setEncryption(secret: secretData)
 
-let mesh = EcheMesh(config: config)
+let mesh = PeatMesh(config: config)
 
-// CoreBluetooth callbacks → EcheMesh
+// CoreBluetooth callbacks → PeatMesh
 func peripheral(_ peripheral: CBPeripheral,
                 didUpdateValueFor characteristic: CBCharacteristic,
                 error: Error?) {
@@ -489,11 +489,11 @@ func peripheral(_ peripheral: CBPeripheral,
 ### Android (Kotlin via JNI)
 
 ```kotlin
-import com.hive.btle.EcheMesh
-import com.hive.btle.EcheMeshConfig
+import com.hive.btle.PeatMesh
+import com.hive.btle.PeatMeshConfig
 
 // Create mesh
-val config = EcheMeshConfig(
+val config = PeatMeshConfig(
     nodeId = NodeId(0x12345678),
     callsign = "ALPHA-1",
     meshId = "DEMO"
@@ -501,9 +501,9 @@ val config = EcheMeshConfig(
     setEncryption(secret)
 }
 
-val mesh = EcheMesh(config)
+val mesh = PeatMesh(config)
 
-// BluetoothGattCallback → EcheMesh
+// BluetoothGattCallback → PeatMesh
 override fun onCharacteristicChanged(
     gatt: BluetoothGatt,
     characteristic: BluetoothGattCharacteristic
@@ -522,7 +522,7 @@ override fun onCharacteristicChanged(
 ### ESP32 (C via FFI)
 
 ```c
-#include "eche_btle.h"
+#include "peat_btle.h"
 
 // Create mesh
 hive_mesh_config_t config = {
@@ -535,7 +535,7 @@ config.encryption_enabled = true;
 
 hive_mesh_t* mesh = hive_mesh_new(&config);
 
-// NimBLE callback → EcheMesh
+// NimBLE callback → PeatMesh
 static int gatt_write_cb(uint16_t conn_handle, ...) {
     uint64_t now_ms = esp_timer_get_time() / 1000;
     hive_mesh_on_ble_data(mesh, identifier, data, len, now_ms);
@@ -572,11 +572,11 @@ log::info!("Using secret: {:?}", secret);  // NEVER DO THIS
 ```rust
 // Handle mixed encrypted/unencrypted mesh during rollout
 let config = if secure_mode_required {
-    EcheMeshConfig::new(node_id, callsign, mesh_id)
+    PeatMeshConfig::new(node_id, callsign, mesh_id)
         .with_encryption(secret)
 } else {
     // Development mode - no encryption
-    EcheMeshConfig::new(node_id, callsign, mesh_id)
+    PeatMeshConfig::new(node_id, callsign, mesh_id)
 };
 ```
 
@@ -587,8 +587,8 @@ let config = if secure_mode_required {
 mod tests {
     use super::*;
 
-    fn create_test_mesh(node_id: u32, secret: Option<[u8; 32]>) -> EcheMesh {
-        let mut config = EcheMeshConfig::new(
+    fn create_test_mesh(node_id: u32, secret: Option<[u8; 32]>) -> PeatMesh {
+        let mut config = PeatMeshConfig::new(
             NodeId::new(node_id),
             &format!("TEST-{}", node_id),
             "TEST"
@@ -596,7 +596,7 @@ mod tests {
         if let Some(s) = secret {
             config = config.with_encryption(s);
         }
-        EcheMesh::new(config)
+        PeatMesh::new(config)
     }
 
     #[test]

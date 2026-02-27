@@ -1,6 +1,6 @@
 # ESP32 Platform Integration Guide
 
-This guide covers integrating `eche-btle` into ESP32 projects using the ESP-IDF NimBLE stack.
+This guide covers integrating `peat-btle` into ESP32 projects using the ESP-IDF NimBLE stack.
 
 ## Requirements
 
@@ -59,15 +59,15 @@ cargo install espflash
 ### 2. Create Project
 
 ```bash
-cargo new --bin eche-esp32
-cd eche-esp32
+cargo new --bin peat-esp32
+cd peat-esp32
 ```
 
 ### 3. Configure Cargo.toml
 
 ```toml
 [package]
-name = "eche-esp32"
+name = "peat-esp32"
 version = "0.1.0"
 edition = "2021"
 
@@ -75,7 +75,7 @@ edition = "2021"
 esp-idf-svc = { version = "0.48", features = ["binstart", "std"] }
 esp-idf-hal = "0.43"
 log = "0.4"
-eche-btle = { version = "0.1", features = ["esp32", "std"] }
+peat-btle = { version = "0.1", features = ["esp32", "std"] }
 embedded-svc = "0.27"
 
 [build-dependencies]
@@ -133,8 +133,8 @@ ESP_IDF_VERSION = "v5.1"
 ```rust
 use esp_idf_svc::hal::prelude::*;
 use esp_idf_svc::log::EspLogger;
-use eche_btle::{EcheMesh, EcheMeshConfig, NodeId};
-use eche_btle::platform::esp32::Esp32Adapter;
+use peat_btle::{PeatMesh, PeatMeshConfig, NodeId};
+use peat_btle::platform::esp32::Esp32Adapter;
 use log::info;
 use std::time::Duration;
 
@@ -143,7 +143,7 @@ fn main() -> anyhow::Result<()> {
     esp_idf_svc::sys::link_patches();
     EspLogger::initialize_default();
 
-    info!("Starting Eche BLE on ESP32...");
+    info!("Starting Peat BLE on ESP32...");
 
     // Get MAC address for node ID
     let mut mac = [0u8; 6];
@@ -155,12 +155,12 @@ fn main() -> anyhow::Result<()> {
     info!("Node ID: {:08X}", node_id.as_u32());
 
     // Create mesh configuration
-    let config = EcheMeshConfig::new(node_id, "ESP32-1", "DEMO");
-    let mesh = EcheMesh::new(config);
+    let config = PeatMeshConfig::new(node_id, "ESP32-1", "DEMO");
+    let mesh = PeatMesh::new(config);
 
     // Create and initialize ESP32 adapter
-    let mut adapter = Esp32Adapter::new(node_id, "ECHE_DEMO")?;
-    let ble_config = eche_btle::BleConfig::hive_lite(node_id);
+    let mut adapter = Esp32Adapter::new(node_id, "PEAT_DEMO")?;
+    let ble_config = peat_btle::BleConfig::hive_lite(node_id);
 
     // Block on async init
     esp_idf_svc::hal::task::block_on(async {
@@ -272,7 +272,7 @@ impl Esp32Adapter {
     /// Create new adapter
     pub fn new(node_id: NodeId, device_name: &str) -> Result<Self>;
 
-    /// Create with Eche-Lite defaults
+    /// Create with Peat-Lite defaults
     pub fn hive_lite(node_id: NodeId) -> Result<Self>;
 
     /// Take pending received document (non-blocking)
@@ -358,10 +358,10 @@ fn print_heap_info() {
 cargo build --release
 
 # Flash and monitor
-espflash flash --monitor target/xtensa-esp32-espidf/release/eche-esp32
+espflash flash --monitor target/xtensa-esp32-espidf/release/peat-esp32
 
 # Or separately
-espflash flash target/xtensa-esp32-espidf/release/eche-esp32
+espflash flash target/xtensa-esp32-espidf/release/peat-esp32
 espflash monitor
 ```
 
@@ -400,16 +400,16 @@ unsafe {
 
 ### iOS/Android Discovery
 
-1. Flash ESP32 with Eche firmware
-2. It will advertise as `ECHE_DEMO-XXXXXXXX`
-3. Use iOS/Android Eche app to discover
+1. Flash ESP32 with Peat firmware
+2. It will advertise as `PEAT_DEMO-XXXXXXXX`
+3. Use iOS/Android Peat app to discover
 4. Connect and sync documents
 
 ### Linux Testing
 
 ```bash
-# Scan for Eche devices
-sudo hcitool lescan | grep ECHE
+# Scan for Peat devices
+sudo hcitool lescan | grep PEAT
 
 # Connect with gatttool
 sudo gatttool -b XX:XX:XX:XX:XX:XX -I

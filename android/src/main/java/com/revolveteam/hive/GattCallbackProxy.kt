@@ -24,9 +24,9 @@ import android.bluetooth.BluetoothProfile
 import android.util.Log
 
 /**
- * Listener interface for Eche document events.
+ * Listener interface for Peat document events.
  */
-interface EcheDocumentListener {
+interface PeatDocumentListener {
     /**
      * Called when document data is received (via read or notification).
      */
@@ -56,15 +56,15 @@ interface EcheDocumentListener {
 }
 
 /**
- * Proxy class that forwards GATT events to the EcheBtle layer.
+ * Proxy class that forwards GATT events to the PeatBtle layer.
  *
  * This class extends Android's BluetoothGattCallback and bridges all GATT
- * events via the EcheDocumentListener interface. The actual mesh processing
- * happens in EcheBtle via UniFFI bindings to the Rust EcheMesh.
+ * events via the PeatDocumentListener interface. The actual mesh processing
+ * happens in PeatBtle via UniFFI bindings to the Rust PeatMesh.
  *
  * ## MTU Negotiation
  *
- * BLE has a default ATT MTU of 23 bytes (~20 byte payload). EcheDocument
+ * BLE has a default ATT MTU of 23 bytes (~20 byte payload). PeatDocument
  * structures can exceed this limit, so MTU negotiation is required.
  * This callback automatically requests a larger MTU (185 bytes) after
  * connecting, then triggers service discovery after MTU is negotiated.
@@ -83,7 +83,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
     /**
      * Optional listener for document events.
      */
-    var documentListener: EcheDocumentListener? = null
+    var documentListener: PeatDocumentListener? = null
 
     /**
      * Current negotiated MTU for this connection.
@@ -93,7 +93,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         private set
 
     companion object {
-        private const val TAG = "EcheBtle.GattCallback"
+        private const val TAG = "PeatBtle.GattCallback"
 
         // GATT status codes
         const val GATT_SUCCESS = BluetoothGatt.GATT_SUCCESS
@@ -105,11 +105,11 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         const val STATE_DISCONNECTING = BluetoothProfile.STATE_DISCONNECTING
 
         /**
-         * Requested MTU size for Eche connections.
+         * Requested MTU size for Peat connections.
          *
-         * EcheDocument minimum size: 12 bytes (header only, no counters)
-         * EcheDocument with 1 GCounter entry: 24 bytes
-         * EcheDocument with location data: ~40-60 bytes
+         * PeatDocument minimum size: 12 bytes (header only, no counters)
+         * PeatDocument with 1 GCounter entry: 24 bytes
+         * PeatDocument with location data: ~40-60 bytes
          *
          * 185 bytes provides good headroom while maintaining compatibility
          * with most BLE devices. Maximum supported is 517 bytes (BLE 5.0).
@@ -138,7 +138,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         documentListener?.onConnectionStateChanged(newState == STATE_CONNECTED)
 
         // On connect: request larger MTU first (service discovery happens in onMtuChanged)
-        // This is required because EcheDocument can exceed the default 23-byte BLE MTU
+        // This is required because PeatDocument can exceed the default 23-byte BLE MTU
         if (newState == STATE_CONNECTED && status == GATT_SUCCESS) {
             Log.d(TAG, "[$connectionId] Requesting MTU: $REQUESTED_MTU")
             val mtuRequested = gatt.requestMtu(REQUESTED_MTU)
@@ -192,15 +192,15 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         val value = characteristic.value ?: ByteArray(0)
         Log.d(TAG, "[$connectionId] Characteristic read: ${characteristic.uuid} (${value.size} bytes, status=$status)")
 
-        // Notify listener if this is the Eche document characteristic
-        if (status == GATT_SUCCESS && isEcheDocumentCharacteristic(characteristic)) {
+        // Notify listener if this is the Peat document characteristic
+        if (status == GATT_SUCCESS && isPeatDocumentCharacteristic(characteristic)) {
             documentListener?.onDocumentReceived(value)
         }
     }
 
-    private fun isEcheDocumentCharacteristic(characteristic: BluetoothGattCharacteristic): Boolean {
-        // Check against canonical Eche document characteristic UUID (CHAR_SYNC_DATA)
-        return characteristic.uuid == EcheBtle.ECHE_CHAR_DOCUMENT
+    private fun isPeatDocumentCharacteristic(characteristic: BluetoothGattCharacteristic): Boolean {
+        // Check against canonical Peat document characteristic UUID (CHAR_SYNC_DATA)
+        return characteristic.uuid == PeatBtle.PEAT_CHAR_DOCUMENT
     }
 
     /**
@@ -214,8 +214,8 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
     ) {
         Log.d(TAG, "[$connectionId] Characteristic read: ${characteristic.uuid} (${value.size} bytes, status=$status)")
 
-        // Notify listener if this is the Eche document characteristic
-        if (status == GATT_SUCCESS && isEcheDocumentCharacteristic(characteristic)) {
+        // Notify listener if this is the Peat document characteristic
+        if (status == GATT_SUCCESS && isPeatDocumentCharacteristic(characteristic)) {
             documentListener?.onDocumentReceived(value)
         }
     }
@@ -252,8 +252,8 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
         val value = characteristic.value ?: ByteArray(0)
         Log.d(TAG, "[$connectionId] Characteristic changed: ${characteristic.uuid} (${value.size} bytes)")
 
-        // Notify listener if this is the Eche document characteristic
-        if (isEcheDocumentCharacteristic(characteristic)) {
+        // Notify listener if this is the Peat document characteristic
+        if (isPeatDocumentCharacteristic(characteristic)) {
             documentListener?.onDocumentReceived(value)
         }
     }
@@ -268,8 +268,8 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
     ) {
         Log.d(TAG, "[$connectionId] Characteristic changed: ${characteristic.uuid} (${value.size} bytes)")
 
-        // Notify listener if this is the Eche document characteristic
-        if (isEcheDocumentCharacteristic(characteristic)) {
+        // Notify listener if this is the Peat document characteristic
+        if (isPeatDocumentCharacteristic(characteristic)) {
             documentListener?.onDocumentReceived(value)
         }
     }
@@ -293,7 +293,7 @@ class GattCallbackProxy(private val connectionId: Long) : BluetoothGattCallback(
      * Called when the MTU for a connection changes.
      *
      * After MTU negotiation completes, service discovery is triggered.
-     * This ensures we have a larger MTU before exchanging EcheDocument data.
+     * This ensures we have a larger MTU before exchanging PeatDocument data.
      *
      * @param gatt The GATT client
      * @param mtu The new MTU size
