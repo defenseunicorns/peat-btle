@@ -14,7 +14,7 @@
 // limitations under the License.
 
 
-package com.revolveteam.hive
+package com.revolveteam.peat
 
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseSettings
