@@ -78,11 +78,11 @@ This will:
 ### 4. Verify Publication
 
 - Check status at: https://central.sonatype.com
-- Search for artifact: https://search.maven.org/search?q=g:com.revolveteam
+- Search for artifact: https://search.maven.org/search?q=g:com.defenseunicorns
 
 The artifact will be available as:
 ```gradle
-implementation("com.revolveteam:peat-btle:X.Y.Z")
+implementation("com.defenseunicorns:peat-btle:X.Y.Z")
 ```
 
 Note: Maven Central indexing can take 10-30 minutes after successful publication.

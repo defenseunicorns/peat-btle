@@ -86,7 +86,7 @@ dependencies {
 ### Basic Usage
 
 ```kotlin
-import com.revolveteam.hive.*
+import com.defenseunicorns.peat.*
 
 class MainActivity : AppCompatActivity(), PeatMeshListener {
 
@@ -153,8 +153,8 @@ class MainActivity : AppCompatActivity(), PeatMeshListener {
 For direct access to the native Rust mesh implementation:
 
 ```kotlin
-import com.revolveteam.hive.PeatMesh
-import com.revolveteam.hive.PeripheralType
+import com.defenseunicorns.peat.PeatMesh
+import com.defenseunicorns.peat.PeripheralType
 
 // Create mesh with configuration
 val mesh = PeatMesh(

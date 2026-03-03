@@ -14,7 +14,7 @@
 // limitations under the License.
 
 
-package com.revolveteam.peat
+package com.defenseunicorns.peat
 
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
