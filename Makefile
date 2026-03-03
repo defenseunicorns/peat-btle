@@ -120,7 +120,7 @@ build-aar: generate-bindings
 publish-maven-local: build-android
 	@echo "Publishing to Maven Local..."
 	cd android && ./gradlew publishToMavenLocal --no-configuration-cache
-	@echo "✓ Published to ~/.m2/repository/com/revolveteam/peat-btle/"
+	@echo "✓ Published to ~/.m2/repository/com/defenseunicorns/peat-btle/"
 
 # Verify JNI symbols match Kotlin native method declarations
 # Focus on PeatMesh class which has the critical peripheral state methods
@@ -128,7 +128,7 @@ verify-jni: build-android
 	@echo "Verifying JNI symbols for PeatMesh..."
 	@echo ""
 	@echo "Extracting PeatMesh native method declarations from Kotlin..."
-	@grep "private external fun native" android/src/main/java/com/revolveteam/peat/PeatMesh.kt \
+	@grep "private external fun native" android/src/main/java/com/defenseunicorns/peat/PeatMesh.kt \
 		| sed 's/.*fun \(native[^(]*\).*/\1/' \
 		| sort -u > /tmp/kotlin_natives.txt
 	@echo "Found $$(wc -l < /tmp/kotlin_natives.txt) PeatMesh native declarations"
@@ -136,7 +136,7 @@ verify-jni: build-android
 	@echo ""
 	@echo "Extracting PeatMesh JNI symbols from .so..."
 	@nm -D android/src/main/jniLibs/arm64-v8a/libpeat_btle.so \
-		| grep "T Java_com_revolveteam_peat_PeatMesh_native" \
+		| grep "T Java_com_defenseunicorns_peat_PeatMesh_native" \
 		| sed 's/.*PeatMesh_//' \
 		| sed 's/<.*//' \
 		| sort -u > /tmp/jni_symbols.txt

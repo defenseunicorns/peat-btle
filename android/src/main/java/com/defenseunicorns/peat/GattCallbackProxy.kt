@@ -14,7 +14,7 @@
 // limitations under the License.
 
 
-package com.revolveteam.peat
+package com.defenseunicorns.peat
 
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
