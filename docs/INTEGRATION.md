@@ -71,12 +71,12 @@ if let Some(bytes) = decrypted {
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("com.revolveteam:hive:0.1.0-rc26")
+    implementation("com.defenseunicorns:hive:0.1.0-rc26")
 }
 ```
 
 ```kotlin
-import com.revolveteam.hive.*
+import com.defenseunicorns.hive.*
 
 class MyActivity : AppCompatActivity(), PeatMeshListener {
 

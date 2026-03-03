@@ -38,9 +38,9 @@ Starting with rc.28, peat-btle uses [UniFFI](https://mozilla.github.io/uniffi-rs
 
 **Before:**
 ```kotlin
-import com.revolveteam.hive.PeatMesh
-import com.revolveteam.hive.DeviceIdentity
-import com.revolveteam.hive.MeshGenesis
+import com.defenseunicorns.peat.PeatMesh
+import com.defenseunicorns.peat.DeviceIdentity
+import com.defenseunicorns.peat.MeshGenesis
 ```
 
 **After:**
@@ -300,7 +300,7 @@ enum class ConnectionState {
 
 ## PeatBtle Integration
 
-The `PeatBtle` class in `com.revolveteam.hive` has been updated to use UniFFI internally. If you're using `PeatBtle` directly, the public API remains largely the same - the changes are internal.
+The `PeatBtle` class in `com.defenseunicorns.peat` has been updated to use UniFFI internally. If you're using `PeatBtle` directly, the public API remains largely the same - the changes are internal.
 
 Key internal changes in PeatBtle:
 - Removed `nativeInit`/`nativeShutdown` calls

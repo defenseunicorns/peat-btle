@@ -81,7 +81,7 @@ PEAT-BTLE is a Bluetooth Low Energy mesh networking library that enables secure,
 
 **Android (Gradle)**
 ```kotlin
-implementation("com.revolveteam:hive:0.1.0-rc7")
+implementation("com.defenseunicorns:hive:0.1.0-rc7")
 ```
 
 **Rust**
