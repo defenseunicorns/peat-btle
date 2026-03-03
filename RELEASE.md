@@ -82,7 +82,7 @@ This will:
 
 The artifact will be available as:
 ```gradle
-implementation("com.revolveteam:hive:X.Y.Z")
+implementation("com.revolveteam:peat-btle:X.Y.Z")
 ```
 
 Note: Maven Central indexing can take 10-30 minutes after successful publication.

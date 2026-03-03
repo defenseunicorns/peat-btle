@@ -13,7 +13,7 @@
 ANDROID_SDK ?= $(HOME)/Android/Sdk
 ADB ?= $(ANDROID_SDK)/platform-tools/adb
 JAVA_HOME ?= $(HOME)/.local/share/mise/installs/java/temurin-17.0.17+10
-DEMO_APK ?= ../examples/android-hive-demo/app/build/outputs/apk/debug/app-debug.apk
+DEMO_APK ?= ../examples/android-peat-demo/app/build/outputs/apk/debug/app-debug.apk
 
 # Android architectures
 ANDROID_TARGETS = arm64-v8a armeabi-v7a x86_64
@@ -120,7 +120,7 @@ build-aar: generate-bindings
 publish-maven-local: build-android
 	@echo "Publishing to Maven Local..."
 	cd android && ./gradlew publishToMavenLocal --no-configuration-cache
-	@echo "✓ Published to ~/.m2/repository/com/revolveteam/hive/"
+	@echo "✓ Published to ~/.m2/repository/com/revolveteam/peat-btle/"
 
 # Verify JNI symbols match Kotlin native method declarations
 # Focus on PeatMesh class which has the critical peripheral state methods
@@ -128,7 +128,7 @@ verify-jni: build-android
 	@echo "Verifying JNI symbols for PeatMesh..."
 	@echo ""
 	@echo "Extracting PeatMesh native method declarations from Kotlin..."
-	@grep "private external fun native" android/src/main/java/com/revolveteam/hive/PeatMesh.kt \
+	@grep "private external fun native" android/src/main/java/com/revolveteam/peat/PeatMesh.kt \
 		| sed 's/.*fun \(native[^(]*\).*/\1/' \
 		| sort -u > /tmp/kotlin_natives.txt
 	@echo "Found $$(wc -l < /tmp/kotlin_natives.txt) PeatMesh native declarations"
@@ -136,7 +136,7 @@ verify-jni: build-android
 	@echo ""
 	@echo "Extracting PeatMesh JNI symbols from .so..."
 	@nm -D android/src/main/jniLibs/arm64-v8a/libpeat_btle.so \
-		| grep "T Java_com_revolveteam_hive_PeatMesh_native" \
+		| grep "T Java_com_revolveteam_peat_PeatMesh_native" \
 		| sed 's/.*PeatMesh_//' \
 		| sed 's/<.*//' \
 		| sort -u > /tmp/jni_symbols.txt
@@ -163,8 +163,8 @@ verify-jni: build-android
 
 build-android-demo: build-android
 	@echo "Building Android demo APK..."
-	JAVA_HOME=$(JAVA_HOME) ../examples/android-hive-demo/gradlew \
-		-p ../examples/android-hive-demo assembleDebug
+	JAVA_HOME=$(JAVA_HOME) ../examples/android-peat-demo/gradlew \
+		-p ../examples/android-peat-demo assembleDebug
 	@echo "✓ APK built: $(DEMO_APK)"
 
 deploy-android:
@@ -219,7 +219,7 @@ clean:
 	cargo clean
 	rm -rf android/src/main/jniLibs/*/libpeat_btle.so
 	rm -rf android/build
-	rm -rf ../examples/android-hive-demo/app/build
+	rm -rf ../examples/android-peat-demo/app/build
 	@echo "✓ Clean complete"
 
 # ============================================
