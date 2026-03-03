@@ -24,7 +24,7 @@ group = "com.revolveteam"
 version = "0.1.1"
 
 android {
-    namespace = "com.revolveteam.hive"
+    namespace = "com.revolveteam.peat"
     compileSdk = 34
 
     defaultConfig {
@@ -109,8 +109,8 @@ tasks.register<Exec>("buildNativeLibs") {
     group = "build"
 
     // peat-btle root is parent of android directory
-    val hiveBtleRoot = rootProject.projectDir.parentFile
-    workingDir = hiveBtleRoot
+    val peatBtleRoot = rootProject.projectDir.parentFile
+    workingDir = peatBtleRoot
 
     val ndkPath = System.getenv("ANDROID_NDK_HOME")
         ?: System.getenv("NDK_HOME")
@@ -185,7 +185,7 @@ afterEvaluate {
         publications {
             register<MavenPublication>("release") {
                 groupId = "com.revolveteam"
-                artifactId = "hive"
+                artifactId = "peat-btle"
                 version = project.version.toString()
 
                 from(components["release"])
@@ -252,7 +252,7 @@ tasks.register<Zip>("createMavenCentralBundle") {
     dependsOn("publishReleasePublicationToLocalRepository")
 
     from(layout.buildDirectory.dir("repo"))
-    archiveFileName.set("hive-${project.version}-bundle.zip")
+    archiveFileName.set("peat-btle-${project.version}-bundle.zip")
     destinationDirectory.set(layout.buildDirectory.dir("bundle"))
 }
 
@@ -263,7 +263,7 @@ tasks.register<Exec>("publishToMavenCentral") {
 
     dependsOn("createMavenCentralBundle")
 
-    val bundleFile = layout.buildDirectory.file("bundle/hive-${project.version}-bundle.zip")
+    val bundleFile = layout.buildDirectory.file("bundle/peat-btle-${project.version}-bundle.zip")
     val username = project.findProperty("sonatypeUsername") as String? ?: System.getenv("SONATYPE_USERNAME") ?: ""
     val password = project.findProperty("sonatypePassword") as String? ?: System.getenv("SONATYPE_PASSWORD") ?: ""
 
