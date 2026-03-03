@@ -20,11 +20,11 @@ plugins {
     id("signing")
 }
 
-group = "com.revolveteam"
+group = "com.defenseunicorns"
 version = "0.1.1"
 
 android {
-    namespace = "com.revolveteam.peat"
+    namespace = "com.defenseunicorns.peat"
     compileSdk = 34
 
     defaultConfig {
@@ -184,7 +184,7 @@ afterEvaluate {
     publishing {
         publications {
             register<MavenPublication>("release") {
-                groupId = "com.revolveteam"
+                groupId = "com.defenseunicorns"
                 artifactId = "peat-btle"
                 version = project.version.toString()
 

@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>Peat Test</string>
     <key>CFBundleIdentifier</key>
-    <string>com.revolveteam.hive.test</string>
+    <string>com.defenseunicorns.peat.test</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
