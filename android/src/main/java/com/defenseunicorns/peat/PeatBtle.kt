@@ -62,7 +62,7 @@ import uniffi.peat_btle.StateCountSummary
 import uniffi.peat_btle.FullStateCountSummary
 import uniffi.peat_btle.IndirectPeer
 import uniffi.peat_btle.ViaPeerRoute
-import uniffi.peat_btle.CannedMessageInfo
+
 import uniffi.peat_btle.deriveNodeIdFromMac
 import uniffi.peat_btle.ReconnectionManager as RustReconnectionManager
 import uniffi.peat_btle.ReconnectionConfig as RustReconnectionConfig
@@ -2230,45 +2230,7 @@ class PeatBtle(
         notifyConnectedCentrals(docBytes)
     }
 
-    /**
-     * Store a CannedMessage document for CRDT sync.
-     *
-     * Takes raw hive-lite encoded bytes (including 0xAF marker).
-     * The document will be stored and synced to peers via delta sync.
-     *
-     * @param encodedBytes The hive-lite encoded CannedMessageAckEvent bytes
-     * @return true if the document was newly added or changed via merge
-     */
-    fun storeCannedMessageDocument(encodedBytes: ByteArray): Boolean {
-        val mesh = _mesh
-        if (mesh == null) {
-            Log.w(TAG, "Mesh not initialized, cannot store canned message")
-            return false
-        }
-        val result = mesh.storeCannedMessageDocument(encodedBytes)
-        Log.d(TAG, "[CANNED-MSG] Stored document: ${encodedBytes.size} bytes, changed=$result")
-        return result
-    }
-
-    /**
-     * Record an ACK on a stored CannedMessage document.
-     *
-     * @param sourceNode The source node that created the document
-     * @param timestamp The document timestamp
-     * @param ackerNode The node recording the ACK
-     * @param ackTimestamp The ACK timestamp
-     * @return true if the ACK was new (document changed)
-     */
-    fun ackCannedMessage(sourceNode: UInt, timestamp: ULong, ackerNode: UInt, ackTimestamp: ULong): Boolean {
-        val mesh = _mesh
-        if (mesh == null) {
-            Log.w(TAG, "Mesh not initialized, cannot ACK canned message")
-            return false
-        }
-        val result = mesh.ackCannedMessage(sourceNode, timestamp, ackerNode, ackTimestamp)
-        Log.d(TAG, "[CANNED-MSG] ACK recorded: source=$sourceNode ts=$timestamp acker=$ackerNode, changed=$result")
-        return result
-    }
+    // storeCannedMessageDocument and ackCannedMessage removed — Rust API not yet on main
 
     /**
      * Get the number of stored app documents.
@@ -2287,20 +2249,7 @@ class PeatBtle(
      *
      * @return List of CannedMessageInfo, or empty list if mesh not initialized
      */
-    fun getAllCannedMessages(): List<CannedMessageInfo> {
-        return _mesh?.getAllCannedMessages() ?: emptyList()
-    }
-
-    /**
-     * Get a specific CannedMessage document as encoded bytes.
-     *
-     * @param sourceNode The source node of the message
-     * @param timestamp The timestamp of the message
-     * @return The encoded bytes (with 0xAF marker), or null if not found
-     */
-    fun getCannedMessageDocument(sourceNode: UInt, timestamp: ULong): ByteArray? {
-        return _mesh?.getCannedMessageDocument(sourceNode, timestamp)
-    }
+    // getAllCannedMessages and getCannedMessageDocument removed — Rust API not yet on main
 
     /**
      * Get the current list of peers in the mesh.
