@@ -34,4 +34,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "hive"
+rootProject.name = "peat"
