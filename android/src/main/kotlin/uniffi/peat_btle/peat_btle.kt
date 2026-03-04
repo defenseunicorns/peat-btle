@@ -688,121 +688,121 @@ external fun uniffi_peat_btle_checksum_method_deviceidentity_get_public_key(
 ): Short
 external fun uniffi_peat_btle_checksum_method_deviceidentity_sign(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_ack_canned_message(
+external fun uniffi_peat_btle_checksum_method_peatmesh_ack_canned_message(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_app_document_count(
+external fun uniffi_peat_btle_checksum_method_peatmesh_app_document_count(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_broadcast_bytes(
+external fun uniffi_peat_btle_checksum_method_peatmesh_broadcast_bytes(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_build_delta_document_for_peer(
+external fun uniffi_peat_btle_checksum_method_peatmesh_build_delta_document_for_peer(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_build_document(
+external fun uniffi_peat_btle_checksum_method_peatmesh_build_document(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_build_full_delta_document(
+external fun uniffi_peat_btle_checksum_method_peatmesh_build_full_delta_document(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_check_canned_message(
+external fun uniffi_peat_btle_checksum_method_peatmesh_check_canned_message(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_clear_location(
+external fun uniffi_peat_btle_checksum_method_peatmesh_clear_location(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_clear_peripheral_event(
+external fun uniffi_peat_btle_checksum_method_peatmesh_clear_peripheral_event(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_connected_count(
+external fun uniffi_peat_btle_checksum_method_peatmesh_connected_count(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_create_attestation(
+external fun uniffi_peat_btle_checksum_method_peatmesh_create_attestation(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_decrypt_only(
+external fun uniffi_peat_btle_checksum_method_peatmesh_decrypt_only(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_degraded_peer_count(
+external fun uniffi_peat_btle_checksum_method_peatmesh_degraded_peer_count(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_all_canned_messages(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_all_canned_messages(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_canned_message_document(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_canned_message_document(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_connected_peer_identifiers(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_connected_peer_identifiers(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_connected_peers(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_connected_peers(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_connection_state_counts(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_connection_state_counts(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_degraded_peers(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_degraded_peers(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_full_state_counts(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_full_state_counts(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_indirect_peers(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_indirect_peers(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_lost_peers(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_lost_peers(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_peer_callsign(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_peer_callsign(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_peer_connection_state(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_peer_connection_state(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_public_key(
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_public_key(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_has_identity(
+external fun uniffi_peat_btle_checksum_method_peatmesh_has_identity(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_ack_active(
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_ack_active(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_emergency_active(
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_emergency_active(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_encryption_enabled(
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_encryption_enabled(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_peer_identity_known(
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_peer_identity_known(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_peer_known(
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_peer_known(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_relay_enabled(
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_relay_enabled(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_known_identity_count(
+external fun uniffi_peat_btle_checksum_method_peatmesh_known_identity_count(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_lost_peer_count(
+external fun uniffi_peat_btle_checksum_method_peatmesh_lost_peer_count(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_mark_canned_message_seen(
+external fun uniffi_peat_btle_checksum_method_peatmesh_mark_canned_message_seen(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_matches_mesh(
+external fun uniffi_peat_btle_checksum_method_peatmesh_matches_mesh(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_ble_connected(
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_ble_connected(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_ble_data_received(
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_ble_data_received(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_ble_data_received_anonymous(
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_ble_data_received_anonymous(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_ble_disconnected(
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_ble_disconnected(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_ble_discovered(
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_ble_discovered(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_incoming_connection(
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_incoming_connection(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_peer_count(
+external fun uniffi_peat_btle_checksum_method_peatmesh_peer_count(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_recently_disconnected_count(
+external fun uniffi_peat_btle_checksum_method_peatmesh_recently_disconnected_count(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_send_ack(
+external fun uniffi_peat_btle_checksum_method_peatmesh_send_ack(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_send_canned_message(
+external fun uniffi_peat_btle_checksum_method_peatmesh_send_canned_message(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_send_emergency(
+external fun uniffi_peat_btle_checksum_method_peatmesh_send_emergency(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_set_peripheral_event(
+external fun uniffi_peat_btle_checksum_method_peatmesh_set_peripheral_event(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_sign(
+external fun uniffi_peat_btle_checksum_method_peatmesh_sign(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_store_canned_message_document(
+external fun uniffi_peat_btle_checksum_method_peatmesh_store_canned_message_document(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_tick(
+external fun uniffi_peat_btle_checksum_method_peatmesh_tick(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_total_count(
+external fun uniffi_peat_btle_checksum_method_peatmesh_total_count(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_update_callsign(
+external fun uniffi_peat_btle_checksum_method_peatmesh_update_callsign(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_update_heart_rate(
+external fun uniffi_peat_btle_checksum_method_peatmesh_update_heart_rate(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_update_location(
+external fun uniffi_peat_btle_checksum_method_peatmesh_update_location(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_update_peripheral_state(
+external fun uniffi_peat_btle_checksum_method_peatmesh_update_peripheral_state(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_verify_peer_identity(
+external fun uniffi_peat_btle_checksum_method_peatmesh_verify_peer_identity(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_verify_peer_signature(
+external fun uniffi_peat_btle_checksum_method_peatmesh_verify_peer_signature(
 ): Short
 external fun uniffi_peat_btle_checksum_method_identityattestation_get_node_id(
 ): Short
@@ -868,11 +868,11 @@ external fun uniffi_peat_btle_checksum_constructor_addressrotationhandler_new(
 ): Short
 external fun uniffi_peat_btle_checksum_constructor_deviceidentity_generate(
 ): Short
-external fun uniffi_peat_btle_checksum_constructor_hivemesh_new(
+external fun uniffi_peat_btle_checksum_constructor_peatmesh_new(
 ): Short
-external fun uniffi_peat_btle_checksum_constructor_hivemesh_new_from_genesis(
+external fun uniffi_peat_btle_checksum_constructor_peatmesh_new_from_genesis(
 ): Short
-external fun uniffi_peat_btle_checksum_constructor_hivemesh_new_with_peripheral(
+external fun uniffi_peat_btle_checksum_constructor_peatmesh_new_with_peripheral(
 ): Short
 external fun uniffi_peat_btle_checksum_constructor_meshgenesis_create(
 ): Short
@@ -948,131 +948,131 @@ external fun uniffi_peat_btle_fn_method_deviceidentity_get_public_key(`ptr`: Lon
 ): RustBuffer.ByValue
 external fun uniffi_peat_btle_fn_method_deviceidentity_sign(`ptr`: Long,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_clone_hivemesh(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_clone_peatmesh(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
-external fun uniffi_peat_btle_fn_free_hivemesh(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_free_peatmesh(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_peat_btle_fn_constructor_hivemesh_new(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_constructor_peatmesh_new(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
-external fun uniffi_peat_btle_fn_constructor_hivemesh_new_from_genesis(`callsign`: RustBuffer.ByValue,`identity`: Long,`genesis`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_constructor_peatmesh_new_from_genesis(`callsign`: RustBuffer.ByValue,`identity`: Long,`genesis`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
-external fun uniffi_peat_btle_fn_constructor_hivemesh_new_with_peripheral(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,`peripheralType`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_constructor_peatmesh_new_with_peripheral(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,`peripheralType`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
-external fun uniffi_peat_btle_fn_method_hivemesh_ack_canned_message(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,`ackerNode`: Int,`ackTimestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_ack_canned_message(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,`ackerNode`: Int,`ackTimestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_app_document_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_app_document_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_broadcast_bytes(`ptr`: Long,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_broadcast_bytes(`ptr`: Long,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_build_delta_document_for_peer(`ptr`: Long,`peerId`: Int,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_build_delta_document_for_peer(`ptr`: Long,`peerId`: Int,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_build_document(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_build_document(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_build_full_delta_document(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_build_full_delta_document(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_check_canned_message(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,`ttlMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_check_canned_message(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,`ttlMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_clear_location(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_clear_location(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_clear_peripheral_event(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_clear_peripheral_event(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_connected_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_connected_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_create_attestation(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_create_attestation(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_decrypt_only(`ptr`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_decrypt_only(`ptr`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_degraded_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_degraded_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_get_all_canned_messages(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_all_canned_messages(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_canned_message_document(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_canned_message_document(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_connected_peer_identifiers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_connected_peer_identifiers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_connected_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_connected_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_connection_state_counts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_connection_state_counts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_degraded_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_degraded_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_full_state_counts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_full_state_counts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_indirect_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_indirect_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_lost_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_lost_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_peer_callsign(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_peer_callsign(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_peer_connection_state(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_peer_connection_state(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_public_key(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_get_public_key(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_has_identity(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_has_identity(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_ack_active(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_is_ack_active(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_emergency_active(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_is_emergency_active(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_encryption_enabled(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_is_encryption_enabled(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_peer_identity_known(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_is_peer_identity_known(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_peer_known(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_is_peer_known(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_relay_enabled(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_is_relay_enabled(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_known_identity_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_known_identity_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_lost_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_lost_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_mark_canned_message_seen(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_mark_canned_message_seen(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_matches_mesh(`ptr`: Long,`deviceMeshId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_matches_mesh(`ptr`: Long,`deviceMeshId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_on_ble_connected(`ptr`: Long,`identifier`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_on_ble_connected(`ptr`: Long,`identifier`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_on_ble_data_received(`ptr`: Long,`identifier`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_on_ble_data_received(`ptr`: Long,`identifier`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_on_ble_data_received_anonymous(`ptr`: Long,`identifier`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_on_ble_data_received_anonymous(`ptr`: Long,`identifier`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_on_ble_disconnected(`ptr`: Long,`identifier`: RustBuffer.ByValue,`reason`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_on_ble_disconnected(`ptr`: Long,`identifier`: RustBuffer.ByValue,`reason`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_on_ble_discovered(`ptr`: Long,`identifier`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`rssi`: Byte,`meshId`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_on_ble_discovered(`ptr`: Long,`identifier`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`rssi`: Byte,`meshId`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_on_incoming_connection(`ptr`: Long,`identifier`: RustBuffer.ByValue,`nodeId`: Int,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_on_incoming_connection(`ptr`: Long,`identifier`: RustBuffer.ByValue,`nodeId`: Int,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_recently_disconnected_count(`ptr`: Long,`withinMs`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_recently_disconnected_count(`ptr`: Long,`withinMs`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_send_ack(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_send_ack(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_send_canned_message(`ptr`: Long,`messageCode`: Byte,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_send_canned_message(`ptr`: Long,`messageCode`: Byte,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_send_emergency(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_send_emergency(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_set_peripheral_event(`ptr`: Long,`eventType`: RustBuffer.ByValue,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_set_peripheral_event(`ptr`: Long,`eventType`: RustBuffer.ByValue,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_sign(`ptr`: Long,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_sign(`ptr`: Long,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_store_canned_message_document(`ptr`: Long,`encodedBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_store_canned_message_document(`ptr`: Long,`encodedBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_tick(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_tick(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_total_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_total_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_update_callsign(`ptr`: Long,`callsign`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_update_callsign(`ptr`: Long,`callsign`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_update_heart_rate(`ptr`: Long,`bpm`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_update_heart_rate(`ptr`: Long,`bpm`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_update_location(`ptr`: Long,`latitude`: Float,`longitude`: Float,`altitude`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_update_location(`ptr`: Long,`latitude`: Float,`longitude`: Float,`altitude`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_update_peripheral_state(`ptr`: Long,`callsign`: RustBuffer.ByValue,`batteryPercent`: Byte,`heartRate`: RustBuffer.ByValue,`latitude`: RustBuffer.ByValue,`longitude`: RustBuffer.ByValue,`altitude`: RustBuffer.ByValue,`eventType`: RustBuffer.ByValue,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_update_peripheral_state(`ptr`: Long,`callsign`: RustBuffer.ByValue,`batteryPercent`: Byte,`heartRate`: RustBuffer.ByValue,`latitude`: RustBuffer.ByValue,`longitude`: RustBuffer.ByValue,`altitude`: RustBuffer.ByValue,`eventType`: RustBuffer.ByValue,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_verify_peer_identity(`ptr`: Long,`attestationBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_verify_peer_identity(`ptr`: Long,`attestationBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_verify_peer_signature(`ptr`: Long,`nodeId`: Int,`message`: RustBuffer.ByValue,`signature`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_method_peatmesh_verify_peer_signature(`ptr`: Long,`nodeId`: Int,`message`: RustBuffer.ByValue,`signature`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 external fun uniffi_peat_btle_fn_clone_identityattestation(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
@@ -1375,178 +1375,178 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_peat_btle_checksum_method_deviceidentity_sign() != 62994.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_ack_canned_message() != 50187.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_ack_canned_message() != 50187.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_app_document_count() != 38602.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_app_document_count() != 38602.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_broadcast_bytes() != 18696.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_broadcast_bytes() != 18696.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_build_delta_document_for_peer() != 10816.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_build_delta_document_for_peer() != 10816.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_build_document() != 34635.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_build_document() != 34635.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_build_full_delta_document() != 54430.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_build_full_delta_document() != 54430.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_check_canned_message() != 55203.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_check_canned_message() != 55203.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_clear_location() != 37664.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_clear_location() != 37664.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_clear_peripheral_event() != 19596.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_clear_peripheral_event() != 19596.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_connected_count() != 11084.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_connected_count() != 11084.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_create_attestation() != 43136.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_create_attestation() != 43136.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_decrypt_only() != 17320.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_decrypt_only() != 17320.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_degraded_peer_count() != 49461.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_degraded_peer_count() != 49461.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_all_canned_messages() != 61806.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_all_canned_messages() != 61806.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_canned_message_document() != 4363.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_canned_message_document() != 4363.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_connected_peer_identifiers() != 46364.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_connected_peer_identifiers() != 46364.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_connected_peers() != 33262.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_connected_peers() != 33262.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_connection_state_counts() != 3895.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_connection_state_counts() != 3895.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_degraded_peers() != 35458.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_degraded_peers() != 35458.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_full_state_counts() != 774.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_full_state_counts() != 774.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_indirect_peers() != 24551.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_indirect_peers() != 24551.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_lost_peers() != 24408.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_lost_peers() != 24408.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_peer_callsign() != 25046.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_peer_callsign() != 25046.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_peer_connection_state() != 63677.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_peer_connection_state() != 63677.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_public_key() != 46726.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_public_key() != 46726.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_has_identity() != 6017.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_has_identity() != 6017.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_ack_active() != 6600.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_ack_active() != 6600.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_emergency_active() != 61425.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_emergency_active() != 61425.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_encryption_enabled() != 4872.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_encryption_enabled() != 4872.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_peer_identity_known() != 39781.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_peer_identity_known() != 39781.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_peer_known() != 45078.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_peer_known() != 45078.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_relay_enabled() != 39903.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_relay_enabled() != 39903.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_known_identity_count() != 21186.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_known_identity_count() != 21186.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_lost_peer_count() != 25444.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_lost_peer_count() != 25444.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_mark_canned_message_seen() != 49445.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_mark_canned_message_seen() != 49445.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_matches_mesh() != 536.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_matches_mesh() != 536.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_ble_connected() != 57590.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_ble_connected() != 57590.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_ble_data_received() != 5609.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_ble_data_received() != 5609.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_ble_data_received_anonymous() != 21883.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_ble_data_received_anonymous() != 21883.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_ble_disconnected() != 21993.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_ble_disconnected() != 21993.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_ble_discovered() != 10478.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_ble_discovered() != 10478.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_incoming_connection() != 46356.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_incoming_connection() != 46356.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_peer_count() != 46420.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_peer_count() != 46420.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_recently_disconnected_count() != 13238.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_recently_disconnected_count() != 13238.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_send_ack() != 31251.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_send_ack() != 31251.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_send_canned_message() != 52949.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_send_canned_message() != 52949.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_send_emergency() != 20743.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_send_emergency() != 20743.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_set_peripheral_event() != 23132.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_set_peripheral_event() != 23132.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_sign() != 18310.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_sign() != 18310.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_store_canned_message_document() != 9562.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_store_canned_message_document() != 9562.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_tick() != 62780.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_tick() != 62780.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_total_count() != 8036.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_total_count() != 8036.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_update_callsign() != 39184.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_update_callsign() != 39184.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_update_heart_rate() != 57942.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_update_heart_rate() != 57942.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_update_location() != 15615.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_update_location() != 15615.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_update_peripheral_state() != 16349.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_update_peripheral_state() != 16349.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_verify_peer_identity() != 47438.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_verify_peer_identity() != 47438.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_verify_peer_signature() != 3023.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_verify_peer_signature() != 3023.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_peat_btle_checksum_method_identityattestation_get_node_id() != 7851.toShort()) {
@@ -1645,13 +1645,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_peat_btle_checksum_constructor_deviceidentity_generate() != 56900.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_constructor_hivemesh_new() != 19766.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_peatmesh_new() != 19766.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_constructor_hivemesh_new_from_genesis() != 17187.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_peatmesh_new_from_genesis() != 17187.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_constructor_hivemesh_new_with_peripheral() != 32163.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_peatmesh_new_with_peripheral() != 32163.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_peat_btle_checksum_constructor_meshgenesis_create() != 41455.toShort()) {
@@ -3364,7 +3364,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
     constructor(`nodeId`: kotlin.UInt, `callsign`: kotlin.String, `meshId`: kotlin.String) :
         this(UniffiWithHandle, 
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_constructor_hivemesh_new(
+    UniffiLib.uniffi_peat_btle_fn_constructor_peatmesh_new(
     
         FfiConverterUInt.lower(`nodeId`),FfiConverterString.lower(`callsign`),FfiConverterString.lower(`meshId`),_status)
 }
@@ -3424,7 +3424,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
                 return;
             }
             uniffiRustCall { status ->
-                UniffiLib.uniffi_peat_btle_fn_free_hivemesh(handle, status)
+                UniffiLib.uniffi_peat_btle_fn_free_peatmesh(handle, status)
             }
         }
     }
@@ -3437,7 +3437,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             throw InternalException("uniffiCloneHandle() called on NoHandle object");
         }
         return uniffiRustCall() { status ->
-            UniffiLib.uniffi_peat_btle_fn_clone_hivemesh(handle, status)
+            UniffiLib.uniffi_peat_btle_fn_clone_peatmesh(handle, status)
         }
     }
 
@@ -3453,7 +3453,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_ack_canned_message(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_ack_canned_message(
         it,
         FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),FfiConverterUInt.lower(`ackerNode`),FfiConverterULong.lower(`ackTimestamp`),_status)
 }
@@ -3469,7 +3469,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterUInt.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_app_document_count(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_app_document_count(
         it,
         _status)
 }
@@ -3490,7 +3490,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_broadcast_bytes(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_broadcast_bytes(
         it,
         FfiConverterByteArray.lower(`payload`),_status)
 }
@@ -3510,7 +3510,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_build_delta_document_for_peer(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_build_delta_document_for_peer(
         it,
         FfiConverterUInt.lower(`peerId`),FfiConverterULong.lower(`nowMs`),_status)
 }
@@ -3526,7 +3526,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_build_document(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_build_document(
         it,
         _status)
 }
@@ -3546,7 +3546,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_build_full_delta_document(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_build_full_delta_document(
         it,
         FfiConverterULong.lower(`nowMs`),_status)
 }
@@ -3567,7 +3567,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_check_canned_message(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_check_canned_message(
         it,
         FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),FfiConverterULong.lower(`ttlMs`),_status)
 }
@@ -3583,7 +3583,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_clear_location(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_clear_location(
         it,
         _status)
 }
@@ -3598,7 +3598,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_clear_peripheral_event(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_clear_peripheral_event(
         it,
         _status)
 }
@@ -3613,7 +3613,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterUInt.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_connected_count(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_connected_count(
         it,
         _status)
 }
@@ -3629,7 +3629,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_create_attestation(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_create_attestation(
         it,
         FfiConverterULong.lower(`timestampMs`),_status)
 }
@@ -3645,7 +3645,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_decrypt_only(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_decrypt_only(
         it,
         FfiConverterByteArray.lower(`data`),_status)
 }
@@ -3661,7 +3661,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterUInt.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_degraded_peer_count(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_degraded_peer_count(
         it,
         _status)
 }
@@ -3680,7 +3680,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterSequenceTypeCannedMessageInfo.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_all_canned_messages(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_all_canned_messages(
         it,
         _status)
 }
@@ -3699,7 +3699,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_canned_message_document(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_canned_message_document(
         it,
         FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),_status)
 }
@@ -3718,7 +3718,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterSequenceString.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_connected_peer_identifiers(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_connected_peer_identifiers(
         it,
         _status)
 }
@@ -3734,7 +3734,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterSequenceTypePeatPeer.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_connected_peers(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_connected_peers(
         it,
         _status)
 }
@@ -3750,7 +3750,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterTypeStateCountSummary.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_connection_state_counts(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_connection_state_counts(
         it,
         _status)
 }
@@ -3766,7 +3766,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterSequenceTypePeerConnectionState.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_degraded_peers(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_degraded_peers(
         it,
         _status)
 }
@@ -3782,7 +3782,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterTypeFullStateCountSummary.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_full_state_counts(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_full_state_counts(
         it,
         _status)
 }
@@ -3798,7 +3798,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterSequenceTypeIndirectPeer.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_indirect_peers(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_indirect_peers(
         it,
         _status)
 }
@@ -3814,7 +3814,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterSequenceTypePeerConnectionState.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_lost_peers(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_lost_peers(
         it,
         _status)
 }
@@ -3830,7 +3830,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalString.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_peer_callsign(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_peer_callsign(
         it,
         FfiConverterUInt.lower(`nodeId`),_status)
 }
@@ -3846,7 +3846,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalTypePeerConnectionState.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_peer_connection_state(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_peer_connection_state(
         it,
         FfiConverterUInt.lower(`nodeId`),_status)
 }
@@ -3862,7 +3862,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_public_key(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_public_key(
         it,
         _status)
 }
@@ -3878,7 +3878,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_has_identity(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_has_identity(
         it,
         _status)
 }
@@ -3894,7 +3894,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_ack_active(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_ack_active(
         it,
         _status)
 }
@@ -3910,7 +3910,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_emergency_active(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_emergency_active(
         it,
         _status)
 }
@@ -3926,7 +3926,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_encryption_enabled(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_encryption_enabled(
         it,
         _status)
 }
@@ -3942,7 +3942,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_peer_identity_known(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_peer_identity_known(
         it,
         FfiConverterUInt.lower(`nodeId`),_status)
 }
@@ -3958,7 +3958,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_peer_known(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_peer_known(
         it,
         FfiConverterUInt.lower(`nodeId`),_status)
 }
@@ -3974,7 +3974,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_relay_enabled(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_relay_enabled(
         it,
         _status)
 }
@@ -3990,7 +3990,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterUInt.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_known_identity_count(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_known_identity_count(
         it,
         _status)
 }
@@ -4006,7 +4006,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterUInt.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_lost_peer_count(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_lost_peer_count(
         it,
         _status)
 }
@@ -4025,7 +4025,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_mark_canned_message_seen(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_mark_canned_message_seen(
         it,
         FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),_status)
 }
@@ -4040,7 +4040,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_matches_mesh(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_matches_mesh(
         it,
         FfiConverterOptionalString.lower(`deviceMeshId`),_status)
 }
@@ -4056,7 +4056,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_ble_connected(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_ble_connected(
         it,
         FfiConverterString.lower(`identifier`),FfiConverterULong.lower(`nowMs`),_status)
 }
@@ -4071,7 +4071,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalTypeDataReceivedResult.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_ble_data_received(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_ble_data_received(
         it,
         FfiConverterString.lower(`identifier`),FfiConverterByteArray.lower(`data`),FfiConverterULong.lower(`nowMs`),_status)
 }
@@ -4087,7 +4087,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalTypeDataReceivedResult.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_ble_data_received_anonymous(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_ble_data_received_anonymous(
         it,
         FfiConverterString.lower(`identifier`),FfiConverterByteArray.lower(`data`),FfiConverterULong.lower(`nowMs`),_status)
 }
@@ -4103,7 +4103,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalUInt.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_ble_disconnected(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_ble_disconnected(
         it,
         FfiConverterString.lower(`identifier`),FfiConverterTypeDisconnectReason.lower(`reason`),_status)
 }
@@ -4119,7 +4119,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalTypePeatPeer.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_ble_discovered(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_ble_discovered(
         it,
         FfiConverterString.lower(`identifier`),FfiConverterOptionalString.lower(`name`),FfiConverterByte.lower(`rssi`),FfiConverterOptionalString.lower(`meshId`),FfiConverterULong.lower(`nowMs`),_status)
 }
@@ -4138,7 +4138,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_incoming_connection(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_incoming_connection(
         it,
         FfiConverterString.lower(`identifier`),FfiConverterUInt.lower(`nodeId`),FfiConverterULong.lower(`nowMs`),_status)
 }
@@ -4154,7 +4154,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterUInt.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_peer_count(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_peer_count(
         it,
         _status)
 }
@@ -4170,7 +4170,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterUInt.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_recently_disconnected_count(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_recently_disconnected_count(
         it,
         FfiConverterULong.lower(`withinMs`),FfiConverterULong.lower(`nowMs`),_status)
 }
@@ -4186,7 +4186,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_send_ack(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_send_ack(
         it,
         FfiConverterULong.lower(`timestampMs`),_status)
 }
@@ -4209,7 +4209,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_send_canned_message(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_send_canned_message(
         it,
         FfiConverterUByte.lower(`messageCode`),FfiConverterULong.lower(`timestampMs`),_status)
 }
@@ -4225,7 +4225,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_send_emergency(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_send_emergency(
         it,
         FfiConverterULong.lower(`timestampMs`),_status)
 }
@@ -4241,7 +4241,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_set_peripheral_event(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_set_peripheral_event(
         it,
         FfiConverterTypeEventType.lower(`eventType`),FfiConverterULong.lower(`timestampMs`),_status)
 }
@@ -4256,7 +4256,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_sign(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_sign(
         it,
         FfiConverterByteArray.lower(`message`),_status)
 }
@@ -4277,7 +4277,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_store_canned_message_document(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_store_canned_message_document(
         it,
         FfiConverterByteArray.lower(`encodedBytes`),_status)
 }
@@ -4293,7 +4293,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterOptionalByteArray.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_tick(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_tick(
         it,
         FfiConverterULong.lower(`nowMs`),_status)
 }
@@ -4309,7 +4309,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterUInt.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_total_count(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_total_count(
         it,
         _status)
 }
@@ -4325,7 +4325,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_update_callsign(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_update_callsign(
         it,
         FfiConverterString.lower(`callsign`),_status)
 }
@@ -4340,7 +4340,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_update_heart_rate(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_update_heart_rate(
         it,
         FfiConverterUByte.lower(`bpm`),_status)
 }
@@ -4355,7 +4355,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_update_location(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_update_location(
         it,
         FfiConverterFloat.lower(`latitude`),FfiConverterFloat.lower(`longitude`),FfiConverterOptionalFloat.lower(`altitude`),_status)
 }
@@ -4370,7 +4370,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_update_peripheral_state(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_update_peripheral_state(
         it,
         FfiConverterString.lower(`callsign`),FfiConverterUByte.lower(`batteryPercent`),FfiConverterOptionalUByte.lower(`heartRate`),FfiConverterOptionalFloat.lower(`latitude`),FfiConverterOptionalFloat.lower(`longitude`),FfiConverterOptionalFloat.lower(`altitude`),FfiConverterOptionalTypeEventType.lower(`eventType`),FfiConverterULong.lower(`timestampMs`),_status)
 }
@@ -4386,7 +4386,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_verify_peer_identity(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_verify_peer_identity(
         it,
         FfiConverterByteArray.lower(`attestationBytes`),_status)
 }
@@ -4402,7 +4402,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_verify_peer_signature(
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_verify_peer_signature(
         it,
         FfiConverterUInt.lower(`nodeId`),FfiConverterByteArray.lower(`message`),FfiConverterByteArray.lower(`signature`),_status)
 }
@@ -4424,7 +4424,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
      */ fun `newFromGenesis`(`callsign`: kotlin.String, `identity`: DeviceIdentity, `genesis`: MeshGenesis): PeatMesh {
             return FfiConverterTypePeatMesh.lift(
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_constructor_hivemesh_new_from_genesis(
+    UniffiLib.uniffi_peat_btle_fn_constructor_peatmesh_new_from_genesis(
     
         FfiConverterString.lower(`callsign`),FfiConverterTypeDeviceIdentity.lower(`identity`),FfiConverterTypeMeshGenesis.lower(`genesis`),_status)
 }
@@ -4438,7 +4438,7 @@ open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
      */ fun `newWithPeripheral`(`nodeId`: kotlin.UInt, `callsign`: kotlin.String, `meshId`: kotlin.String, `peripheralType`: PeripheralType): PeatMesh {
             return FfiConverterTypePeatMesh.lift(
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_constructor_hivemesh_new_with_peripheral(
+    UniffiLib.uniffi_peat_btle_fn_constructor_peatmesh_new_with_peripheral(
     
         FfiConverterUInt.lower(`nodeId`),FfiConverterString.lower(`callsign`),FfiConverterString.lower(`meshId`),FfiConverterTypePeripheralType.lower(`peripheralType`),_status)
 }
