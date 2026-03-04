@@ -636,7 +636,7 @@ internal object IntegrityCheckingUniffiLib {
         uniffiCheckContractApiVersion(this)
         uniffiCheckApiChecksums(this)
     }
-    external fun uniffi_peat_btle_checksum_func_create_hive_mesh_with_encryption(
+    external fun uniffi_peat_btle_checksum_func_create_peat_mesh_with_encryption(
 ): Short
 external fun uniffi_peat_btle_checksum_func_decode_identity_attestation(
 ): Short
@@ -688,122 +688,6 @@ external fun uniffi_peat_btle_checksum_method_deviceidentity_get_public_key(
 ): Short
 external fun uniffi_peat_btle_checksum_method_deviceidentity_sign(
 ): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_ack_canned_message(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_app_document_count(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_broadcast_bytes(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_build_delta_document_for_peer(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_build_document(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_build_full_delta_document(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_check_canned_message(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_clear_location(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_clear_peripheral_event(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_connected_count(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_create_attestation(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_decrypt_only(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_degraded_peer_count(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_all_canned_messages(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_canned_message_document(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_connected_peer_identifiers(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_connected_peers(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_connection_state_counts(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_degraded_peers(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_full_state_counts(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_indirect_peers(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_lost_peers(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_peer_callsign(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_peer_connection_state(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_get_public_key(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_has_identity(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_ack_active(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_emergency_active(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_encryption_enabled(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_peer_identity_known(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_peer_known(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_is_relay_enabled(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_known_identity_count(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_lost_peer_count(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_mark_canned_message_seen(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_matches_mesh(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_ble_connected(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_ble_data_received(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_ble_data_received_anonymous(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_ble_disconnected(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_ble_discovered(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_on_incoming_connection(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_peer_count(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_recently_disconnected_count(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_send_ack(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_send_canned_message(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_send_emergency(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_set_peripheral_event(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_sign(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_store_canned_message_document(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_tick(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_total_count(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_update_callsign(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_update_heart_rate(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_update_location(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_update_peripheral_state(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_verify_peer_identity(
-): Short
-external fun uniffi_peat_btle_checksum_method_hivemesh_verify_peer_signature(
-): Short
 external fun uniffi_peat_btle_checksum_method_identityattestation_get_node_id(
 ): Short
 external fun uniffi_peat_btle_checksum_method_identityattestation_get_public_key(
@@ -815,6 +699,112 @@ external fun uniffi_peat_btle_checksum_method_meshgenesis_encode(
 external fun uniffi_peat_btle_checksum_method_meshgenesis_get_encryption_secret(
 ): Short
 external fun uniffi_peat_btle_checksum_method_meshgenesis_get_mesh_id(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_app_document_count(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_broadcast_bytes(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_build_delta_document_for_peer(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_build_document(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_build_full_delta_document(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_check_canned_message(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_clear_location(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_clear_peripheral_event(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_connected_count(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_create_attestation(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_decrypt_only(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_degraded_peer_count(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_connected_peer_identifiers(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_connected_peers(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_connection_state_counts(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_degraded_peers(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_full_state_counts(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_indirect_peers(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_lost_peers(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_peer_callsign(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_peer_connection_state(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_get_public_key(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_has_identity(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_ack_active(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_emergency_active(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_encryption_enabled(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_peer_identity_known(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_peer_known(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_is_relay_enabled(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_known_identity_count(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_lost_peer_count(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_mark_canned_message_seen(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_matches_mesh(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_ble_connected(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_ble_data_received(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_ble_data_received_anonymous(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_ble_disconnected(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_ble_discovered(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_on_incoming_connection(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_peer_count(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_recently_disconnected_count(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_send_ack(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_send_emergency(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_set_peripheral_event(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_sign(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_tick(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_total_count(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_update_callsign(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_update_heart_rate(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_update_location(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_update_peripheral_state(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_verify_peer_identity(
+): Short
+external fun uniffi_peat_btle_checksum_method_peatmesh_verify_peer_signature(
 ): Short
 external fun uniffi_peat_btle_checksum_method_peerlifetimemanager_cleanup_interval_ms(
 ): Short
@@ -868,13 +858,13 @@ external fun uniffi_peat_btle_checksum_constructor_addressrotationhandler_new(
 ): Short
 external fun uniffi_peat_btle_checksum_constructor_deviceidentity_generate(
 ): Short
-external fun uniffi_peat_btle_checksum_constructor_hivemesh_new(
-): Short
-external fun uniffi_peat_btle_checksum_constructor_hivemesh_new_from_genesis(
-): Short
-external fun uniffi_peat_btle_checksum_constructor_hivemesh_new_with_peripheral(
-): Short
 external fun uniffi_peat_btle_checksum_constructor_meshgenesis_create(
+): Short
+external fun uniffi_peat_btle_checksum_constructor_peatmesh_new(
+): Short
+external fun uniffi_peat_btle_checksum_constructor_peatmesh_new_from_genesis(
+): Short
+external fun uniffi_peat_btle_checksum_constructor_peatmesh_new_with_peripheral(
 ): Short
 external fun uniffi_peat_btle_checksum_constructor_peerlifetimemanager_new(
 ): Short
@@ -948,132 +938,6 @@ external fun uniffi_peat_btle_fn_method_deviceidentity_get_public_key(`ptr`: Lon
 ): RustBuffer.ByValue
 external fun uniffi_peat_btle_fn_method_deviceidentity_sign(`ptr`: Long,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_clone_hivemesh(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Long
-external fun uniffi_peat_btle_fn_free_hivemesh(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-external fun uniffi_peat_btle_fn_constructor_hivemesh_new(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Long
-external fun uniffi_peat_btle_fn_constructor_hivemesh_new_from_genesis(`callsign`: RustBuffer.ByValue,`identity`: Long,`genesis`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Long
-external fun uniffi_peat_btle_fn_constructor_hivemesh_new_with_peripheral(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,`peripheralType`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Long
-external fun uniffi_peat_btle_fn_method_hivemesh_ack_canned_message(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,`ackerNode`: Int,`ackTimestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_app_document_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_broadcast_bytes(`ptr`: Long,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_build_delta_document_for_peer(`ptr`: Long,`peerId`: Int,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_build_document(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_build_full_delta_document(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_check_canned_message(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,`ttlMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_clear_location(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_clear_peripheral_event(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_connected_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_create_attestation(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_decrypt_only(`ptr`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_degraded_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_get_all_canned_messages(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_canned_message_document(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_connected_peer_identifiers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_connected_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_connection_state_counts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_degraded_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_full_state_counts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_indirect_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_lost_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_peer_callsign(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_peer_connection_state(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_get_public_key(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_has_identity(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_ack_active(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_emergency_active(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_encryption_enabled(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_peer_identity_known(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_peer_known(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_is_relay_enabled(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_known_identity_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_lost_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_mark_canned_message_seen(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_matches_mesh(`ptr`: Long,`deviceMeshId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_on_ble_connected(`ptr`: Long,`identifier`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_on_ble_data_received(`ptr`: Long,`identifier`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_on_ble_data_received_anonymous(`ptr`: Long,`identifier`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_on_ble_disconnected(`ptr`: Long,`identifier`: RustBuffer.ByValue,`reason`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_on_ble_discovered(`ptr`: Long,`identifier`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`rssi`: Byte,`meshId`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_on_incoming_connection(`ptr`: Long,`identifier`: RustBuffer.ByValue,`nodeId`: Int,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_recently_disconnected_count(`ptr`: Long,`withinMs`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_send_ack(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_send_canned_message(`ptr`: Long,`messageCode`: Byte,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_send_emergency(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_set_peripheral_event(`ptr`: Long,`eventType`: RustBuffer.ByValue,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_sign(`ptr`: Long,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_store_canned_message_document(`ptr`: Long,`encodedBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_tick(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-external fun uniffi_peat_btle_fn_method_hivemesh_total_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Int
-external fun uniffi_peat_btle_fn_method_hivemesh_update_callsign(`ptr`: Long,`callsign`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_update_heart_rate(`ptr`: Long,`bpm`: Byte,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_update_location(`ptr`: Long,`latitude`: Float,`longitude`: Float,`altitude`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_update_peripheral_state(`ptr`: Long,`callsign`: RustBuffer.ByValue,`batteryPercent`: Byte,`heartRate`: RustBuffer.ByValue,`latitude`: RustBuffer.ByValue,`longitude`: RustBuffer.ByValue,`altitude`: RustBuffer.ByValue,`eventType`: RustBuffer.ByValue,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-external fun uniffi_peat_btle_fn_method_hivemesh_verify_peer_identity(`ptr`: Long,`attestationBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
-external fun uniffi_peat_btle_fn_method_hivemesh_verify_peer_signature(`ptr`: Long,`nodeId`: Int,`message`: RustBuffer.ByValue,`signature`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
 external fun uniffi_peat_btle_fn_clone_identityattestation(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_peat_btle_fn_free_identityattestation(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1096,6 +960,122 @@ external fun uniffi_peat_btle_fn_method_meshgenesis_get_encryption_secret(`ptr`:
 ): RustBuffer.ByValue
 external fun uniffi_peat_btle_fn_method_meshgenesis_get_mesh_id(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_clone_peatmesh(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_peat_btle_fn_free_peatmesh(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_peat_btle_fn_constructor_peatmesh_new(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_peat_btle_fn_constructor_peatmesh_new_from_genesis(`callsign`: RustBuffer.ByValue,`identity`: Long,`genesis`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_peat_btle_fn_constructor_peatmesh_new_with_peripheral(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,`peripheralType`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_peat_btle_fn_method_peatmesh_app_document_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_peat_btle_fn_method_peatmesh_broadcast_bytes(`ptr`: Long,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_build_delta_document_for_peer(`ptr`: Long,`peerId`: Int,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_build_document(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_build_full_delta_document(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_check_canned_message(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,`ttlMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_clear_location(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_peat_btle_fn_method_peatmesh_clear_peripheral_event(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_peat_btle_fn_method_peatmesh_connected_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_peat_btle_fn_method_peatmesh_create_attestation(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_decrypt_only(`ptr`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_degraded_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_peat_btle_fn_method_peatmesh_get_connected_peer_identifiers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_get_connected_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_get_connection_state_counts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_get_degraded_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_get_full_state_counts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_get_indirect_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_get_lost_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_get_peer_callsign(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_get_peer_connection_state(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_get_public_key(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_has_identity(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_is_ack_active(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_is_emergency_active(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_is_encryption_enabled(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_is_peer_identity_known(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_is_peer_known(`ptr`: Long,`nodeId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_is_relay_enabled(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_known_identity_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_peat_btle_fn_method_peatmesh_lost_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_peat_btle_fn_method_peatmesh_mark_canned_message_seen(`ptr`: Long,`sourceNode`: Int,`timestamp`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_peat_btle_fn_method_peatmesh_matches_mesh(`ptr`: Long,`deviceMeshId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_on_ble_connected(`ptr`: Long,`identifier`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_peat_btle_fn_method_peatmesh_on_ble_data_received(`ptr`: Long,`identifier`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_on_ble_data_received_anonymous(`ptr`: Long,`identifier`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_on_ble_disconnected(`ptr`: Long,`identifier`: RustBuffer.ByValue,`reason`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_on_ble_discovered(`ptr`: Long,`identifier`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`rssi`: Byte,`meshId`: RustBuffer.ByValue,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_on_incoming_connection(`ptr`: Long,`identifier`: RustBuffer.ByValue,`nodeId`: Int,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_peer_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_peat_btle_fn_method_peatmesh_recently_disconnected_count(`ptr`: Long,`withinMs`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_peat_btle_fn_method_peatmesh_send_ack(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_send_emergency(`ptr`: Long,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_set_peripheral_event(`ptr`: Long,`eventType`: RustBuffer.ByValue,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_peat_btle_fn_method_peatmesh_sign(`ptr`: Long,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_tick(`ptr`: Long,`nowMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_peat_btle_fn_method_peatmesh_total_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_peat_btle_fn_method_peatmesh_update_callsign(`ptr`: Long,`callsign`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_peat_btle_fn_method_peatmesh_update_heart_rate(`ptr`: Long,`bpm`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_peat_btle_fn_method_peatmesh_update_location(`ptr`: Long,`latitude`: Float,`longitude`: Float,`altitude`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_peat_btle_fn_method_peatmesh_update_peripheral_state(`ptr`: Long,`callsign`: RustBuffer.ByValue,`batteryPercent`: Byte,`heartRate`: RustBuffer.ByValue,`latitude`: RustBuffer.ByValue,`longitude`: RustBuffer.ByValue,`altitude`: RustBuffer.ByValue,`eventType`: RustBuffer.ByValue,`timestampMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_peat_btle_fn_method_peatmesh_verify_peer_identity(`ptr`: Long,`attestationBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_peat_btle_fn_method_peatmesh_verify_peer_signature(`ptr`: Long,`nodeId`: Int,`message`: RustBuffer.ByValue,`signature`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 external fun uniffi_peat_btle_fn_clone_peerlifetimemanager(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_peat_btle_fn_free_peerlifetimemanager(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1160,7 +1140,7 @@ external fun uniffi_peat_btle_fn_method_reconnectionmanager_track_disconnection(
 ): Unit
 external fun uniffi_peat_btle_fn_method_reconnectionmanager_tracked_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
-external fun uniffi_peat_btle_fn_func_create_hive_mesh_with_encryption(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,`encryptionSecret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+external fun uniffi_peat_btle_fn_func_create_peat_mesh_with_encryption(`nodeId`: Int,`callsign`: RustBuffer.ByValue,`meshId`: RustBuffer.ByValue,`encryptionSecret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_peat_btle_fn_func_decode_identity_attestation(`encoded`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1297,376 +1277,361 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
-    if (lib.uniffi_peat_btle_checksum_func_create_hive_mesh_with_encryption() != 18687.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_func_create_peat_mesh_with_encryption() != 8791.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_func_decode_identity_attestation() != 34947.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_func_decode_identity_attestation() != 26160.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_func_decode_mesh_genesis() != 30790.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_func_decode_mesh_genesis() != 36795.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_func_derive_node_id_from_mac() != 13615.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_func_derive_node_id_from_mac() != 10625.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_func_detect_device_pattern() != 9848.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_func_detect_device_pattern() != 11492.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_func_device_pattern_rotates_addresses() != 1177.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_func_device_pattern_rotates_addresses() != 21318.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_func_is_weartak_device() != 15415.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_func_is_weartak_device() != 26078.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_func_normalize_weartak_name() != 5498.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_func_normalize_weartak_name() != 47405.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_func_restore_device_identity() != 56850.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_func_restore_device_identity() != 29006.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_clear() != 45295.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_clear() != 53535.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_device_count() != 39679.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_device_count() != 16223.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_get_address() != 36682.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_get_address() != 57983.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_get_name() != 31553.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_get_name() != 52417.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_lookup_by_address() != 48820.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_lookup_by_address() != 39668.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_lookup_by_name() != 16790.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_lookup_by_name() != 56375.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_on_device_discovered() != 61759.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_on_device_discovered() != 47550.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_register_device() != 25830.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_register_device() != 54303.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_remove_device() != 29885.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_remove_device() != 12512.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_stats() != 63797.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_stats() != 13682.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_update_address() != 35150.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_update_address() != 38432.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_update_name() != 2914.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_addressrotationhandler_update_name() != 63100.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_deviceidentity_create_attestation() != 491.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_deviceidentity_create_attestation() != 29147.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_deviceidentity_get_node_id() != 64984.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_deviceidentity_get_node_id() != 1634.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_deviceidentity_get_private_key() != 5023.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_deviceidentity_get_private_key() != 33709.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_deviceidentity_get_public_key() != 10380.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_deviceidentity_get_public_key() != 29944.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_deviceidentity_sign() != 62994.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_deviceidentity_sign() != 46839.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_ack_canned_message() != 50187.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_identityattestation_get_node_id() != 55998.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_app_document_count() != 38602.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_identityattestation_get_public_key() != 41158.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_broadcast_bytes() != 18696.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_identityattestation_verify() != 31163.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_build_delta_document_for_peer() != 10816.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_meshgenesis_encode() != 18825.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_build_document() != 34635.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_meshgenesis_get_encryption_secret() != 38684.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_build_full_delta_document() != 54430.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_meshgenesis_get_mesh_id() != 52516.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_check_canned_message() != 55203.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_app_document_count() != 46291.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_clear_location() != 37664.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_broadcast_bytes() != 9893.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_clear_peripheral_event() != 19596.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_build_delta_document_for_peer() != 30080.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_connected_count() != 11084.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_build_document() != 37515.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_create_attestation() != 43136.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_build_full_delta_document() != 8532.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_decrypt_only() != 17320.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_check_canned_message() != 51036.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_degraded_peer_count() != 49461.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_clear_location() != 46239.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_all_canned_messages() != 61806.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_clear_peripheral_event() != 49272.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_canned_message_document() != 4363.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_connected_count() != 51353.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_connected_peer_identifiers() != 46364.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_create_attestation() != 64449.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_connected_peers() != 33262.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_decrypt_only() != 58164.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_connection_state_counts() != 3895.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_degraded_peer_count() != 22422.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_degraded_peers() != 35458.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_connected_peer_identifiers() != 56037.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_full_state_counts() != 774.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_connected_peers() != 20341.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_indirect_peers() != 24551.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_connection_state_counts() != 46062.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_lost_peers() != 24408.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_degraded_peers() != 51684.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_peer_callsign() != 25046.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_full_state_counts() != 8380.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_peer_connection_state() != 63677.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_indirect_peers() != 50632.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_get_public_key() != 46726.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_lost_peers() != 910.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_has_identity() != 6017.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_peer_callsign() != 46753.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_ack_active() != 6600.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_peer_connection_state() != 42326.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_emergency_active() != 61425.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_get_public_key() != 25611.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_encryption_enabled() != 4872.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_has_identity() != 9142.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_peer_identity_known() != 39781.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_ack_active() != 36029.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_peer_known() != 45078.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_emergency_active() != 65503.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_is_relay_enabled() != 39903.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_encryption_enabled() != 46071.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_known_identity_count() != 21186.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_peer_identity_known() != 34678.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_lost_peer_count() != 25444.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_peer_known() != 62882.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_mark_canned_message_seen() != 49445.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_is_relay_enabled() != 40734.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_matches_mesh() != 536.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_known_identity_count() != 9182.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_ble_connected() != 57590.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_lost_peer_count() != 37496.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_ble_data_received() != 5609.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_mark_canned_message_seen() != 51245.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_ble_data_received_anonymous() != 21883.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_matches_mesh() != 24845.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_ble_disconnected() != 21993.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_ble_connected() != 64877.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_ble_discovered() != 10478.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_ble_data_received() != 19910.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_on_incoming_connection() != 46356.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_ble_data_received_anonymous() != 26072.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_peer_count() != 46420.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_ble_disconnected() != 14024.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_recently_disconnected_count() != 13238.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_ble_discovered() != 34711.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_send_ack() != 31251.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_on_incoming_connection() != 31705.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_send_canned_message() != 52949.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_peer_count() != 1281.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_send_emergency() != 20743.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_recently_disconnected_count() != 45885.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_set_peripheral_event() != 23132.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_send_ack() != 56358.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_sign() != 18310.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_send_emergency() != 54121.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_store_canned_message_document() != 9562.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_set_peripheral_event() != 27428.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_tick() != 62780.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_sign() != 53236.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_total_count() != 8036.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_tick() != 48013.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_update_callsign() != 39184.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_total_count() != 40886.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_update_heart_rate() != 57942.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_update_callsign() != 51189.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_update_location() != 15615.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_update_heart_rate() != 62571.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_update_peripheral_state() != 16349.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_update_location() != 28482.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_verify_peer_identity() != 47438.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_update_peripheral_state() != 14377.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_hivemesh_verify_peer_signature() != 3023.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_verify_peer_identity() != 62927.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_identityattestation_get_node_id() != 7851.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peatmesh_verify_peer_signature() != 61530.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_identityattestation_get_public_key() != 47960.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_cleanup_interval_ms() != 61653.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_identityattestation_verify() != 22397.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_cleanup_stale_peers() != 57903.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_meshgenesis_encode() != 25660.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_clear() != 53821.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_meshgenesis_get_encryption_secret() != 49210.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_get_peer_info() != 23475.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_meshgenesis_get_mesh_id() != 2487.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_get_stale_peer_addresses() != 30794.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_cleanup_interval_ms() != 34614.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_get_stale_peers() != 22629.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_cleanup_stale_peers() != 14214.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_is_connected() != 6579.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_clear() != 8410.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_is_tracked() != 9837.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_get_peer_info() != 5306.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_on_peer_activity() != 27935.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_get_stale_peer_addresses() != 59883.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_on_peer_disconnected() != 18356.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_get_stale_peers() != 42757.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_remove_peer() != 17358.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_is_connected() != 47086.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_stats() != 20092.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_is_tracked() != 45113.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_tracked_count() != 53156.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_on_peer_activity() != 55006.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_check_interval_ms() != 40972.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_on_peer_disconnected() != 9008.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_clear() != 37388.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_remove_peer() != 32940.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_get_peer_stats() != 55626.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_stats() != 20724.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_get_peers_to_reconnect() != 33093.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_peerlifetimemanager_tracked_count() != 48824.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_get_status() != 2736.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_check_interval_ms() != 22010.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_is_tracked() != 35559.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_clear() != 20389.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_on_connection_success() != 34382.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_get_peer_stats() != 12693.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_record_attempt() != 52161.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_get_peers_to_reconnect() != 15110.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_stop_tracking() != 39616.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_get_status() != 7771.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_track_disconnection() != 41571.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_is_tracked() != 34990.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_tracked_count() != 45363.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_on_connection_success() != 59141.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_addressrotationhandler_new() != 10200.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_record_attempt() != 63146.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_deviceidentity_generate() != 58786.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_stop_tracking() != 49609.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_meshgenesis_create() != 16963.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_track_disconnection() != 30858.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_peatmesh_new() != 49261.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_method_reconnectionmanager_tracked_count() != 35883.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_peatmesh_new_from_genesis() != 27401.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_constructor_addressrotationhandler_new() != 20527.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_peatmesh_new_with_peripheral() != 1613.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_constructor_deviceidentity_generate() != 56900.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_peerlifetimemanager_new() != 32859.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_constructor_hivemesh_new() != 19766.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_peerlifetimemanager_with_defaults() != 59128.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_constructor_hivemesh_new_from_genesis() != 17187.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_reconnectionmanager_new() != 20303.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_peat_btle_checksum_constructor_hivemesh_new_with_peripheral() != 32163.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_peat_btle_checksum_constructor_meshgenesis_create() != 41455.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_peat_btle_checksum_constructor_peerlifetimemanager_new() != 27553.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_peat_btle_checksum_constructor_peerlifetimemanager_with_defaults() != 42854.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_peat_btle_checksum_constructor_reconnectionmanager_new() != 3296.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_peat_btle_checksum_constructor_reconnectionmanager_with_defaults() != 13090.toShort()) {
+    if (lib.uniffi_peat_btle_checksum_constructor_reconnectionmanager_with_defaults() != 59976.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -2988,1589 +2953,6 @@ public object FfiConverterTypeDeviceIdentity: FfiConverter<DeviceIdentity, Long>
 //
 
 
-public interface PeatMeshInterface {
-    
-    /**
-     * Record an ACK on a stored CannedMessage document.
-     *
-     * This is the efficient path for adding ACKs - the full document
-     * doesn't need to be re-sent, just the ACK delta.
-     *
-     * Returns true if the ACK was new (document changed).
-     */
-    fun `ackCannedMessage`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong, `ackerNode`: kotlin.UInt, `ackTimestamp`: kotlin.ULong): kotlin.Boolean
-    
-    /**
-     * Get the number of stored app documents.
-     */
-    fun `appDocumentCount`(): kotlin.UInt
-    
-    /**
-     * Broadcast arbitrary bytes over the mesh.
-     *
-     * Takes raw payload bytes, encrypts them (if encryption is enabled),
-     * and returns bytes ready to send to all connected peers.
-     *
-     * This is useful for sending extension data like CannedMessages from hive-lite.
-     */
-    fun `broadcastBytes`(`payload`: kotlin.ByteArray): kotlin.ByteArray
-    
-    /**
-     * Build a delta document for a specific peer.
-     *
-     * This includes only operations that have changed since the last sync
-     * with this peer, including app-layer documents (CannedMessages, etc.).
-     * Returns None if there's nothing new to send.
-     */
-    fun `buildDeltaDocumentForPeer`(`peerId`: kotlin.UInt, `nowMs`: kotlin.ULong): kotlin.ByteArray?
-    
-    /**
-     * Build the current document for transmission
-     */
-    fun `buildDocument`(): kotlin.ByteArray
-    
-    /**
-     * Build a full delta document containing all current state.
-     *
-     * Unlike `build_delta_document_for_peer`, this includes all state
-     * regardless of what has been sent before. Use for broadcasts or
-     * new peer connections. Includes app-layer documents.
-     */
-    fun `buildFullDeltaDocument`(`nowMs`: kotlin.ULong): kotlin.ByteArray
-    
-    /**
-     * Check if a CannedMessage has been seen recently.
-     *
-     * Uses document identity (source_node + timestamp) for deduplication.
-     * This prevents broadcast storms when relaying CannedMessages.
-     *
-     * Returns true if the message should be processed, false if it's a duplicate.
-     */
-    fun `checkCannedMessage`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong, `ttlMs`: kotlin.ULong): kotlin.Boolean
-    
-    /**
-     * Clear own location
-     */
-    fun `clearLocation`()
-    
-    /**
-     * Clear peripheral event
-     */
-    fun `clearPeripheralEvent`()
-    
-    /**
-     * Get count of connected peers
-     */
-    fun `connectedCount`(): kotlin.UInt
-    
-    /**
-     * Create an identity attestation
-     */
-    fun `createAttestation`(`timestampMs`: kotlin.ULong): kotlin.ByteArray?
-    
-    /**
-     * Decrypt data received over BLE (transport layer only)
-     */
-    fun `decryptOnly`(`data`: kotlin.ByteArray): kotlin.ByteArray?
-    
-    /**
-     * Get count of degraded peers (connected but poor signal)
-     */
-    fun `degradedPeerCount`(): kotlin.UInt
-    
-    /**
-     * Get all stored CannedMessage documents as encoded bytes.
-     *
-     * Returns a list of (source_node, timestamp, encoded_bytes) tuples.
-     * The encoded_bytes include the 0xAF marker for hive-lite compatibility.
-     */
-    fun `getAllCannedMessages`(): List<CannedMessageInfo>
-    
-    /**
-     * Get a stored CannedMessage document as raw hive-lite bytes.
-     *
-     * Returns the document encoded in hive-lite format (with 0xAF marker),
-     * or None if not found.
-     */
-    fun `getCannedMessageDocument`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong): kotlin.ByteArray?
-    
-    /**
-     * Get the list of connected peer identifiers for relay.
-     *
-     * Used by the Kotlin layer to relay CannedMessages to other peers
-     * after deduplication check.
-     */
-    fun `getConnectedPeerIdentifiers`(): List<kotlin.String>
-    
-    /**
-     * Get list of connected peers
-     */
-    fun `getConnectedPeers`(): List<PeatPeer>
-    
-    /**
-     * Get connection state counts (direct peers)
-     */
-    fun `getConnectionStateCounts`(): StateCountSummary
-    
-    /**
-     * Get all degraded peers (connected but poor signal quality)
-     */
-    fun `getDegradedPeers`(): List<PeerConnectionState>
-    
-    /**
-     * Get full state counts including indirect peers
-     */
-    fun `getFullStateCounts`(): FullStateCountSummary
-    
-    /**
-     * Get indirect (multi-hop) peers
-     */
-    fun `getIndirectPeers`(): List<IndirectPeer>
-    
-    /**
-     * Get all lost peers (disconnected and timed out)
-     */
-    fun `getLostPeers`(): List<PeerConnectionState>
-    
-    /**
-     * Get callsign for a peer
-     */
-    fun `getPeerCallsign`(`nodeId`: kotlin.UInt): kotlin.String?
-    
-    /**
-     * Get connection state for a specific peer
-     */
-    fun `getPeerConnectionState`(`nodeId`: kotlin.UInt): PeerConnectionState?
-    
-    /**
-     * Get own public key
-     */
-    fun `getPublicKey`(): kotlin.ByteArray?
-    
-    /**
-     * Check if mesh has a cryptographic identity
-     */
-    fun `hasIdentity`(): kotlin.Boolean
-    
-    /**
-     * Check if ACK is currently active
-     */
-    fun `isAckActive`(): kotlin.Boolean
-    
-    /**
-     * Check if emergency is currently active
-     */
-    fun `isEmergencyActive`(): kotlin.Boolean
-    
-    /**
-     * Check if encryption is enabled
-     */
-    fun `isEncryptionEnabled`(): kotlin.Boolean
-    
-    /**
-     * Check if a peer's identity is known
-     */
-    fun `isPeerIdentityKnown`(`nodeId`: kotlin.UInt): kotlin.Boolean
-    
-    /**
-     * Check if a peer is known
-     */
-    fun `isPeerKnown`(`nodeId`: kotlin.UInt): kotlin.Boolean
-    
-    /**
-     * Check if relay is enabled
-     */
-    fun `isRelayEnabled`(): kotlin.Boolean
-    
-    /**
-     * Get count of known identities
-     */
-    fun `knownIdentityCount`(): kotlin.UInt
-    
-    /**
-     * Get count of lost peers (disconnected and timed out)
-     */
-    fun `lostPeerCount`(): kotlin.UInt
-    
-    /**
-     * Mark a CannedMessage as seen (for deduplication).
-     *
-     * Call this after receiving and processing a CannedMessage to prevent
-     * reprocessing the same message from other relay paths.
-     */
-    fun `markCannedMessageSeen`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong)
-    
-    /**
-     * Check if mesh matches (for filtering BLE discovery)
-     */
-    fun `matchesMesh`(`deviceMeshId`: kotlin.String?): kotlin.Boolean
-    
-    /**
-     * Call when a BLE connection is established
-     */
-    fun `onBleConnected`(`identifier`: kotlin.String, `nowMs`: kotlin.ULong)
-    
-    /**
-     * Call when BLE data is received from a known peer
-     */
-    fun `onBleDataReceived`(`identifier`: kotlin.String, `data`: kotlin.ByteArray, `nowMs`: kotlin.ULong): DataReceivedResult?
-    
-    /**
-     * Call when BLE data is received from an unknown source (e.g., broadcast)
-     */
-    fun `onBleDataReceivedAnonymous`(`identifier`: kotlin.String, `data`: kotlin.ByteArray, `nowMs`: kotlin.ULong): DataReceivedResult?
-    
-    /**
-     * Call when a BLE connection is lost
-     */
-    fun `onBleDisconnected`(`identifier`: kotlin.String, `reason`: DisconnectReason): kotlin.UInt?
-    
-    /**
-     * Call when a BLE device is discovered
-     */
-    fun `onBleDiscovered`(`identifier`: kotlin.String, `name`: kotlin.String?, `rssi`: kotlin.Byte, `meshId`: kotlin.String?, `nowMs`: kotlin.ULong): PeatPeer?
-    
-    /**
-     * Call when a remote device connects to us (incoming peripheral connection)
-     *
-     * Unlike on_ble_connected(), this creates the peer if it doesn't exist yet.
-     * Use this when acting as a GATT server and a central connects to us.
-     */
-    fun `onIncomingConnection`(`identifier`: kotlin.String, `nodeId`: kotlin.UInt, `nowMs`: kotlin.ULong): kotlin.Boolean
-    
-    /**
-     * Get count of discovered peers
-     */
-    fun `peerCount`(): kotlin.UInt
-    
-    /**
-     * Get count of recently disconnected peers
-     */
-    fun `recentlyDisconnectedCount`(`withinMs`: kotlin.ULong, `nowMs`: kotlin.ULong): kotlin.UInt
-    
-    /**
-     * Send ACK
-     */
-    fun `sendAck`(`timestampMs`: kotlin.ULong): kotlin.ByteArray
-    
-    /**
-     * Create and store a new CannedMessage document.
-     *
-     * Creates a CannedMessageAckEvent with the given message code, stores it
-     * for CRDT sync, and returns the encoded bytes (with 0xAF marker) for
-     * broadcasting to peers.
-     *
-     * Returns the encoded bytes if the document was newly created, None if
-     * there was an error or the message code is invalid.
-     */
-    fun `sendCannedMessage`(`messageCode`: kotlin.UByte, `timestampMs`: kotlin.ULong): kotlin.ByteArray?
-    
-    /**
-     * Send emergency alert
-     */
-    fun `sendEmergency`(`timestampMs`: kotlin.ULong): kotlin.ByteArray
-    
-    /**
-     * Set peripheral event
-     */
-    fun `setPeripheralEvent`(`eventType`: EventType, `timestampMs`: kotlin.ULong)
-    
-    /**
-     * Sign data with own identity
-     */
-    fun `sign`(`message`: kotlin.ByteArray): kotlin.ByteArray?
-    
-    /**
-     * Store a CannedMessage document for CRDT sync.
-     *
-     * Takes raw hive-lite encoded bytes (including 0xAF marker).
-     * The document will be stored and synced to peers via delta sync.
-     *
-     * Returns true if the document was newly added or changed via merge.
-     */
-    fun `storeCannedMessageDocument`(`encodedBytes`: kotlin.ByteArray): kotlin.Boolean
-    
-    /**
-     * Periodic tick - call every sync interval
-     */
-    fun `tick`(`nowMs`: kotlin.ULong): kotlin.ByteArray?
-    
-    /**
-     * Get total mesh count
-     */
-    fun `totalCount`(): kotlin.UInt
-    
-    /**
-     * Update own callsign
-     */
-    fun `updateCallsign`(`callsign`: kotlin.String)
-    
-    /**
-     * Update own heart rate
-     */
-    fun `updateHeartRate`(`bpm`: kotlin.UByte)
-    
-    /**
-     * Update own location
-     */
-    fun `updateLocation`(`latitude`: kotlin.Float, `longitude`: kotlin.Float, `altitude`: kotlin.Float?)
-    
-    /**
-     * Update all peripheral state at once (efficient for encrypted transmission)
-     */
-    fun `updatePeripheralState`(`callsign`: kotlin.String, `batteryPercent`: kotlin.UByte, `heartRate`: kotlin.UByte?, `latitude`: kotlin.Float?, `longitude`: kotlin.Float?, `altitude`: kotlin.Float?, `eventType`: EventType?, `timestampMs`: kotlin.ULong)
-    
-    /**
-     * Verify a peer's identity from attestation bytes
-     * Returns true if identity was registered or verified, false otherwise
-     */
-    fun `verifyPeerIdentity`(`attestationBytes`: kotlin.ByteArray): kotlin.Boolean
-    
-    /**
-     * Verify a peer's signature
-     */
-    fun `verifyPeerSignature`(`nodeId`: kotlin.UInt, `message`: kotlin.ByteArray, `signature`: kotlin.ByteArray): kotlin.Boolean
-    
-    companion object
-}
-
-open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
-{
-
-    @Suppress("UNUSED_PARAMETER")
-    /**
-     * @suppress
-     */
-    constructor(withHandle: UniffiWithHandle, handle: Long) {
-        this.handle = handle
-        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
-    }
-
-    /**
-     * @suppress
-     *
-     * This constructor can be used to instantiate a fake object. Only used for tests. Any
-     * attempt to actually use an object constructed this way will fail as there is no
-     * connected Rust object.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    constructor(noHandle: NoHandle) {
-        this.handle = 0
-        this.cleanable = null
-    }
-    /**
-     * Create a basic PeatMesh
-     */
-    constructor(`nodeId`: kotlin.UInt, `callsign`: kotlin.String, `meshId`: kotlin.String) :
-        this(UniffiWithHandle, 
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_constructor_hivemesh_new(
-    
-        FfiConverterUInt.lower(`nodeId`),FfiConverterString.lower(`callsign`),FfiConverterString.lower(`meshId`),_status)
-}
-    )
-
-    protected val handle: Long
-    protected val cleanable: UniffiCleaner.Cleanable?
-
-    private val wasDestroyed = AtomicBoolean(false)
-    private val callCounter = AtomicLong(1)
-
-    override fun destroy() {
-        // Only allow a single call to this method.
-        // TODO: maybe we should log a warning if called more than once?
-        if (this.wasDestroyed.compareAndSet(false, true)) {
-            // This decrement always matches the initial count of 1 given at creation time.
-            if (this.callCounter.decrementAndGet() == 0L) {
-                cleanable?.clean()
-            }
-        }
-    }
-
-    @Synchronized
-    override fun close() {
-        this.destroy()
-    }
-
-    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
-        // Check and increment the call counter, to keep the object alive.
-        // This needs a compare-and-set retry loop in case of concurrent updates.
-        do {
-            val c = this.callCounter.get()
-            if (c == 0L) {
-                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
-            }
-            if (c == Long.MAX_VALUE) {
-                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
-            }
-        } while (! this.callCounter.compareAndSet(c, c + 1L))
-        // Now we can safely do the method call without the handle being freed concurrently.
-        try {
-            return block(this.uniffiCloneHandle())
-        } finally {
-            // This decrement always matches the increment we performed above.
-            if (this.callCounter.decrementAndGet() == 0L) {
-                cleanable?.clean()
-            }
-        }
-    }
-
-    // Use a static inner class instead of a closure so as not to accidentally
-    // capture `this` as part of the cleanable's action.
-    private class UniffiCleanAction(private val handle: Long) : Runnable {
-        override fun run() {
-            if (handle == 0.toLong()) {
-                // Fake object created with `NoHandle`, don't try to free.
-                return;
-            }
-            uniffiRustCall { status ->
-                UniffiLib.uniffi_peat_btle_fn_free_hivemesh(handle, status)
-            }
-        }
-    }
-
-    /**
-     * @suppress
-     */
-    fun uniffiCloneHandle(): Long {
-        if (handle == 0.toLong()) {
-            throw InternalException("uniffiCloneHandle() called on NoHandle object");
-        }
-        return uniffiRustCall() { status ->
-            UniffiLib.uniffi_peat_btle_fn_clone_hivemesh(handle, status)
-        }
-    }
-
-    
-    /**
-     * Record an ACK on a stored CannedMessage document.
-     *
-     * This is the efficient path for adding ACKs - the full document
-     * doesn't need to be re-sent, just the ACK delta.
-     *
-     * Returns true if the ACK was new (document changed).
-     */override fun `ackCannedMessage`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong, `ackerNode`: kotlin.UInt, `ackTimestamp`: kotlin.ULong): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_ack_canned_message(
-        it,
-        FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),FfiConverterUInt.lower(`ackerNode`),FfiConverterULong.lower(`ackTimestamp`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get the number of stored app documents.
-     */override fun `appDocumentCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_app_document_count(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Broadcast arbitrary bytes over the mesh.
-     *
-     * Takes raw payload bytes, encrypts them (if encryption is enabled),
-     * and returns bytes ready to send to all connected peers.
-     *
-     * This is useful for sending extension data like CannedMessages from hive-lite.
-     */override fun `broadcastBytes`(`payload`: kotlin.ByteArray): kotlin.ByteArray {
-            return FfiConverterByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_broadcast_bytes(
-        it,
-        FfiConverterByteArray.lower(`payload`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Build a delta document for a specific peer.
-     *
-     * This includes only operations that have changed since the last sync
-     * with this peer, including app-layer documents (CannedMessages, etc.).
-     * Returns None if there's nothing new to send.
-     */override fun `buildDeltaDocumentForPeer`(`peerId`: kotlin.UInt, `nowMs`: kotlin.ULong): kotlin.ByteArray? {
-            return FfiConverterOptionalByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_build_delta_document_for_peer(
-        it,
-        FfiConverterUInt.lower(`peerId`),FfiConverterULong.lower(`nowMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Build the current document for transmission
-     */override fun `buildDocument`(): kotlin.ByteArray {
-            return FfiConverterByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_build_document(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Build a full delta document containing all current state.
-     *
-     * Unlike `build_delta_document_for_peer`, this includes all state
-     * regardless of what has been sent before. Use for broadcasts or
-     * new peer connections. Includes app-layer documents.
-     */override fun `buildFullDeltaDocument`(`nowMs`: kotlin.ULong): kotlin.ByteArray {
-            return FfiConverterByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_build_full_delta_document(
-        it,
-        FfiConverterULong.lower(`nowMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Check if a CannedMessage has been seen recently.
-     *
-     * Uses document identity (source_node + timestamp) for deduplication.
-     * This prevents broadcast storms when relaying CannedMessages.
-     *
-     * Returns true if the message should be processed, false if it's a duplicate.
-     */override fun `checkCannedMessage`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong, `ttlMs`: kotlin.ULong): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_check_canned_message(
-        it,
-        FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),FfiConverterULong.lower(`ttlMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Clear own location
-     */override fun `clearLocation`()
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_clear_location(
-        it,
-        _status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Clear peripheral event
-     */override fun `clearPeripheralEvent`()
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_clear_peripheral_event(
-        it,
-        _status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Get count of connected peers
-     */override fun `connectedCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_connected_count(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Create an identity attestation
-     */override fun `createAttestation`(`timestampMs`: kotlin.ULong): kotlin.ByteArray? {
-            return FfiConverterOptionalByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_create_attestation(
-        it,
-        FfiConverterULong.lower(`timestampMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Decrypt data received over BLE (transport layer only)
-     */override fun `decryptOnly`(`data`: kotlin.ByteArray): kotlin.ByteArray? {
-            return FfiConverterOptionalByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_decrypt_only(
-        it,
-        FfiConverterByteArray.lower(`data`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get count of degraded peers (connected but poor signal)
-     */override fun `degradedPeerCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_degraded_peer_count(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get all stored CannedMessage documents as encoded bytes.
-     *
-     * Returns a list of (source_node, timestamp, encoded_bytes) tuples.
-     * The encoded_bytes include the 0xAF marker for hive-lite compatibility.
-     */override fun `getAllCannedMessages`(): List<CannedMessageInfo> {
-            return FfiConverterSequenceTypeCannedMessageInfo.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_all_canned_messages(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get a stored CannedMessage document as raw hive-lite bytes.
-     *
-     * Returns the document encoded in hive-lite format (with 0xAF marker),
-     * or None if not found.
-     */override fun `getCannedMessageDocument`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong): kotlin.ByteArray? {
-            return FfiConverterOptionalByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_canned_message_document(
-        it,
-        FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get the list of connected peer identifiers for relay.
-     *
-     * Used by the Kotlin layer to relay CannedMessages to other peers
-     * after deduplication check.
-     */override fun `getConnectedPeerIdentifiers`(): List<kotlin.String> {
-            return FfiConverterSequenceString.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_connected_peer_identifiers(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get list of connected peers
-     */override fun `getConnectedPeers`(): List<PeatPeer> {
-            return FfiConverterSequenceTypePeatPeer.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_connected_peers(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get connection state counts (direct peers)
-     */override fun `getConnectionStateCounts`(): StateCountSummary {
-            return FfiConverterTypeStateCountSummary.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_connection_state_counts(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get all degraded peers (connected but poor signal quality)
-     */override fun `getDegradedPeers`(): List<PeerConnectionState> {
-            return FfiConverterSequenceTypePeerConnectionState.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_degraded_peers(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get full state counts including indirect peers
-     */override fun `getFullStateCounts`(): FullStateCountSummary {
-            return FfiConverterTypeFullStateCountSummary.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_full_state_counts(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get indirect (multi-hop) peers
-     */override fun `getIndirectPeers`(): List<IndirectPeer> {
-            return FfiConverterSequenceTypeIndirectPeer.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_indirect_peers(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get all lost peers (disconnected and timed out)
-     */override fun `getLostPeers`(): List<PeerConnectionState> {
-            return FfiConverterSequenceTypePeerConnectionState.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_lost_peers(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get callsign for a peer
-     */override fun `getPeerCallsign`(`nodeId`: kotlin.UInt): kotlin.String? {
-            return FfiConverterOptionalString.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_peer_callsign(
-        it,
-        FfiConverterUInt.lower(`nodeId`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get connection state for a specific peer
-     */override fun `getPeerConnectionState`(`nodeId`: kotlin.UInt): PeerConnectionState? {
-            return FfiConverterOptionalTypePeerConnectionState.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_peer_connection_state(
-        it,
-        FfiConverterUInt.lower(`nodeId`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get own public key
-     */override fun `getPublicKey`(): kotlin.ByteArray? {
-            return FfiConverterOptionalByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_get_public_key(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Check if mesh has a cryptographic identity
-     */override fun `hasIdentity`(): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_has_identity(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Check if ACK is currently active
-     */override fun `isAckActive`(): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_ack_active(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Check if emergency is currently active
-     */override fun `isEmergencyActive`(): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_emergency_active(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Check if encryption is enabled
-     */override fun `isEncryptionEnabled`(): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_encryption_enabled(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Check if a peer's identity is known
-     */override fun `isPeerIdentityKnown`(`nodeId`: kotlin.UInt): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_peer_identity_known(
-        it,
-        FfiConverterUInt.lower(`nodeId`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Check if a peer is known
-     */override fun `isPeerKnown`(`nodeId`: kotlin.UInt): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_peer_known(
-        it,
-        FfiConverterUInt.lower(`nodeId`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Check if relay is enabled
-     */override fun `isRelayEnabled`(): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_is_relay_enabled(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get count of known identities
-     */override fun `knownIdentityCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_known_identity_count(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get count of lost peers (disconnected and timed out)
-     */override fun `lostPeerCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_lost_peer_count(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Mark a CannedMessage as seen (for deduplication).
-     *
-     * Call this after receiving and processing a CannedMessage to prevent
-     * reprocessing the same message from other relay paths.
-     */override fun `markCannedMessageSeen`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong)
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_mark_canned_message_seen(
-        it,
-        FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),_status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Check if mesh matches (for filtering BLE discovery)
-     */override fun `matchesMesh`(`deviceMeshId`: kotlin.String?): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_matches_mesh(
-        it,
-        FfiConverterOptionalString.lower(`deviceMeshId`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Call when a BLE connection is established
-     */override fun `onBleConnected`(`identifier`: kotlin.String, `nowMs`: kotlin.ULong)
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_ble_connected(
-        it,
-        FfiConverterString.lower(`identifier`),FfiConverterULong.lower(`nowMs`),_status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Call when BLE data is received from a known peer
-     */override fun `onBleDataReceived`(`identifier`: kotlin.String, `data`: kotlin.ByteArray, `nowMs`: kotlin.ULong): DataReceivedResult? {
-            return FfiConverterOptionalTypeDataReceivedResult.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_ble_data_received(
-        it,
-        FfiConverterString.lower(`identifier`),FfiConverterByteArray.lower(`data`),FfiConverterULong.lower(`nowMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Call when BLE data is received from an unknown source (e.g., broadcast)
-     */override fun `onBleDataReceivedAnonymous`(`identifier`: kotlin.String, `data`: kotlin.ByteArray, `nowMs`: kotlin.ULong): DataReceivedResult? {
-            return FfiConverterOptionalTypeDataReceivedResult.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_ble_data_received_anonymous(
-        it,
-        FfiConverterString.lower(`identifier`),FfiConverterByteArray.lower(`data`),FfiConverterULong.lower(`nowMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Call when a BLE connection is lost
-     */override fun `onBleDisconnected`(`identifier`: kotlin.String, `reason`: DisconnectReason): kotlin.UInt? {
-            return FfiConverterOptionalUInt.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_ble_disconnected(
-        it,
-        FfiConverterString.lower(`identifier`),FfiConverterTypeDisconnectReason.lower(`reason`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Call when a BLE device is discovered
-     */override fun `onBleDiscovered`(`identifier`: kotlin.String, `name`: kotlin.String?, `rssi`: kotlin.Byte, `meshId`: kotlin.String?, `nowMs`: kotlin.ULong): PeatPeer? {
-            return FfiConverterOptionalTypePeatPeer.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_ble_discovered(
-        it,
-        FfiConverterString.lower(`identifier`),FfiConverterOptionalString.lower(`name`),FfiConverterByte.lower(`rssi`),FfiConverterOptionalString.lower(`meshId`),FfiConverterULong.lower(`nowMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Call when a remote device connects to us (incoming peripheral connection)
-     *
-     * Unlike on_ble_connected(), this creates the peer if it doesn't exist yet.
-     * Use this when acting as a GATT server and a central connects to us.
-     */override fun `onIncomingConnection`(`identifier`: kotlin.String, `nodeId`: kotlin.UInt, `nowMs`: kotlin.ULong): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_on_incoming_connection(
-        it,
-        FfiConverterString.lower(`identifier`),FfiConverterUInt.lower(`nodeId`),FfiConverterULong.lower(`nowMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get count of discovered peers
-     */override fun `peerCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_peer_count(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get count of recently disconnected peers
-     */override fun `recentlyDisconnectedCount`(`withinMs`: kotlin.ULong, `nowMs`: kotlin.ULong): kotlin.UInt {
-            return FfiConverterUInt.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_recently_disconnected_count(
-        it,
-        FfiConverterULong.lower(`withinMs`),FfiConverterULong.lower(`nowMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Send ACK
-     */override fun `sendAck`(`timestampMs`: kotlin.ULong): kotlin.ByteArray {
-            return FfiConverterByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_send_ack(
-        it,
-        FfiConverterULong.lower(`timestampMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Create and store a new CannedMessage document.
-     *
-     * Creates a CannedMessageAckEvent with the given message code, stores it
-     * for CRDT sync, and returns the encoded bytes (with 0xAF marker) for
-     * broadcasting to peers.
-     *
-     * Returns the encoded bytes if the document was newly created, None if
-     * there was an error or the message code is invalid.
-     */override fun `sendCannedMessage`(`messageCode`: kotlin.UByte, `timestampMs`: kotlin.ULong): kotlin.ByteArray? {
-            return FfiConverterOptionalByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_send_canned_message(
-        it,
-        FfiConverterUByte.lower(`messageCode`),FfiConverterULong.lower(`timestampMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Send emergency alert
-     */override fun `sendEmergency`(`timestampMs`: kotlin.ULong): kotlin.ByteArray {
-            return FfiConverterByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_send_emergency(
-        it,
-        FfiConverterULong.lower(`timestampMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Set peripheral event
-     */override fun `setPeripheralEvent`(`eventType`: EventType, `timestampMs`: kotlin.ULong)
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_set_peripheral_event(
-        it,
-        FfiConverterTypeEventType.lower(`eventType`),FfiConverterULong.lower(`timestampMs`),_status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Sign data with own identity
-     */override fun `sign`(`message`: kotlin.ByteArray): kotlin.ByteArray? {
-            return FfiConverterOptionalByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_sign(
-        it,
-        FfiConverterByteArray.lower(`message`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Store a CannedMessage document for CRDT sync.
-     *
-     * Takes raw hive-lite encoded bytes (including 0xAF marker).
-     * The document will be stored and synced to peers via delta sync.
-     *
-     * Returns true if the document was newly added or changed via merge.
-     */override fun `storeCannedMessageDocument`(`encodedBytes`: kotlin.ByteArray): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_store_canned_message_document(
-        it,
-        FfiConverterByteArray.lower(`encodedBytes`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Periodic tick - call every sync interval
-     */override fun `tick`(`nowMs`: kotlin.ULong): kotlin.ByteArray? {
-            return FfiConverterOptionalByteArray.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_tick(
-        it,
-        FfiConverterULong.lower(`nowMs`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Get total mesh count
-     */override fun `totalCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_total_count(
-        it,
-        _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Update own callsign
-     */override fun `updateCallsign`(`callsign`: kotlin.String)
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_update_callsign(
-        it,
-        FfiConverterString.lower(`callsign`),_status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Update own heart rate
-     */override fun `updateHeartRate`(`bpm`: kotlin.UByte)
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_update_heart_rate(
-        it,
-        FfiConverterUByte.lower(`bpm`),_status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Update own location
-     */override fun `updateLocation`(`latitude`: kotlin.Float, `longitude`: kotlin.Float, `altitude`: kotlin.Float?)
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_update_location(
-        it,
-        FfiConverterFloat.lower(`latitude`),FfiConverterFloat.lower(`longitude`),FfiConverterOptionalFloat.lower(`altitude`),_status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Update all peripheral state at once (efficient for encrypted transmission)
-     */override fun `updatePeripheralState`(`callsign`: kotlin.String, `batteryPercent`: kotlin.UByte, `heartRate`: kotlin.UByte?, `latitude`: kotlin.Float?, `longitude`: kotlin.Float?, `altitude`: kotlin.Float?, `eventType`: EventType?, `timestampMs`: kotlin.ULong)
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_update_peripheral_state(
-        it,
-        FfiConverterString.lower(`callsign`),FfiConverterUByte.lower(`batteryPercent`),FfiConverterOptionalUByte.lower(`heartRate`),FfiConverterOptionalFloat.lower(`latitude`),FfiConverterOptionalFloat.lower(`longitude`),FfiConverterOptionalFloat.lower(`altitude`),FfiConverterOptionalTypeEventType.lower(`eventType`),FfiConverterULong.lower(`timestampMs`),_status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Verify a peer's identity from attestation bytes
-     * Returns true if identity was registered or verified, false otherwise
-     */override fun `verifyPeerIdentity`(`attestationBytes`: kotlin.ByteArray): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_verify_peer_identity(
-        it,
-        FfiConverterByteArray.lower(`attestationBytes`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Verify a peer's signature
-     */override fun `verifyPeerSignature`(`nodeId`: kotlin.UInt, `message`: kotlin.ByteArray, `signature`: kotlin.ByteArray): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_method_hivemesh_verify_peer_signature(
-        it,
-        FfiConverterUInt.lower(`nodeId`),FfiConverterByteArray.lower(`message`),FfiConverterByteArray.lower(`signature`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-
-    
-
-
-    
-    companion object {
-        
-    /**
-     * Create a PeatMesh from genesis (recommended for production)
-     */ fun `newFromGenesis`(`callsign`: kotlin.String, `identity`: DeviceIdentity, `genesis`: MeshGenesis): PeatMesh {
-            return FfiConverterTypePeatMesh.lift(
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_constructor_hivemesh_new_from_genesis(
-    
-        FfiConverterString.lower(`callsign`),FfiConverterTypeDeviceIdentity.lower(`identity`),FfiConverterTypeMeshGenesis.lower(`genesis`),_status)
-}
-    )
-    }
-    
-
-        
-    /**
-     * Create a PeatMesh with peripheral type
-     */ fun `newWithPeripheral`(`nodeId`: kotlin.UInt, `callsign`: kotlin.String, `meshId`: kotlin.String, `peripheralType`: PeripheralType): PeatMesh {
-            return FfiConverterTypePeatMesh.lift(
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_constructor_hivemesh_new_with_peripheral(
-    
-        FfiConverterUInt.lower(`nodeId`),FfiConverterString.lower(`callsign`),FfiConverterString.lower(`meshId`),FfiConverterTypePeripheralType.lower(`peripheralType`),_status)
-}
-    )
-    }
-    
-
-        
-    }
-    
-}
-
-
-/**
- * @suppress
- */
-public object FfiConverterTypePeatMesh: FfiConverter<PeatMesh, Long> {
-    override fun lower(value: PeatMesh): Long {
-        return value.uniffiCloneHandle()
-    }
-
-    override fun lift(value: Long): PeatMesh {
-        return PeatMesh(UniffiWithHandle, value)
-    }
-
-    override fun read(buf: ByteBuffer): PeatMesh {
-        return lift(buf.getLong())
-    }
-
-    override fun allocationSize(value: PeatMesh) = 8UL
-
-    override fun write(value: PeatMesh, buf: ByteBuffer) {
-        buf.putLong(lower(value))
-    }
-}
-
-
-// This template implements a class for working with a Rust struct via a handle
-// to the live Rust struct on the other side of the FFI.
-//
-// There's some subtlety here, because we have to be careful not to operate on a Rust
-// struct after it has been dropped, and because we must expose a public API for freeing
-// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
-//
-//   * Each instance holds an opaque handle to the underlying Rust struct.
-//     Method calls need to read this handle from the object's state and pass it in to
-//     the Rust FFI.
-//
-//   * When an instance is no longer needed, its handle should be passed to a
-//     special destructor function provided by the Rust FFI, which will drop the
-//     underlying Rust struct.
-//
-//   * Given an instance, calling code is expected to call the special
-//     `destroy` method in order to free it after use, either by calling it explicitly
-//     or by using a higher-level helper like the `use` method. Failing to do so risks
-//     leaking the underlying Rust struct.
-//
-//   * We can't assume that calling code will do the right thing, and must be prepared
-//     to handle Kotlin method calls executing concurrently with or even after a call to
-//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
-//
-//   * We must never allow Rust code to operate on the underlying Rust struct after
-//     the destructor has been called, and must never call the destructor more than once.
-//     Doing so may trigger memory unsafety.
-//
-//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
-//     is implemented to call the destructor when the Kotlin object becomes unreachable.
-//     This is done in a background thread. This is not a panacea, and client code should be aware that
-//      1. the thread may starve if some there are objects that have poorly performing
-//     `drop` methods or do significant work in their `drop` methods.
-//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
-//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
-//
-// If we try to implement this with mutual exclusion on access to the handle, there is the
-// possibility of a race between a method call and a concurrent call to `destroy`:
-//
-//    * Thread A starts a method call, reads the value of the handle, but is interrupted
-//      before it can pass the handle over the FFI to Rust.
-//    * Thread B calls `destroy` and frees the underlying Rust struct.
-//    * Thread A resumes, passing the already-read handle value to Rust and triggering
-//      a use-after-free.
-//
-// One possible solution would be to use a `ReadWriteLock`, with each method call taking
-// a read lock (and thus allowed to run concurrently) and the special `destroy` method
-// taking a write lock (and thus blocking on live method calls). However, we aim not to
-// generate methods with any hidden blocking semantics, and a `destroy` method that might
-// block if called incorrectly seems to meet that bar.
-//
-// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
-// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
-// has been called. These are updated according to the following rules:
-//
-//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
-//      The initial value for the flag is false.
-//
-//    * At the start of each method call, we atomically check the counter.
-//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
-//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
-//
-//    * At the end of each method call, we atomically decrement and check the counter.
-//      If it has reached zero then we destroy the underlying Rust struct.
-//
-//    * When `destroy` is called, we atomically flip the flag from false to true.
-//      If the flag was already true we silently fail.
-//      Otherwise we atomically decrement and check the counter.
-//      If it has reached zero then we destroy the underlying Rust struct.
-//
-// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
-// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
-//
-// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
-// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
-// of the underlying Rust code.
-//
-// This makes a cleaner a better alternative to _not_ calling `destroy()` as
-// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
-// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
-// thread may be starved, and the app will leak memory.
-//
-// In this case, `destroy`ing manually may be a better solution.
-//
-// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
-// with Rust peers are reclaimed:
-//
-// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
-// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
-// 3. The memory is reclaimed when the process terminates.
-//
-// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
-//
-
-
 public interface IdentityAttestationInterface {
     
     /**
@@ -5079,6 +3461,1438 @@ public object FfiConverterTypeMeshGenesis: FfiConverter<MeshGenesis, Long> {
     override fun allocationSize(value: MeshGenesis) = 8UL
 
     override fun write(value: MeshGenesis, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface PeatMeshInterface {
+    
+    /**
+     * Get the number of stored app documents.
+     */
+    fun `appDocumentCount`(): kotlin.UInt
+    
+    /**
+     * Broadcast arbitrary bytes over the mesh.
+     *
+     * Takes raw payload bytes, encrypts them (if encryption is enabled),
+     * and returns bytes ready to send to all connected peers.
+     *
+     * This is useful for sending extension data like CannedMessages from peat-lite.
+     */
+    fun `broadcastBytes`(`payload`: kotlin.ByteArray): kotlin.ByteArray
+    
+    /**
+     * Build a delta document for a specific peer.
+     *
+     * This includes only operations that have changed since the last sync
+     * with this peer, including app-layer documents (CannedMessages, etc.).
+     * Returns None if there's nothing new to send.
+     */
+    fun `buildDeltaDocumentForPeer`(`peerId`: kotlin.UInt, `nowMs`: kotlin.ULong): kotlin.ByteArray?
+    
+    /**
+     * Build the current document for transmission
+     */
+    fun `buildDocument`(): kotlin.ByteArray
+    
+    /**
+     * Build a full delta document containing all current state.
+     *
+     * Unlike `build_delta_document_for_peer`, this includes all state
+     * regardless of what has been sent before. Use for broadcasts or
+     * new peer connections. Includes app-layer documents.
+     */
+    fun `buildFullDeltaDocument`(`nowMs`: kotlin.ULong): kotlin.ByteArray
+    
+    /**
+     * Check if a CannedMessage has been seen recently.
+     *
+     * Uses document identity (source_node + timestamp) for deduplication.
+     * This prevents broadcast storms when relaying CannedMessages.
+     *
+     * Returns true if the message should be processed, false if it's a duplicate.
+     */
+    fun `checkCannedMessage`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong, `ttlMs`: kotlin.ULong): kotlin.Boolean
+    
+    /**
+     * Clear own location
+     */
+    fun `clearLocation`()
+    
+    /**
+     * Clear peripheral event
+     */
+    fun `clearPeripheralEvent`()
+    
+    /**
+     * Get count of connected peers
+     */
+    fun `connectedCount`(): kotlin.UInt
+    
+    /**
+     * Create an identity attestation
+     */
+    fun `createAttestation`(`timestampMs`: kotlin.ULong): kotlin.ByteArray?
+    
+    /**
+     * Decrypt data received over BLE (transport layer only)
+     */
+    fun `decryptOnly`(`data`: kotlin.ByteArray): kotlin.ByteArray?
+    
+    /**
+     * Get count of degraded peers (connected but poor signal)
+     */
+    fun `degradedPeerCount`(): kotlin.UInt
+    
+    /**
+     * Get the list of connected peer identifiers for relay.
+     *
+     * Used by the Kotlin layer to relay CannedMessages to other peers
+     * after deduplication check.
+     */
+    fun `getConnectedPeerIdentifiers`(): List<kotlin.String>
+    
+    /**
+     * Get list of connected peers
+     */
+    fun `getConnectedPeers`(): List<PeatPeer>
+    
+    /**
+     * Get connection state counts (direct peers)
+     */
+    fun `getConnectionStateCounts`(): StateCountSummary
+    
+    /**
+     * Get all degraded peers (connected but poor signal quality)
+     */
+    fun `getDegradedPeers`(): List<PeerConnectionState>
+    
+    /**
+     * Get full state counts including indirect peers
+     */
+    fun `getFullStateCounts`(): FullStateCountSummary
+    
+    /**
+     * Get indirect (multi-hop) peers
+     */
+    fun `getIndirectPeers`(): List<IndirectPeer>
+    
+    /**
+     * Get all lost peers (disconnected and timed out)
+     */
+    fun `getLostPeers`(): List<PeerConnectionState>
+    
+    /**
+     * Get callsign for a peer
+     */
+    fun `getPeerCallsign`(`nodeId`: kotlin.UInt): kotlin.String?
+    
+    /**
+     * Get connection state for a specific peer
+     */
+    fun `getPeerConnectionState`(`nodeId`: kotlin.UInt): PeerConnectionState?
+    
+    /**
+     * Get own public key
+     */
+    fun `getPublicKey`(): kotlin.ByteArray?
+    
+    /**
+     * Check if mesh has a cryptographic identity
+     */
+    fun `hasIdentity`(): kotlin.Boolean
+    
+    /**
+     * Check if ACK is currently active
+     */
+    fun `isAckActive`(): kotlin.Boolean
+    
+    /**
+     * Check if emergency is currently active
+     */
+    fun `isEmergencyActive`(): kotlin.Boolean
+    
+    /**
+     * Check if encryption is enabled
+     */
+    fun `isEncryptionEnabled`(): kotlin.Boolean
+    
+    /**
+     * Check if a peer's identity is known
+     */
+    fun `isPeerIdentityKnown`(`nodeId`: kotlin.UInt): kotlin.Boolean
+    
+    /**
+     * Check if a peer is known
+     */
+    fun `isPeerKnown`(`nodeId`: kotlin.UInt): kotlin.Boolean
+    
+    /**
+     * Check if relay is enabled
+     */
+    fun `isRelayEnabled`(): kotlin.Boolean
+    
+    /**
+     * Get count of known identities
+     */
+    fun `knownIdentityCount`(): kotlin.UInt
+    
+    /**
+     * Get count of lost peers (disconnected and timed out)
+     */
+    fun `lostPeerCount`(): kotlin.UInt
+    
+    /**
+     * Mark a CannedMessage as seen (for deduplication).
+     *
+     * Call this after receiving and processing a CannedMessage to prevent
+     * reprocessing the same message from other relay paths.
+     */
+    fun `markCannedMessageSeen`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong)
+    
+    /**
+     * Check if mesh matches (for filtering BLE discovery)
+     */
+    fun `matchesMesh`(`deviceMeshId`: kotlin.String?): kotlin.Boolean
+    
+    /**
+     * Call when a BLE connection is established
+     */
+    fun `onBleConnected`(`identifier`: kotlin.String, `nowMs`: kotlin.ULong)
+    
+    /**
+     * Call when BLE data is received from a known peer
+     */
+    fun `onBleDataReceived`(`identifier`: kotlin.String, `data`: kotlin.ByteArray, `nowMs`: kotlin.ULong): DataReceivedResult?
+    
+    /**
+     * Call when BLE data is received from an unknown source (e.g., broadcast)
+     */
+    fun `onBleDataReceivedAnonymous`(`identifier`: kotlin.String, `data`: kotlin.ByteArray, `nowMs`: kotlin.ULong): DataReceivedResult?
+    
+    /**
+     * Call when a BLE connection is lost
+     */
+    fun `onBleDisconnected`(`identifier`: kotlin.String, `reason`: DisconnectReason): kotlin.UInt?
+    
+    /**
+     * Call when a BLE device is discovered
+     */
+    fun `onBleDiscovered`(`identifier`: kotlin.String, `name`: kotlin.String?, `rssi`: kotlin.Byte, `meshId`: kotlin.String?, `nowMs`: kotlin.ULong): PeatPeer?
+    
+    /**
+     * Call when a remote device connects to us (incoming peripheral connection)
+     *
+     * Unlike on_ble_connected(), this creates the peer if it doesn't exist yet.
+     * Use this when acting as a GATT server and a central connects to us.
+     */
+    fun `onIncomingConnection`(`identifier`: kotlin.String, `nodeId`: kotlin.UInt, `nowMs`: kotlin.ULong): kotlin.Boolean
+    
+    /**
+     * Get count of discovered peers
+     */
+    fun `peerCount`(): kotlin.UInt
+    
+    /**
+     * Get count of recently disconnected peers
+     */
+    fun `recentlyDisconnectedCount`(`withinMs`: kotlin.ULong, `nowMs`: kotlin.ULong): kotlin.UInt
+    
+    /**
+     * Send ACK
+     */
+    fun `sendAck`(`timestampMs`: kotlin.ULong): kotlin.ByteArray
+    
+    /**
+     * Send emergency alert
+     */
+    fun `sendEmergency`(`timestampMs`: kotlin.ULong): kotlin.ByteArray
+    
+    /**
+     * Set peripheral event
+     */
+    fun `setPeripheralEvent`(`eventType`: EventType, `timestampMs`: kotlin.ULong)
+    
+    /**
+     * Sign data with own identity
+     */
+    fun `sign`(`message`: kotlin.ByteArray): kotlin.ByteArray?
+    
+    /**
+     * Periodic tick - call every sync interval
+     */
+    fun `tick`(`nowMs`: kotlin.ULong): kotlin.ByteArray?
+    
+    /**
+     * Get total mesh count
+     */
+    fun `totalCount`(): kotlin.UInt
+    
+    /**
+     * Update own callsign
+     */
+    fun `updateCallsign`(`callsign`: kotlin.String)
+    
+    /**
+     * Update own heart rate
+     */
+    fun `updateHeartRate`(`bpm`: kotlin.UByte)
+    
+    /**
+     * Update own location
+     */
+    fun `updateLocation`(`latitude`: kotlin.Float, `longitude`: kotlin.Float, `altitude`: kotlin.Float?)
+    
+    /**
+     * Update all peripheral state at once (efficient for encrypted transmission)
+     */
+    fun `updatePeripheralState`(`callsign`: kotlin.String, `batteryPercent`: kotlin.UByte, `heartRate`: kotlin.UByte?, `latitude`: kotlin.Float?, `longitude`: kotlin.Float?, `altitude`: kotlin.Float?, `eventType`: EventType?, `timestampMs`: kotlin.ULong)
+    
+    /**
+     * Verify a peer's identity from attestation bytes
+     * Returns true if identity was registered or verified, false otherwise
+     */
+    fun `verifyPeerIdentity`(`attestationBytes`: kotlin.ByteArray): kotlin.Boolean
+    
+    /**
+     * Verify a peer's signature
+     */
+    fun `verifyPeerSignature`(`nodeId`: kotlin.UInt, `message`: kotlin.ByteArray, `signature`: kotlin.ByteArray): kotlin.Boolean
+    
+    companion object
+}
+
+open class PeatMesh: Disposable, AutoCloseable, PeatMeshInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    /**
+     * Create a basic PeatMesh
+     */
+    constructor(`nodeId`: kotlin.UInt, `callsign`: kotlin.String, `meshId`: kotlin.String) :
+        this(UniffiWithHandle, 
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_constructor_peatmesh_new(
+    
+        FfiConverterUInt.lower(`nodeId`),FfiConverterString.lower(`callsign`),FfiConverterString.lower(`meshId`),_status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_peat_btle_fn_free_peatmesh(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_peat_btle_fn_clone_peatmesh(handle, status)
+        }
+    }
+
+    
+    /**
+     * Get the number of stored app documents.
+     */override fun `appDocumentCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_app_document_count(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Broadcast arbitrary bytes over the mesh.
+     *
+     * Takes raw payload bytes, encrypts them (if encryption is enabled),
+     * and returns bytes ready to send to all connected peers.
+     *
+     * This is useful for sending extension data like CannedMessages from peat-lite.
+     */override fun `broadcastBytes`(`payload`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_broadcast_bytes(
+        it,
+        FfiConverterByteArray.lower(`payload`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Build a delta document for a specific peer.
+     *
+     * This includes only operations that have changed since the last sync
+     * with this peer, including app-layer documents (CannedMessages, etc.).
+     * Returns None if there's nothing new to send.
+     */override fun `buildDeltaDocumentForPeer`(`peerId`: kotlin.UInt, `nowMs`: kotlin.ULong): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_build_delta_document_for_peer(
+        it,
+        FfiConverterUInt.lower(`peerId`),FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Build the current document for transmission
+     */override fun `buildDocument`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_build_document(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Build a full delta document containing all current state.
+     *
+     * Unlike `build_delta_document_for_peer`, this includes all state
+     * regardless of what has been sent before. Use for broadcasts or
+     * new peer connections. Includes app-layer documents.
+     */override fun `buildFullDeltaDocument`(`nowMs`: kotlin.ULong): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_build_full_delta_document(
+        it,
+        FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Check if a CannedMessage has been seen recently.
+     *
+     * Uses document identity (source_node + timestamp) for deduplication.
+     * This prevents broadcast storms when relaying CannedMessages.
+     *
+     * Returns true if the message should be processed, false if it's a duplicate.
+     */override fun `checkCannedMessage`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong, `ttlMs`: kotlin.ULong): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_check_canned_message(
+        it,
+        FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),FfiConverterULong.lower(`ttlMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Clear own location
+     */override fun `clearLocation`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_clear_location(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Clear peripheral event
+     */override fun `clearPeripheralEvent`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_clear_peripheral_event(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Get count of connected peers
+     */override fun `connectedCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_connected_count(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Create an identity attestation
+     */override fun `createAttestation`(`timestampMs`: kotlin.ULong): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_create_attestation(
+        it,
+        FfiConverterULong.lower(`timestampMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Decrypt data received over BLE (transport layer only)
+     */override fun `decryptOnly`(`data`: kotlin.ByteArray): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_decrypt_only(
+        it,
+        FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get count of degraded peers (connected but poor signal)
+     */override fun `degradedPeerCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_degraded_peer_count(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get the list of connected peer identifiers for relay.
+     *
+     * Used by the Kotlin layer to relay CannedMessages to other peers
+     * after deduplication check.
+     */override fun `getConnectedPeerIdentifiers`(): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_connected_peer_identifiers(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get list of connected peers
+     */override fun `getConnectedPeers`(): List<PeatPeer> {
+            return FfiConverterSequenceTypePeatPeer.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_connected_peers(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get connection state counts (direct peers)
+     */override fun `getConnectionStateCounts`(): StateCountSummary {
+            return FfiConverterTypeStateCountSummary.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_connection_state_counts(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get all degraded peers (connected but poor signal quality)
+     */override fun `getDegradedPeers`(): List<PeerConnectionState> {
+            return FfiConverterSequenceTypePeerConnectionState.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_degraded_peers(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get full state counts including indirect peers
+     */override fun `getFullStateCounts`(): FullStateCountSummary {
+            return FfiConverterTypeFullStateCountSummary.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_full_state_counts(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get indirect (multi-hop) peers
+     */override fun `getIndirectPeers`(): List<IndirectPeer> {
+            return FfiConverterSequenceTypeIndirectPeer.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_indirect_peers(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get all lost peers (disconnected and timed out)
+     */override fun `getLostPeers`(): List<PeerConnectionState> {
+            return FfiConverterSequenceTypePeerConnectionState.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_lost_peers(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get callsign for a peer
+     */override fun `getPeerCallsign`(`nodeId`: kotlin.UInt): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_peer_callsign(
+        it,
+        FfiConverterUInt.lower(`nodeId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get connection state for a specific peer
+     */override fun `getPeerConnectionState`(`nodeId`: kotlin.UInt): PeerConnectionState? {
+            return FfiConverterOptionalTypePeerConnectionState.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_peer_connection_state(
+        it,
+        FfiConverterUInt.lower(`nodeId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get own public key
+     */override fun `getPublicKey`(): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_get_public_key(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Check if mesh has a cryptographic identity
+     */override fun `hasIdentity`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_has_identity(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Check if ACK is currently active
+     */override fun `isAckActive`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_ack_active(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Check if emergency is currently active
+     */override fun `isEmergencyActive`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_emergency_active(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Check if encryption is enabled
+     */override fun `isEncryptionEnabled`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_encryption_enabled(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Check if a peer's identity is known
+     */override fun `isPeerIdentityKnown`(`nodeId`: kotlin.UInt): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_peer_identity_known(
+        it,
+        FfiConverterUInt.lower(`nodeId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Check if a peer is known
+     */override fun `isPeerKnown`(`nodeId`: kotlin.UInt): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_peer_known(
+        it,
+        FfiConverterUInt.lower(`nodeId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Check if relay is enabled
+     */override fun `isRelayEnabled`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_is_relay_enabled(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get count of known identities
+     */override fun `knownIdentityCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_known_identity_count(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get count of lost peers (disconnected and timed out)
+     */override fun `lostPeerCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_lost_peer_count(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Mark a CannedMessage as seen (for deduplication).
+     *
+     * Call this after receiving and processing a CannedMessage to prevent
+     * reprocessing the same message from other relay paths.
+     */override fun `markCannedMessageSeen`(`sourceNode`: kotlin.UInt, `timestamp`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_mark_canned_message_seen(
+        it,
+        FfiConverterUInt.lower(`sourceNode`),FfiConverterULong.lower(`timestamp`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Check if mesh matches (for filtering BLE discovery)
+     */override fun `matchesMesh`(`deviceMeshId`: kotlin.String?): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_matches_mesh(
+        it,
+        FfiConverterOptionalString.lower(`deviceMeshId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Call when a BLE connection is established
+     */override fun `onBleConnected`(`identifier`: kotlin.String, `nowMs`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_ble_connected(
+        it,
+        FfiConverterString.lower(`identifier`),FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Call when BLE data is received from a known peer
+     */override fun `onBleDataReceived`(`identifier`: kotlin.String, `data`: kotlin.ByteArray, `nowMs`: kotlin.ULong): DataReceivedResult? {
+            return FfiConverterOptionalTypeDataReceivedResult.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_ble_data_received(
+        it,
+        FfiConverterString.lower(`identifier`),FfiConverterByteArray.lower(`data`),FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Call when BLE data is received from an unknown source (e.g., broadcast)
+     */override fun `onBleDataReceivedAnonymous`(`identifier`: kotlin.String, `data`: kotlin.ByteArray, `nowMs`: kotlin.ULong): DataReceivedResult? {
+            return FfiConverterOptionalTypeDataReceivedResult.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_ble_data_received_anonymous(
+        it,
+        FfiConverterString.lower(`identifier`),FfiConverterByteArray.lower(`data`),FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Call when a BLE connection is lost
+     */override fun `onBleDisconnected`(`identifier`: kotlin.String, `reason`: DisconnectReason): kotlin.UInt? {
+            return FfiConverterOptionalUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_ble_disconnected(
+        it,
+        FfiConverterString.lower(`identifier`),FfiConverterTypeDisconnectReason.lower(`reason`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Call when a BLE device is discovered
+     */override fun `onBleDiscovered`(`identifier`: kotlin.String, `name`: kotlin.String?, `rssi`: kotlin.Byte, `meshId`: kotlin.String?, `nowMs`: kotlin.ULong): PeatPeer? {
+            return FfiConverterOptionalTypePeatPeer.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_ble_discovered(
+        it,
+        FfiConverterString.lower(`identifier`),FfiConverterOptionalString.lower(`name`),FfiConverterByte.lower(`rssi`),FfiConverterOptionalString.lower(`meshId`),FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Call when a remote device connects to us (incoming peripheral connection)
+     *
+     * Unlike on_ble_connected(), this creates the peer if it doesn't exist yet.
+     * Use this when acting as a GATT server and a central connects to us.
+     */override fun `onIncomingConnection`(`identifier`: kotlin.String, `nodeId`: kotlin.UInt, `nowMs`: kotlin.ULong): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_on_incoming_connection(
+        it,
+        FfiConverterString.lower(`identifier`),FfiConverterUInt.lower(`nodeId`),FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get count of discovered peers
+     */override fun `peerCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_peer_count(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get count of recently disconnected peers
+     */override fun `recentlyDisconnectedCount`(`withinMs`: kotlin.ULong, `nowMs`: kotlin.ULong): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_recently_disconnected_count(
+        it,
+        FfiConverterULong.lower(`withinMs`),FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Send ACK
+     */override fun `sendAck`(`timestampMs`: kotlin.ULong): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_send_ack(
+        it,
+        FfiConverterULong.lower(`timestampMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Send emergency alert
+     */override fun `sendEmergency`(`timestampMs`: kotlin.ULong): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_send_emergency(
+        it,
+        FfiConverterULong.lower(`timestampMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Set peripheral event
+     */override fun `setPeripheralEvent`(`eventType`: EventType, `timestampMs`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_set_peripheral_event(
+        it,
+        FfiConverterTypeEventType.lower(`eventType`),FfiConverterULong.lower(`timestampMs`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Sign data with own identity
+     */override fun `sign`(`message`: kotlin.ByteArray): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_sign(
+        it,
+        FfiConverterByteArray.lower(`message`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Periodic tick - call every sync interval
+     */override fun `tick`(`nowMs`: kotlin.ULong): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_tick(
+        it,
+        FfiConverterULong.lower(`nowMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Get total mesh count
+     */override fun `totalCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_total_count(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Update own callsign
+     */override fun `updateCallsign`(`callsign`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_update_callsign(
+        it,
+        FfiConverterString.lower(`callsign`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Update own heart rate
+     */override fun `updateHeartRate`(`bpm`: kotlin.UByte)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_update_heart_rate(
+        it,
+        FfiConverterUByte.lower(`bpm`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Update own location
+     */override fun `updateLocation`(`latitude`: kotlin.Float, `longitude`: kotlin.Float, `altitude`: kotlin.Float?)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_update_location(
+        it,
+        FfiConverterFloat.lower(`latitude`),FfiConverterFloat.lower(`longitude`),FfiConverterOptionalFloat.lower(`altitude`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Update all peripheral state at once (efficient for encrypted transmission)
+     */override fun `updatePeripheralState`(`callsign`: kotlin.String, `batteryPercent`: kotlin.UByte, `heartRate`: kotlin.UByte?, `latitude`: kotlin.Float?, `longitude`: kotlin.Float?, `altitude`: kotlin.Float?, `eventType`: EventType?, `timestampMs`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_update_peripheral_state(
+        it,
+        FfiConverterString.lower(`callsign`),FfiConverterUByte.lower(`batteryPercent`),FfiConverterOptionalUByte.lower(`heartRate`),FfiConverterOptionalFloat.lower(`latitude`),FfiConverterOptionalFloat.lower(`longitude`),FfiConverterOptionalFloat.lower(`altitude`),FfiConverterOptionalTypeEventType.lower(`eventType`),FfiConverterULong.lower(`timestampMs`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Verify a peer's identity from attestation bytes
+     * Returns true if identity was registered or verified, false otherwise
+     */override fun `verifyPeerIdentity`(`attestationBytes`: kotlin.ByteArray): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_verify_peer_identity(
+        it,
+        FfiConverterByteArray.lower(`attestationBytes`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Verify a peer's signature
+     */override fun `verifyPeerSignature`(`nodeId`: kotlin.UInt, `message`: kotlin.ByteArray, `signature`: kotlin.ByteArray): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_method_peatmesh_verify_peer_signature(
+        it,
+        FfiConverterUInt.lower(`nodeId`),FfiConverterByteArray.lower(`message`),FfiConverterByteArray.lower(`signature`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+
+    
+
+
+    
+    companion object {
+        
+    /**
+     * Create a PeatMesh from genesis (recommended for production)
+     */ fun `newFromGenesis`(`callsign`: kotlin.String, `identity`: DeviceIdentity, `genesis`: MeshGenesis): PeatMesh {
+            return FfiConverterTypePeatMesh.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_constructor_peatmesh_new_from_genesis(
+    
+        FfiConverterString.lower(`callsign`),FfiConverterTypeDeviceIdentity.lower(`identity`),FfiConverterTypeMeshGenesis.lower(`genesis`),_status)
+}
+    )
+    }
+    
+
+        
+    /**
+     * Create a PeatMesh with peripheral type
+     */ fun `newWithPeripheral`(`nodeId`: kotlin.UInt, `callsign`: kotlin.String, `meshId`: kotlin.String, `peripheralType`: PeripheralType): PeatMesh {
+            return FfiConverterTypePeatMesh.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_peat_btle_fn_constructor_peatmesh_new_with_peripheral(
+    
+        FfiConverterUInt.lower(`nodeId`),FfiConverterString.lower(`callsign`),FfiConverterString.lower(`meshId`),FfiConverterTypePeripheralType.lower(`peripheralType`),_status)
+}
+    )
+    }
+    
+
+        
+    }
+    
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePeatMesh: FfiConverter<PeatMesh, Long> {
+    override fun lower(value: PeatMesh): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): PeatMesh {
+        return PeatMesh(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): PeatMesh {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: PeatMesh) = 8UL
+
+    override fun write(value: PeatMesh, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -6164,61 +5978,6 @@ public object FfiConverterTypeAddressRotationStats: FfiConverterRustBuffer<Addre
 
 
 
-/**
- * Information about a stored CannedMessage document.
- */
-data class CannedMessageInfo (
-    /**
-     * Source node that created the message
-     */
-    var `sourceNode`: kotlin.UInt
-    , 
-    /**
-     * Timestamp when the message was created
-     */
-    var `timestamp`: kotlin.ULong
-    , 
-    /**
-     * Encoded message bytes (includes 0xAF marker)
-     */
-    var `encodedBytes`: kotlin.ByteArray
-    
-){
-    
-
-    
-
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeCannedMessageInfo: FfiConverterRustBuffer<CannedMessageInfo> {
-    override fun read(buf: ByteBuffer): CannedMessageInfo {
-        return CannedMessageInfo(
-            FfiConverterUInt.read(buf),
-            FfiConverterULong.read(buf),
-            FfiConverterByteArray.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: CannedMessageInfo) = (
-            FfiConverterUInt.allocationSize(value.`sourceNode`) +
-            FfiConverterULong.allocationSize(value.`timestamp`) +
-            FfiConverterByteArray.allocationSize(value.`encodedBytes`)
-    )
-
-    override fun write(value: CannedMessageInfo, buf: ByteBuffer) {
-            FfiConverterUInt.write(value.`sourceNode`, buf)
-            FfiConverterULong.write(value.`timestamp`, buf)
-            FfiConverterByteArray.write(value.`encodedBytes`, buf)
-    }
-}
-
-
-
 data class DataReceivedResult (
     var `sourceNode`: kotlin.UInt
     , 
@@ -6443,69 +6202,6 @@ public object FfiConverterTypeFullStateCountSummary: FfiConverterRustBuffer<Full
 
 
 
-data class PeatPeer (
-    var `nodeId`: kotlin.UInt
-    , 
-    var `identifier`: kotlin.String
-    , 
-    var `name`: kotlin.String?
-    , 
-    var `meshId`: kotlin.String?
-    , 
-    var `rssi`: kotlin.Byte
-    , 
-    var `isConnected`: kotlin.Boolean
-    , 
-    var `lastSeenMs`: kotlin.ULong
-    
-){
-    
-
-    
-
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypePeatPeer: FfiConverterRustBuffer<PeatPeer> {
-    override fun read(buf: ByteBuffer): PeatPeer {
-        return PeatPeer(
-            FfiConverterUInt.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterOptionalString.read(buf),
-            FfiConverterOptionalString.read(buf),
-            FfiConverterByte.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterULong.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: PeatPeer) = (
-            FfiConverterUInt.allocationSize(value.`nodeId`) +
-            FfiConverterString.allocationSize(value.`identifier`) +
-            FfiConverterOptionalString.allocationSize(value.`name`) +
-            FfiConverterOptionalString.allocationSize(value.`meshId`) +
-            FfiConverterByte.allocationSize(value.`rssi`) +
-            FfiConverterBoolean.allocationSize(value.`isConnected`) +
-            FfiConverterULong.allocationSize(value.`lastSeenMs`)
-    )
-
-    override fun write(value: PeatPeer, buf: ByteBuffer) {
-            FfiConverterUInt.write(value.`nodeId`, buf)
-            FfiConverterString.write(value.`identifier`, buf)
-            FfiConverterOptionalString.write(value.`name`, buf)
-            FfiConverterOptionalString.write(value.`meshId`, buf)
-            FfiConverterByte.write(value.`rssi`, buf)
-            FfiConverterBoolean.write(value.`isConnected`, buf)
-            FfiConverterULong.write(value.`lastSeenMs`, buf)
-    }
-}
-
-
-
 data class IndirectPeer (
     var `nodeId`: kotlin.UInt
     , 
@@ -6564,6 +6260,69 @@ public object FfiConverterTypeIndirectPeer: FfiConverterRustBuffer<IndirectPeer>
             FfiConverterULong.write(value.`lastSeenMs`, buf)
             FfiConverterUInt.write(value.`messagesReceived`, buf)
             FfiConverterOptionalString.write(value.`callsign`, buf)
+    }
+}
+
+
+
+data class PeatPeer (
+    var `nodeId`: kotlin.UInt
+    , 
+    var `identifier`: kotlin.String
+    , 
+    var `name`: kotlin.String?
+    , 
+    var `meshId`: kotlin.String?
+    , 
+    var `rssi`: kotlin.Byte
+    , 
+    var `isConnected`: kotlin.Boolean
+    , 
+    var `lastSeenMs`: kotlin.ULong
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePeatPeer: FfiConverterRustBuffer<PeatPeer> {
+    override fun read(buf: ByteBuffer): PeatPeer {
+        return PeatPeer(
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PeatPeer) = (
+            FfiConverterUInt.allocationSize(value.`nodeId`) +
+            FfiConverterString.allocationSize(value.`identifier`) +
+            FfiConverterOptionalString.allocationSize(value.`name`) +
+            FfiConverterOptionalString.allocationSize(value.`meshId`) +
+            FfiConverterByte.allocationSize(value.`rssi`) +
+            FfiConverterBoolean.allocationSize(value.`isConnected`) +
+            FfiConverterULong.allocationSize(value.`lastSeenMs`)
+    )
+
+    override fun write(value: PeatPeer, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`nodeId`, buf)
+            FfiConverterString.write(value.`identifier`, buf)
+            FfiConverterOptionalString.write(value.`name`, buf)
+            FfiConverterOptionalString.write(value.`meshId`, buf)
+            FfiConverterByte.write(value.`rssi`, buf)
+            FfiConverterBoolean.write(value.`isConnected`, buf)
+            FfiConverterULong.write(value.`lastSeenMs`, buf)
     }
 }
 
@@ -7208,7 +6967,7 @@ enum class DevicePattern {
      */
     WEAR_OS,
     /**
-     * PEAT mesh device (PEAT_MESH-XXXX or PEAT-XXXX)
+     * Peat mesh device (PEAT_MESH-XXXX or PEAT-XXXX)
      */
     PEAT,
     /**
@@ -7792,38 +7551,6 @@ public object FfiConverterOptionalTypeDeviceIdentity: FfiConverterRustBuffer<Dev
 /**
  * @suppress
  */
-public object FfiConverterOptionalTypePeatMesh: FfiConverterRustBuffer<PeatMesh?> {
-    override fun read(buf: ByteBuffer): PeatMesh? {
-        if (buf.get().toInt() == 0) {
-            return null
-        }
-        return FfiConverterTypePeatMesh.read(buf)
-    }
-
-    override fun allocationSize(value: PeatMesh?): ULong {
-        if (value == null) {
-            return 1UL
-        } else {
-            return 1UL + FfiConverterTypePeatMesh.allocationSize(value)
-        }
-    }
-
-    override fun write(value: PeatMesh?, buf: ByteBuffer) {
-        if (value == null) {
-            buf.put(0)
-        } else {
-            buf.put(1)
-            FfiConverterTypePeatMesh.write(value, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
 public object FfiConverterOptionalTypeIdentityAttestation: FfiConverterRustBuffer<IdentityAttestation?> {
     override fun read(buf: ByteBuffer): IdentityAttestation? {
         if (buf.get().toInt() == 0) {
@@ -7878,6 +7605,38 @@ public object FfiConverterOptionalTypeMeshGenesis: FfiConverterRustBuffer<MeshGe
         } else {
             buf.put(1)
             FfiConverterTypeMeshGenesis.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypePeatMesh: FfiConverterRustBuffer<PeatMesh?> {
+    override fun read(buf: ByteBuffer): PeatMesh? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypePeatMesh.read(buf)
+    }
+
+    override fun allocationSize(value: PeatMesh?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypePeatMesh.allocationSize(value)
+        }
+    }
+
+    override fun write(value: PeatMesh?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypePeatMesh.write(value, buf)
         }
     }
 }
@@ -8172,24 +7931,24 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeCannedMessageInfo: FfiConverterRustBuffer<List<CannedMessageInfo>> {
-    override fun read(buf: ByteBuffer): List<CannedMessageInfo> {
+public object FfiConverterSequenceTypeIndirectPeer: FfiConverterRustBuffer<List<IndirectPeer>> {
+    override fun read(buf: ByteBuffer): List<IndirectPeer> {
         val len = buf.getInt()
-        return List<CannedMessageInfo>(len) {
-            FfiConverterTypeCannedMessageInfo.read(buf)
+        return List<IndirectPeer>(len) {
+            FfiConverterTypeIndirectPeer.read(buf)
         }
     }
 
-    override fun allocationSize(value: List<CannedMessageInfo>): ULong {
+    override fun allocationSize(value: List<IndirectPeer>): ULong {
         val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeCannedMessageInfo.allocationSize(it) }.sum()
+        val sizeForItems = value.map { FfiConverterTypeIndirectPeer.allocationSize(it) }.sum()
         return sizeForLength + sizeForItems
     }
 
-    override fun write(value: List<CannedMessageInfo>, buf: ByteBuffer) {
+    override fun write(value: List<IndirectPeer>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
-            FfiConverterTypeCannedMessageInfo.write(it, buf)
+            FfiConverterTypeIndirectPeer.write(it, buf)
         }
     }
 }
@@ -8218,34 +7977,6 @@ public object FfiConverterSequenceTypePeatPeer: FfiConverterRustBuffer<List<Peat
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypePeatPeer.write(it, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
-public object FfiConverterSequenceTypeIndirectPeer: FfiConverterRustBuffer<List<IndirectPeer>> {
-    override fun read(buf: ByteBuffer): List<IndirectPeer> {
-        val len = buf.getInt()
-        return List<IndirectPeer>(len) {
-            FfiConverterTypeIndirectPeer.read(buf)
-        }
-    }
-
-    override fun allocationSize(value: List<IndirectPeer>): ULong {
-        val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeIndirectPeer.allocationSize(it) }.sum()
-        return sizeForLength + sizeForItems
-    }
-
-    override fun write(value: List<IndirectPeer>, buf: ByteBuffer) {
-        buf.putInt(value.size)
-        value.iterator().forEach {
-            FfiConverterTypeIndirectPeer.write(it, buf)
         }
     }
 }
@@ -8338,7 +8069,7 @@ public object FfiConverterSequenceTypeViaPeerRoute: FfiConverterRustBuffer<List<
          */ fun `createPeatMeshWithEncryption`(`nodeId`: kotlin.UInt, `callsign`: kotlin.String, `meshId`: kotlin.String, `encryptionSecret`: kotlin.ByteArray): PeatMesh? {
             return FfiConverterOptionalTypePeatMesh.lift(
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_peat_btle_fn_func_create_hive_mesh_with_encryption(
+    UniffiLib.uniffi_peat_btle_fn_func_create_peat_mesh_with_encryption(
     
         FfiConverterUInt.lower(`nodeId`),FfiConverterString.lower(`callsign`),FfiConverterString.lower(`meshId`),FfiConverterByteArray.lower(`encryptionSecret`),_status)
 }
