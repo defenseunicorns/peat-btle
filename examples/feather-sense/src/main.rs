@@ -95,7 +95,7 @@ static LED_UPDATE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 #[nrf_softdevice::gatt_server]
 struct PeatServer {
-    hive: PeatService,
+    peat: PeatService,
 }
 
 #[nrf_softdevice::gatt_service(uuid = "f47ac10b-58cc-4372-a567-0e02b2c3d479")]
@@ -273,9 +273,9 @@ async fn main(spawner: Spawner) {
 
     let server = PeatServer::new(sd).unwrap();
 
-    server.hive.position_set(&encode_position()).unwrap();
-    server.hive.emergency_set(&encode_emergency()).unwrap();
-    server.hive.sensor_data_set(&encode_sensor_data()).unwrap();
+    server.peat.position_set(&encode_position()).unwrap();
+    server.peat.emergency_set(&encode_emergency()).unwrap();
+    server.peat.sensor_data_set(&encode_sensor_data()).unwrap();
 
     // Startup blink - 3 quick red blinks to show firmware started
     let mut red_led = red_led;
@@ -367,7 +367,7 @@ async fn main(spawner: Spawner) {
                         }
                         PeatServiceEvent::EmergencyCccdWrite { notifications } => {
                             if notifications && SOS_ACTIVE.load(Ordering::SeqCst) {
-                                let _ = server.hive.emergency_notify(&conn, &encode_emergency());
+                                let _ = server.peat.emergency_notify(&conn, &encode_emergency());
                             }
                         }
                         _ => {}

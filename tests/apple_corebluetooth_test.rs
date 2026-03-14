@@ -109,7 +109,7 @@ async fn test_adapter_start_no_segfault() {
     }
 
     // Start the adapter - this triggers:
-    // 1. register_hive_service() - creates GATT service
+    // 1. register_peat_service() - creates GATT service
     // 2. start_advertising() - the code path that was causing segfaults
     //
     // The segfault was caused by using `dictionaryWithObjects:forKeys:`

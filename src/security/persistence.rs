@@ -258,6 +258,7 @@ impl PersistedState {
     /// The storage key used is "hive_persisted_state".
     pub fn save(&self, storage: &dyn SecureStorage) -> Result<(), PersistenceError> {
         let encoded = self.encode();
+        // NOTE: Key retained as "hive_persisted_state" for backward compatibility with existing persisted data
         storage.store("hive_persisted_state", &encoded)
     }
 

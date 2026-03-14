@@ -1,4 +1,4 @@
-# ADR-001: hive-lite Primitives Crate
+# ADR-001: peat-lite Primitives Crate
 
 **Status**: Accepted
 **Date**: 2026-01-25
@@ -15,7 +15,7 @@ This has caused bugs (chat not syncing reliably) and architectural confusion. Ad
 
 ### The Problem
 
-The Kotlin delta sync builds operations that don't include chat, causing 90% of syncs to miss chat data. More fundamentally, full chat history is inappropriate for hive-lite's memory constraints.
+The Kotlin delta sync builds operations that don't include chat, causing 90% of syncs to miss chat data. More fundamentally, full chat history is inappropriate for peat-lite's memory constraints.
 
 ### Use Cases
 
@@ -25,7 +25,7 @@ The Kotlin delta sync builds operations that don't include chat, causing 90% of 
 
 ## Decision
 
-Create **hive-lite** as a **separate repository** containing lightweight CRDT primitives suitable for resource-constrained devices.
+Create **peat-lite** as a **separate repository** containing lightweight CRDT primitives suitable for resource-constrained devices.
 
 ### Key Design Decisions
 
@@ -46,18 +46,18 @@ hive-protocol
     │
     ├── peat-btle (transport-only mode)
     │       │
-    │       └── hive-lite (standalone feature)
+    │       └── peat-lite (standalone feature)
     │
-    └── hive-lite (for translation layer)
+    └── peat-lite (for translation layer)
 
 hive-lora (future)
     │
-    └── hive-lite
+    └── peat-lite
 ```
 
-hive-lite is always at the bottom - no upward dependencies.
+peat-lite is always at the bottom - no upward dependencies.
 
-## hive-lite Contents
+## peat-lite Contents
 
 ### Primitives
 
@@ -111,7 +111,7 @@ New marker `0xAF` for CannedMessage events:
 
 ### Positive
 
-1. **Clean separation**: Transport (peat-btle) vs primitives (hive-lite) vs protocol (hive-protocol)
+1. **Clean separation**: Transport (peat-btle) vs primitives (peat-lite) vs protocol (hive-protocol)
 2. **Reusable**: hive-lora can use same primitives
 3. **Bounded memory**: Fits 256KB budget for ESP32/WearTAK
 4. **no_std**: Works on embedded without std library
@@ -125,19 +125,19 @@ New marker `0xAF` for CannedMessage events:
 
 ### Neutral
 
-1. **Translation layer needed**: hive-protocol must translate between hive-lite and Automerge
+1. **Translation layer needed**: hive-protocol must translate between peat-lite and Automerge
 2. **Feature flags**: peat-btle needs `standalone` vs `transport-only` modes
 
 ## Implementation
 
-### Phase 0: Create hive-lite
-- New repository at `hive-lite`
+### Phase 0: Create peat-lite
+- New repository at `peat-lite`
 - Implement NodeId, CannedMessage, LwwRegister, GCounter
 - Wire format encoding
 - `no_std` compatible
 
 ### Phase 1: Integrate into peat-btle
-- Add hive-lite as optional dependency
+- Add peat-lite as optional dependency
 - `standalone` feature flag
 - Replace EmergencyEvent with CannedMessage::Emergency
 - Replace chat-based ACK with CannedMessage::Ack
@@ -148,10 +148,10 @@ New marker `0xAF` for CannedMessage events:
 - WearTAK integration testing
 
 ### Phase 3: Translation layer
-- hive-protocol maps hive-lite ↔ Automerge
+- hive-protocol maps peat-lite ↔ Automerge
 
 ## References
 
 - [ARCHITECTURE_REFACTORING.md](../ARCHITECTURE_REFACTORING.md) - Full analysis
-- [HIVE ADR-035: HIVE-Lite Embedded Nodes](https://github.com/kitplummer/hive/blob/main/docs/adr/035-hive-lite-embedded-nodes.md)
+- [HIVE ADR-035: HIVE-Lite Embedded Nodes](https://github.com/kitplummer/hive/blob/main/docs/adr/035-peat-lite-embedded-nodes.md)
 - [HIVE ADR-039: PEAT-BTLE Mesh Transport](https://github.com/kitplummer/hive/blob/main/docs/adr/039-peat-btle-mesh-transport.md)
