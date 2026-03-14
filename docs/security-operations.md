@@ -303,4 +303,4 @@ with_strict_encryption()    # Also reject unencrypted
 - **Technical issues**: Check logs for error messages
 - **Configuration help**: Review this guide and examples
 - **Bug reports**: https://github.com/r-evolve/peat-btle/issues
-- **Security concerns**: Contact security@revolveteam.com
+- **Security concerns**: Contact security@defenseunicorns.com

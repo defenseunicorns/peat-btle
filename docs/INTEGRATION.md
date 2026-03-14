@@ -11,13 +11,13 @@ peat-btle is a **transport-only** library. It handles:
 - Peer management and mesh sync
 - Message relay between nodes
 
-peat-btle does **NOT** handle application-layer protocols. For tactical messaging (CannedMessage, etc.), use **hive-lite** as a separate dependency.
+peat-btle does **NOT** handle application-layer protocols. For tactical messaging (CannedMessage, etc.), use **peat-lite** as a separate dependency.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Your Application                          │
 ├─────────────────────────────────────────────────────────────┤
-│  hive-lite (optional)      │    peat-btle (required)        │
+│  peat-lite (optional)      │    peat-btle (required)        │
 │  - CannedMessage encoding  │    - BLE transport             │
 │  - CannedMessage decoding  │    - Encryption/decryption     │
 │  - Tactical message types  │    - Mesh peer management      │
@@ -33,7 +33,7 @@ peat-btle does **NOT** handle application-layer protocols. For tactical messagin
 # Cargo.toml
 [dependencies]
 peat-btle = "0.1"
-hive-lite = "0.0.1"  # Optional: for CannedMessage support
+peat-lite = "0.0.1"  # Optional: for CannedMessage support
 ```
 
 ```rust
@@ -53,9 +53,9 @@ if let Some(bytes) = decrypted {
     // Check marker byte to determine message type
     match bytes.first() {
         Some(0xAF) => {
-            // App-layer message - decode with hive-lite
-            #[cfg(feature = "hive-lite")]
-            if let Some(event) = hive_lite::CannedMessageEvent::decode(&bytes) {
+            // App-layer message - decode with peat-lite
+            #[cfg(feature = "peat-lite")]
+            if let Some(event) = peat_lite::CannedMessageEvent::decode(&bytes) {
                 println!("Received: {:?} from {:08X}", event.message, event.source_node.as_u32());
             }
         }
@@ -71,23 +71,23 @@ if let Some(bytes) = decrypted {
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("com.defenseunicorns:hive:0.1.0-rc26")
+    implementation("com.defenseunicorns:peat-btle:0.1.0-rc26")
 }
 ```
 
 ```kotlin
-import com.defenseunicorns.hive.*
+import com.defenseunicorns.peat.*
 
 class MyActivity : AppCompatActivity(), PeatMeshListener {
 
-    private lateinit var hiveBtle: PeatBtle
+    private lateinit var peatBtle: PeatBtle
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        hiveBtle = PeatBtle(context = this, meshId = "DEMO")
-        hiveBtle.init()
-        hiveBtle.startMesh(this)
+        peatBtle = PeatBtle(context = this, meshId = "DEMO")
+        peatBtle.init()
+        peatBtle.startMesh(this)
     }
 
     // Transport layer callback - receives raw decrypted bytes
@@ -96,7 +96,7 @@ class MyActivity : AppCompatActivity(), PeatMeshListener {
 
         when (data[0]) {
             0xAF.toByte() -> {
-                // App-layer message (e.g., CannedMessage from hive-lite)
+                // App-layer message (e.g., CannedMessage from peat-lite)
                 // Decode with your app's protocol handler
                 handleAppLayerMessage(peer, data)
             }
@@ -116,7 +116,7 @@ class MyActivity : AppCompatActivity(), PeatMeshListener {
 
     private fun handleAppLayerMessage(peer: PeatPeer?, data: ByteArray) {
         // Example: Parse with your own CannedMessage decoder
-        // Apps should add hive-lite dependency and use CannedMessageEvent.decode()
+        // Apps should add peat-lite dependency and use CannedMessageEvent.decode()
         Log.i("APP", "Received ${data.size} byte app-layer message")
     }
 }
@@ -137,9 +137,9 @@ To send app-layer messages (like CannedMessage), encrypt them with the mesh key:
 
 ```kotlin
 // Kotlin - using PeatMesh for encryption
-val mesh = hiveBtle.getMesh()
+val mesh = peatBtle.getMesh()
 
-// Encode your message (e.g., using hive-lite)
+// Encode your message (e.g., using peat-lite)
 val rawMessage = encodeYourMessage()  // Must start with 0xAF marker
 
 // Encrypt with mesh key
@@ -147,7 +147,7 @@ val encrypted = mesh?.encryptDocument(rawMessage)
 
 // Broadcast to peers
 if (encrypted != null) {
-    hiveBtle.broadcastDocument(encrypted)
+    peatBtle.broadcastDocument(encrypted)
 }
 ```
 
@@ -158,19 +158,19 @@ let encrypted = mesh.encrypt_document(&raw_message);
 // Send encrypted bytes over BLE
 ```
 
-## Using hive-lite for CannedMessage
+## Using peat-lite for CannedMessage
 
-If your app needs CannedMessage support, add hive-lite:
+If your app needs CannedMessage support, add peat-lite:
 
 ### Rust
 
 ```toml
 [dependencies]
-hive-lite = "0.0.1"
+peat-lite = "0.0.1"
 ```
 
 ```rust
-use hive_lite::{CannedMessage, CannedMessageEvent, NodeId};
+use peat_lite::{CannedMessage, CannedMessageEvent, NodeId};
 
 // Create a CannedMessage
 let event = CannedMessageEvent::new(
@@ -196,8 +196,8 @@ if let Some(event) = CannedMessageEvent::decode(&decrypted_bytes) {
 
 ### Kotlin (using JSON bridge)
 
-Since hive-lite is Rust-only, Android apps can:
-1. Include hive-lite in their native code
+Since peat-lite is Rust-only, Android apps can:
+1. Include peat-lite in their native code
 2. Use a JSON/Protobuf bridge
 3. Implement CannedMessage encoding/decoding in Kotlin directly
 
@@ -286,7 +286,7 @@ If you were using `mesh.sendCannedMessage()` or `mesh.decodeCannedMessage()`:
 ```kotlin
 // Old API - removed
 val wireData = mesh.sendCannedMessage(CannedMessageCode.EMERGENCY, targetNode)
-hiveBtle.broadcastDocument(wireData)
+peatBtle.broadcastDocument(wireData)
 ```
 
 **After (rc26+):**
@@ -302,7 +302,7 @@ override fun onDecryptedData(peer: PeatPeer?, data: ByteArray) {
 // Sending
 val encoded = CannedMessageDecoder.encode(0x20, myNodeId)  // EMERGENCY
 val encrypted = mesh.encryptDocument(encoded)
-hiveBtle.broadcastDocument(encrypted)
+peatBtle.broadcastDocument(encrypted)
 ```
 
 ## Summary
@@ -310,7 +310,7 @@ hiveBtle.broadcastDocument(encrypted)
 | Component | Responsibility |
 |-----------|---------------|
 | **peat-btle** | BLE transport, encryption, mesh sync, peer management |
-| **hive-lite** | CannedMessage primitives, CRDT types (optional) |
+| **peat-lite** | CannedMessage primitives, CRDT types (optional) |
 | **Your App** | Message encoding/decoding, business logic, UI |
 
 This separation ensures:

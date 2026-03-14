@@ -110,8 +110,8 @@ data class HighPriorityConfig(
  *
  * ### Basic (Unencrypted)
  * ```kotlin
- * val hiveBtle = PeatBtle(context, nodeId = 0x12345678)
- * hiveBtle.init()
+ * val peatBtle = PeatBtle(context, nodeId = 0x12345678)
+ * peatBtle.init()
  * ```
  *
  * ### Encrypted Mesh (Recommended)
@@ -123,12 +123,12 @@ data class HighPriorityConfig(
  * val genesis = MeshGenesis.create("ALPHA-TEAM", identity, MembershipPolicy.CONTROLLED)
  *
  * // Create encrypted mesh
- * val hiveBtle = PeatBtle(
+ * val peatBtle = PeatBtle(
  *     context = context,
  *     identity = identity,
  *     genesis = genesis
  * )
- * hiveBtle.init()
+ * peatBtle.init()
  *
  * // Mesh is now encrypted - only team members can read beacons/documents
  * ```
@@ -136,15 +136,15 @@ data class HighPriorityConfig(
  * ### Scanning & Advertising
  * ```kotlin
  * // Start scanning for Peat nodes
- * hiveBtle.startScan { device ->
+ * peatBtle.startScan { device ->
  *     Log.d("PEAT", "Found: ${device.address}")
  * }
  *
  * // Connect to a device
- * val connection = hiveBtle.connect(deviceAddress)
+ * val connection = peatBtle.connect(deviceAddress)
  *
  * // Start advertising
- * hiveBtle.startAdvertising()
+ * peatBtle.startAdvertising()
  * ```
  *
  * @param context Android context (Activity, Service, or Application)
@@ -286,11 +286,11 @@ class PeatBtle(
         @JvmStatic
         fun getMeshIdFromEnvironment(): String {
             // Direct mesh ID takes priority
-            System.getProperty("hive.mesh_id")?.let { return it }
+            System.getProperty("peat.mesh_id")?.let { return it }
             System.getenv("PEAT_MESH_ID")?.let { return it }
 
             // Derive from app ID if available
-            System.getProperty("hive.app_id")?.let { return deriveMeshId(it) }
+            System.getProperty("peat.app_id")?.let { return deriveMeshId(it) }
             System.getenv("PEAT_APP_ID")?.let { return deriveMeshId(it) }
 
             return DEFAULT_MESH_ID
@@ -548,7 +548,7 @@ class PeatBtle(
      *
      * Example:
      * ```kotlin
-     * hiveBtle.mesh?.getConnectedPeers()?.forEach { peer ->
+     * peatBtle.mesh?.getConnectedPeers()?.forEach { peer ->
      *     Log.d(TAG, "Connected: ${peer.name} (${peer.state})")
      * }
      * ```
@@ -1321,7 +1321,7 @@ class PeatBtle(
                     }
 
                     if (value.isNotEmpty() && value[0] == APP_LAYER_MARKER) {
-                        // app-layer message (0xAF) - hive-lite tactical messaging
+                        // app-layer message (0xAF) - peat-lite tactical messaging
                         val peer = peers.values.find { it.address == address }
                             ?: PeatPeer(
                                 nodeId = 0,
@@ -2200,7 +2200,7 @@ class PeatBtle(
      * Takes raw payload bytes, encrypts them (if encryption is enabled),
      * and sends to all connected peripherals and centrals.
      *
-     * This is useful for sending extension data like CannedMessages from hive-lite.
+     * This is useful for sending extension data like CannedMessages from peat-lite.
      *
      * @param payload The raw bytes to broadcast
      */
@@ -2245,7 +2245,7 @@ class PeatBtle(
      * Returns a list of CannedMessageInfo objects containing:
      * - sourceNode: The node that created the message
      * - timestamp: When the message was created
-     * - encodedBytes: The hive-lite encoded bytes (with 0xAF marker)
+     * - encodedBytes: The peat-lite encoded bytes (with 0xAF marker)
      *
      * @return List of CannedMessageInfo, or empty list if mesh not initialized
      */
@@ -2563,7 +2563,7 @@ class PeatBtle(
             return
         }
 
-        // Check for canned message (0xAF) - hive-lite tactical messaging
+        // Check for canned message (0xAF) - peat-lite tactical messaging
         if (data.isNotEmpty() && data[0] == APP_LAYER_MARKER) {
             handleAppLayerMessage(peer, data)
             return
@@ -2911,12 +2911,12 @@ class PeatBtle(
      * Handle an incoming app-layer message (0xAF marker) from a peer.
      *
      * peat-btle is transport-only: we pass raw bytes to the app via onDecryptedData
-     * and relay to other connected peers. Apps use hive-lite to decode the content.
+     * and relay to other connected peers. Apps use peat-lite to decode the content.
      */
     private fun handleAppLayerMessage(peer: PeatPeer, data: ByteArray) {
         Log.d(TAG, "[APP-LAYER] Received ${data.size} byte app-layer message from ${peer.displayName()}")
 
-        // Pass raw bytes to app - apps use hive-lite to decode
+        // Pass raw bytes to app - apps use peat-lite to decode
         handler.post {
             meshListener?.onDecryptedData(peer, data)
         }
@@ -4197,10 +4197,10 @@ interface PeatMeshListener {
      * Called when decrypted data is received from a peer.
      *
      * This is the raw transport callback - peat-btle only handles encryption/decryption,
-     * the app is responsible for parsing message types using hive-lite or other libraries.
+     * the app is responsible for parsing message types using peat-lite or other libraries.
      *
      * Inspect data[0] to determine message type:
-     * - 0xAF: app-layer message (use hive-lite app-layer messageEvent.decode())
+     * - 0xAF: app-layer message (use peat-lite app-layer messageEvent.decode())
      * - 0xAA: PeatDocument (legacy standalone format)
      * - 0xB2: DeltaDocument (legacy delta sync)
      *
