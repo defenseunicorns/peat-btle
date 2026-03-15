@@ -30,18 +30,18 @@ Traditional BLE mesh implementations (like those in commercial sync SDKs) often 
 | Full mesh participation | Every device relays everything | Lite profile (minimal state, single parent) |
 | **Result** | **3-4 hour watch battery** | **18-24 hour battery life** |
 
-## Status
+## Platform Support
 
 > **Pre-release**: This crate is under active development. APIs may change.
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| Linux (BlueZ) | ✅ Complete | BlueZ 5.48+ required |
-| macOS | ✅ Complete | CoreBluetooth, tested with ESP32 devices |
-| iOS | ✅ Complete | CoreBluetooth (shared with macOS) |
-| ESP32 | ✅ Complete | ESP-IDF NimBLE integration |
-| Android | 🔄 In Progress | JNI bindings to Android Bluetooth API |
-| Windows | 📋 Planned | WinRT Bluetooth APIs |
+| Linux (BlueZ 5.48+) | **Stable** | Ubuntu, Raspberry Pi tested |
+| macOS | **Stable** | CoreBluetooth, tested with ESP32 peers |
+| Android 6+ | **Stable** | WearOS support, UniFFI bindings |
+| ESP32 (NimBLE) | **Stable** | 50+ examples, Feather Sense, M5Stack |
+| iOS 13+ | **Beta** | CoreBluetooth partial — service discovery and characteristic callbacks incomplete |
+| Windows 10+ | **Planned** | WinRT adapter exists, not yet tested |
 
 ## Installation
 
