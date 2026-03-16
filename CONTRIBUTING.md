@@ -78,6 +78,10 @@ We welcome contributions in these areas:
 4. **Hardware Testing** - Real-world validation on various devices
 5. **Documentation** - Examples, tutorials, API documentation
 
+## Pull Request Access
+
+Submitting pull requests requires contributor access to the repository. If you're interested in contributing, please open an issue to introduce yourself and discuss the change you'd like to make. A maintainer will grant PR access to active contributors.
+
 ## Pull Request Process
 
 1. Ensure your code compiles without warnings
