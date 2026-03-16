@@ -1,82 +1,99 @@
 # Contributing to peat-btle
 
-Thank you for your interest in contributing to peat-btle! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to peat-btle. This document covers development setup, testing, and the pull request process.
 
 ## Getting Started
 
-1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/peat-btle.git`
-3. Create a feature branch: `git checkout -b feature/your-feature-name`
-4. Make your changes
-5. Run tests: `cargo test`
-6. Commit with a descriptive message
-7. Push to your fork and submit a Pull Request
+1. Fork the repository and clone your fork
+2. Create a feature branch from `main`
+3. Make your changes
+4. Run pre-commit checks
+5. Submit a pull request
 
 ## Development Setup
 
 ### Prerequisites
 
-- Rust 1.75 or later
+- Rust stable toolchain (install via [rustup](https://rustup.rs))
 - Platform-specific dependencies:
-  - **Linux**: BlueZ 5.48+, D-Bus development libraries
+  - **Linux**: BlueZ 5.48+, D-Bus development libraries (`libdbus-1-dev`)
   - **macOS**: Xcode Command Line Tools
   - **ESP32**: ESP-IDF toolchain
+  - **Android**: Android NDK + UniFFI
+
+### Feature Flags
+
+| Feature | Description |
+|---------|-------------|
+| `linux` | Linux BlueZ adapter |
+| `macos` | macOS CoreBluetooth adapter |
+| `ios` | iOS CoreBluetooth adapter (Beta) |
+| `android` | Android BLE adapter with UniFFI bindings |
+| `windows` | Windows WinRT adapter (Planned) |
+| `esp32` | ESP32 NimBLE adapter |
+| `transport-only` | Core transport without mesh management |
 
 ### Building
 
 ```bash
 # Build for your platform
-cargo build --features linux    # Linux
-cargo build --features macos    # macOS
-cargo build --features ios      # iOS (cross-compile)
+cargo build --features linux
+cargo build --features macos
 
-# Build for ESP32
+# Android AAR
+cd android && ./gradlew assembleRelease
+
+# ESP32
 cargo +esp build --target xtensa-esp32-espidf --features esp32
 ```
 
-### Testing
+## Testing
 
 ```bash
-# Run unit tests (no hardware required)
+# Unit tests (no hardware required)
 cargo test
 
-# Run with platform features
+# Tests with platform features
 cargo test --features linux
 
-# Run specific test module
+# Specific test module
 cargo test sync::
+
+# Integration tests
+cargo test --test mesh_sync
+cargo test --test emergency_flow
 ```
 
-## Code Guidelines
+Integration tests in `tests/` cover mesh sync, peer connections, emergency flow, and encryption. Test on real hardware when possible — BLE simulators have limitations.
 
-### Style
+## Pre-Commit Checks
 
-- Follow Rust standard style (use `cargo fmt`)
-- Run `cargo clippy` and address warnings
-- Write doc comments for public APIs
-- Keep functions focused and reasonably sized
+Before submitting a PR, ensure all of the following pass locally:
 
-### Safety
+```bash
+cargo fmt --check
+cargo clippy -- -D warnings
+cargo test
+```
 
-- Minimize `unsafe` code; document safety invariants when required
-- Avoid panics in library code; return `Result` types
-- Be careful with BLE security - never store credentials in code
+The CI pipeline runs these same checks on every PR.
 
-### Testing
+## Branching Strategy
 
-- Write unit tests for new functionality
-- Integration tests go in `tests/`
-- Test on real hardware when possible (BLE simulators have limitations)
+We use **trunk-based development** on `main` with short-lived feature branches:
 
-## Priority Areas
+- Branch from `main` for all changes
+- Keep branches small and focused (prefer multiple small PRs over one large one)
+- Squash-and-merge to `main`
 
-We welcome contributions in these areas:
+## Commit Requirements
 
-1. **Android Implementation** (#410) - JNI bindings to Android Bluetooth API
-2. **Security Integration** (#413) - BLE pairing + application-layer encryption
-3. **Windows Implementation** (#412) - WinRT Bluetooth APIs
-4. **Hardware Testing** - Real-world validation on various devices
-5. **Documentation** - Examples, tutorials, API documentation
+- **GPG-signed commits are required.** Configure commit signing per [GitHub's documentation](https://docs.github.com/en/authentication/managing-commit-signature-verification).
+- Write clear, descriptive commit messages
+
+## Pull Request Access
+
+Submitting pull requests requires contributor access to the repository. If you're interested in contributing, please open an issue to introduce yourself and discuss the change you'd like to make. A maintainer will grant PR access to active contributors.
 
 ## Pull Request Access
 
@@ -84,27 +101,24 @@ Submitting pull requests requires contributor access to the repository. If you'r
 
 ## Pull Request Process
 
-1. Ensure your code compiles without warnings
-2. Add tests for new functionality
-3. Update documentation as needed
-4. Keep PRs focused on a single change
-5. Reference any related issues in the PR description
+1. Open a PR against `main` with a clear description of the change
+2. Focus each PR on a single concern
+3. Ensure CI passes (fmt, clippy, tests)
+4. PRs require at least one approving review from a CODEOWNERS member
+5. PRs are squash-merged to maintain a clean history
+
+## Radicle Patches
+
+peat-btle also accepts contributions via [Radicle](https://radicle.xyz). The repository includes a `.goa` CI script that automatically runs format checks, clippy, tests, and example builds against incoming patches. Community patches require a delegate to comment `ok-to-test` before CI runs.
+
+## Architectural Changes
+
+For significant architectural changes, open an issue first to discuss the approach. Reference the relevant ADR in `docs/adr/` if one exists, or propose a new one.
 
 ## Reporting Issues
 
-When reporting bugs, please include:
-
-- Platform and OS version
-- Bluetooth hardware details
-- Rust version (`rustc --version`)
-- Steps to reproduce
-- Expected vs actual behavior
-- Relevant log output
-
-## Code of Conduct
-
-Be respectful and constructive in all interactions. We're building software for critical tactical applications - quality and reliability matter more than speed.
+Use GitHub Issues to report bugs or request features. Include platform/OS version, Bluetooth hardware details, steps to reproduce, expected vs. actual behavior, and relevant log output.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
