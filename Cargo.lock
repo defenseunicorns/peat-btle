@@ -1808,7 +1808,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "peat-btle"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "android_logger",
  "async-trait",
@@ -1844,9 +1844,9 @@ dependencies = [
 
 [[package]]
 name = "peat-lite"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29302c96539b6cfde2708b696a11fcb32c064fc3577d6f33035b69880bbb0134"
+checksum = "28247e2a603fbe75979d4b89b05acf67243ee1cf8243991ffa9d7f3e66bada81"
 dependencies = [
  "heapless",
 ]
