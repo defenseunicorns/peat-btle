@@ -191,9 +191,9 @@ afterEvaluate {
                 from(components["release"])
 
                 pom {
-                    name.set("Peat Android")
-                    description.set("Bluetooth Low Energy mesh transport for Peat Protocol - Android library by Revolve Team")
-                    url.set("https://github.com/Ascent-Integrated-Tech/peat-btle")
+                    name.set("Peat BLE Android")
+                    description.set("Bluetooth Low Energy mesh transport for Peat Protocol - Android library")
+                    url.set("https://github.com/defenseunicorns/peat-btle")
 
                     licenses {
                         license {
@@ -204,16 +204,16 @@ afterEvaluate {
 
                     developers {
                         developer {
-                            id.set("revolve")
-                            name.set("Revolve Team")
-                            email.set("team@revolve.tech")
+                            id.set("defenseunicorns")
+                            name.set("Defense Unicorns")
+                            email.set("oss@defenseunicorns.com")
                         }
                     }
 
                     scm {
-                        connection.set("scm:git:git://github.com/Ascent-Integrated-Tech/peat-btle.git")
-                        developerConnection.set("scm:git:ssh://github.com/Ascent-Integrated-Tech/peat-btle.git")
-                        url.set("https://github.com/Ascent-Integrated-Tech/peat-btle")
+                        connection.set("scm:git:git://github.com/defenseunicorns/peat-btle.git")
+                        developerConnection.set("scm:git:ssh://github.com/defenseunicorns/peat-btle.git")
+                        url.set("https://github.com/defenseunicorns/peat-btle")
                     }
                 }
             }
@@ -222,7 +222,7 @@ afterEvaluate {
         repositories {
             maven {
                 name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/Ascent-Integrated-Tech/peat-btle")
+                url = uri("https://maven.pkg.github.com/defenseunicorns/peat-btle")
                 credentials {
                     username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
                     password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
