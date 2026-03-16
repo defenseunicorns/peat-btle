@@ -239,7 +239,13 @@ afterEvaluate {
 
     // Sign all publications
     signing {
-        useGpgCmd()
+        val signingKey = findProperty("signingInMemoryKey") as String? ?: System.getenv("ORG_GRADLE_PROJECT_signingInMemoryKey")
+        val signingPassword = findProperty("signingInMemoryKeyPassword") as String? ?: System.getenv("ORG_GRADLE_PROJECT_signingInMemoryKeyPassword")
+        if (signingKey != null && signingPassword != null) {
+            useInMemoryPgpKeys(signingKey, signingPassword)
+        } else {
+            useGpgCmd()
+        }
         sign(publishing.publications["release"])
     }
 }

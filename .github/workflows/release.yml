@@ -62,6 +62,8 @@ jobs:
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
           SONATYPE_USERNAME: ${{ secrets.MAVEN_CENTRAL_USER }}
           SONATYPE_PASSWORD: ${{ secrets.MAVEN_CENTRAL_TOKEN }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_SECRET_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_SECRET_PASSPHRASE }}
 
   release:
     name: GitHub Release
