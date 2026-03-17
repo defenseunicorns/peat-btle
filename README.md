@@ -1,6 +1,6 @@
 # peat-btle
 
-Bluetooth Low Energy mesh transport for tactical edge networking.
+BLE mesh transport that connects phones, watches, sensors, and embedded devices when there's no network infrastructure. Part of the [Peat](https://github.com/defenseunicorns/peat) ecosystem.
 
 [![Crate](https://img.shields.io/crates/v/peat-btle.svg)](https://crates.io/crates/peat-btle)
 [![Documentation](https://docs.rs/peat-btle/badge.svg)](https://docs.rs/peat-btle)
@@ -8,7 +8,7 @@ Bluetooth Low Energy mesh transport for tactical edge networking.
 
 ## Overview
 
-`peat-btle` provides a cross-platform Bluetooth Low Energy mesh networking stack optimized for resource-constrained tactical devices. It enables peer-to-peer discovery, advertisement, connectivity, and efficient CRDT-based data synchronization over BLE.
+When there's no WiFi, no cell service, and no satellite — BLE still works. `peat-btle` turns the Bluetooth radio in every phone, watch, and microcontroller into a mesh transport, enabling device-to-device coordination without any infrastructure. An Android phone running ATAK, a WearTAK watch, and an ESP32 sensor can all discover each other and sync state over BLE.
 
 ### Key Features
 
