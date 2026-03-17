@@ -12,6 +12,9 @@ on:
         required: true
         default: 'main'
 
+permissions:
+  contents: read
+
 jobs:
   publish-maven:
     name: Build AAR and publish to Maven Central
