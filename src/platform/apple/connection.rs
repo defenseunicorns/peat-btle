@@ -22,6 +22,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
 
+use objc2::msg_send;
+use objc2::rc::Retained;
+use objc2::ClassType;
+use objc2_core_bluetooth::{CBPeripheral, CBUUID};
+use objc2_foundation::{NSArray, NSData, NSString};
+
 use crate::config::BlePhy;
 use crate::error::{BleError, Result};
 use crate::transport::BleConnection;
@@ -61,7 +67,15 @@ pub struct CoreBluetoothConnection {
     event_rx: Arc<RwLock<mpsc::Receiver<PeripheralEvent>>>,
     /// Peripheral delegate (must be kept alive)
     delegate: Arc<PeripheralDelegate>,
+    /// The CBPeripheral reference (stored via std RwLock since Retained is not Send)
+    cb_peripheral: Arc<std::sync::RwLock<Option<Retained<CBPeripheral>>>>,
 }
+
+// SAFETY: CoreBluetoothConnection uses interior mutability via Arc<RwLock<_>> for all
+// mutable state. The CBPeripheral is protected behind std::sync::RwLock and is only
+// accessed synchronously before await points.
+unsafe impl Send for CoreBluetoothConnection {}
+unsafe impl Sync for CoreBluetoothConnection {}
 
 impl CoreBluetoothConnection {
     /// Create a new connection wrapper
@@ -72,9 +86,6 @@ impl CoreBluetoothConnection {
     pub(super) fn new(peer_id: NodeId, identifier: String) -> Self {
         let (event_tx, event_rx) = mpsc::channel(100);
         let delegate = Arc::new(PeripheralDelegate::new(event_tx));
-
-        // TODO: Set this delegate on the CBPeripheral
-        // peripheral.setDelegate_(delegate_obj);
 
         let state = ConnectionState {
             alive: true,
@@ -91,7 +102,25 @@ impl CoreBluetoothConnection {
             connected_at: Instant::now(),
             event_rx: Arc::new(RwLock::new(event_rx)),
             delegate,
+            cb_peripheral: Arc::new(std::sync::RwLock::new(None)),
         }
+    }
+
+    /// Set the CBPeripheral reference for this connection.
+    ///
+    /// Must be called after construction to enable GATT operations.
+    /// The peripheral's delegate is set to receive callbacks through
+    /// our event channel.
+    pub(super) fn set_cb_peripheral(&self, peripheral: Retained<CBPeripheral>) {
+        let mut lock = self.cb_peripheral.write().unwrap();
+        *lock = Some(peripheral);
+    }
+
+    /// Get the CBPeripheral reference, if set
+    fn get_cb_peripheral(&self) -> Result<Retained<CBPeripheral>> {
+        let lock = self.cb_peripheral.read().unwrap();
+        lock.clone()
+            .ok_or_else(|| BleError::InvalidState("CBPeripheral not set on connection".to_string()))
     }
 
     /// Get the peripheral identifier
@@ -146,96 +175,324 @@ impl CoreBluetoothConnection {
     /// Disconnect from the peripheral
     ///
     /// Note: On CoreBluetooth, disconnection is handled by the CentralManager,
-    /// not the peripheral itself.
+    /// not the peripheral itself. The caller (adapter) is responsible for
+    /// calling centralManager.cancelPeripheralConnection() separately.
     pub(super) async fn disconnect(&self) -> Result<()> {
-        // TODO: Signal CentralManager to disconnect
-        // This should call centralManager.cancelPeripheralConnection_(peripheral)
-
         self.mark_dead().await;
-        log::warn!(
-            "CoreBluetoothConnection::disconnect({}) - Must be called via CentralManager",
+        log::info!(
+            "CoreBluetoothConnection::disconnect({}) - Connection marked dead, CentralManager must cancel",
             self.identifier
         );
         Ok(())
     }
 
     /// Discover services on the peripheral
-    #[allow(dead_code)] // GATT client operation - not yet wired up
-    pub(super) async fn discover_services(
-        &self,
-        _service_uuids: Option<Vec<String>>,
-    ) -> Result<()> {
-        // TODO: Call CBPeripheral.discoverServices:
-        //
-        // Example objc2 code:
-        // ```
-        // let uuids = service_uuids.map(|uuids| {
-        //     NSArray::from_vec(uuids.into_iter().map(|u| {
-        //         CBUUID::UUIDWithString_(&NSString::from_str(&u))
-        //     }).collect())
-        // });
-        // peripheral.discoverServices_(uuids.as_ref());
-        // ```
+    #[allow(dead_code)] // GATT client operation - called from adapter
+    pub(super) async fn discover_services(&self, service_uuids: Option<Vec<String>>) -> Result<()> {
+        let peripheral = self.get_cb_peripheral()?;
 
-        log::warn!(
-            "CoreBluetoothConnection::discover_services({}) - Not yet implemented",
+        // Build UUID filter and call discoverServices - all ObjC work before await
+        {
+            let uuid_filter: Option<Retained<NSArray<CBUUID>>> =
+                service_uuids.map(|uuids| unsafe {
+                    let cb_uuids: Vec<Retained<CBUUID>> = uuids
+                        .iter()
+                        .map(|uuid_str| {
+                            let ns_str = NSString::from_str(uuid_str);
+                            CBUUID::UUIDWithString(&ns_str)
+                        })
+                        .collect();
+                    NSArray::from_vec(cb_uuids)
+                });
+
+            unsafe {
+                peripheral.discoverServices(uuid_filter.as_deref());
+            }
+        }
+
+        log::debug!(
+            "Initiated service discovery on peripheral {}",
             self.identifier
         );
 
-        Err(BleError::NotSupported(
-            "CoreBluetooth service discovery not yet implemented".to_string(),
-        ))
+        // Wait for the delegate callback
+        let timeout = tokio::time::Duration::from_secs(10);
+        let result = tokio::time::timeout(timeout, self.wait_for_services_discovered()).await;
+
+        match result {
+            Ok(Ok(())) => {
+                self.mark_services_discovered().await;
+                Ok(())
+            }
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(BleError::Timeout),
+        }
+    }
+
+    /// Wait for the ServicesDiscovered event from the delegate
+    async fn wait_for_services_discovered(&self) -> Result<()> {
+        loop {
+            let mut event_rx = self.event_rx.write().await;
+            match tokio::time::timeout(tokio::time::Duration::from_millis(100), event_rx.recv())
+                .await
+            {
+                Ok(Some(PeripheralEvent::ServicesDiscovered { error, .. })) => {
+                    if let Some(e) = error {
+                        return Err(BleError::GattError(format!(
+                            "Service discovery failed: {}",
+                            e
+                        )));
+                    }
+                    return Ok(());
+                }
+                Ok(Some(other)) => {
+                    // Process other events while waiting
+                    self.handle_event(other).await;
+                }
+                Ok(None) => {
+                    return Err(BleError::ConnectionFailed(
+                        "Event channel closed".to_string(),
+                    ));
+                }
+                Err(_) => {
+                    // Timeout on this iteration, keep waiting (outer timeout handles overall)
+                    continue;
+                }
+            }
+        }
+    }
+
+    /// Handle a peripheral event by updating internal state
+    async fn handle_event(&self, event: PeripheralEvent) {
+        match event {
+            PeripheralEvent::MtuUpdated { mtu, .. } => {
+                self.update_mtu(mtu).await;
+            }
+            PeripheralEvent::RssiRead { rssi, error, .. } => {
+                if error.is_none() {
+                    self.update_rssi(rssi).await;
+                }
+            }
+            _ => {
+                log::trace!("Unhandled peripheral event in wait: {:?}", event);
+            }
+        }
     }
 
     /// Discover characteristics for a service
-    #[allow(dead_code)] // GATT client operation - not yet wired up
+    #[allow(dead_code)] // GATT client operation - called from adapter
     pub(super) async fn discover_characteristics(
         &self,
         service_uuid: &str,
-        _characteristic_uuids: Option<Vec<String>>,
+        characteristic_uuids: Option<Vec<String>>,
     ) -> Result<()> {
-        // TODO: Call CBPeripheral.discoverCharacteristics:forService:
-        //
-        // 1. Look up CBService from peripheral.services
-        // 2. Call peripheral.discoverCharacteristics:forService:
+        let peripheral = self.get_cb_peripheral()?;
+        let target_uuid_upper = service_uuid.to_uppercase();
 
-        log::warn!(
-            "CoreBluetoothConnection::discover_characteristics({}, {}) - Not yet implemented",
-            self.identifier,
-            service_uuid
+        // Find the service and initiate characteristic discovery - ObjC work before await
+        {
+            let char_filter: Option<Retained<NSArray<CBUUID>>> =
+                characteristic_uuids.map(|uuids| unsafe {
+                    let cb_uuids: Vec<Retained<CBUUID>> = uuids
+                        .iter()
+                        .map(|uuid_str| {
+                            let ns_str = NSString::from_str(uuid_str);
+                            CBUUID::UUIDWithString(&ns_str)
+                        })
+                        .collect();
+                    NSArray::from_vec(cb_uuids)
+                });
+
+            unsafe {
+                let services = peripheral.services();
+                if let Some(services) = services {
+                    let mut found = false;
+                    for i in 0..services.len() {
+                        let service = &services[i];
+                        let svc_uuid = service.UUID().UUIDString().to_string().to_uppercase();
+                        if svc_uuid == target_uuid_upper {
+                            peripheral.discoverCharacteristics_forService(
+                                char_filter.as_deref(),
+                                service,
+                            );
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        return Err(BleError::ServiceNotFound(service_uuid.to_string()));
+                    }
+                } else {
+                    return Err(BleError::InvalidState(
+                        "No services discovered yet".to_string(),
+                    ));
+                }
+            }
+        }
+
+        log::debug!(
+            "Initiated characteristic discovery for service {} on {}",
+            service_uuid,
+            self.identifier
         );
 
-        Err(BleError::NotSupported(
-            "CoreBluetooth characteristic discovery not yet implemented".to_string(),
-        ))
+        // Wait for the delegate callback
+        let timeout = tokio::time::Duration::from_secs(10);
+        let target_svc = service_uuid.to_uppercase();
+        let result = tokio::time::timeout(timeout, async {
+            loop {
+                let mut event_rx = self.event_rx.write().await;
+                match tokio::time::timeout(tokio::time::Duration::from_millis(100), event_rx.recv())
+                    .await
+                {
+                    Ok(Some(PeripheralEvent::CharacteristicsDiscovered {
+                        service_uuid: svc,
+                        error,
+                        ..
+                    })) if svc.to_uppercase() == target_svc => {
+                        if let Some(e) = error {
+                            return Err(BleError::GattError(format!(
+                                "Characteristic discovery failed: {}",
+                                e
+                            )));
+                        }
+                        return Ok(());
+                    }
+                    Ok(Some(other)) => {
+                        self.handle_event(other).await;
+                    }
+                    Ok(None) => {
+                        return Err(BleError::ConnectionFailed(
+                            "Event channel closed".to_string(),
+                        ));
+                    }
+                    Err(_) => continue,
+                }
+            }
+        })
+        .await;
+
+        match result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(BleError::Timeout),
+        }
     }
 
     /// Read a characteristic value
-    #[allow(dead_code)] // GATT client operation - not yet wired up
+    #[allow(dead_code)] // GATT client operation - called from adapter
     pub(super) async fn read_characteristic(
         &self,
         service_uuid: &str,
         characteristic_uuid: &str,
     ) -> Result<Vec<u8>> {
-        // TODO: Call CBPeripheral.readValueForCharacteristic:
-        //
-        // 1. Look up CBService and CBCharacteristic
-        // 2. Call peripheral.readValueForCharacteristic:
-        // 3. Wait for delegate callback with value
+        let peripheral = self.get_cb_peripheral()?;
+        let target_service_upper = service_uuid.to_uppercase();
+        let target_char_upper = characteristic_uuid.to_uppercase();
 
-        log::warn!(
-            "CoreBluetoothConnection::read_characteristic({}, {}) - Not yet implemented",
-            service_uuid,
-            characteristic_uuid
+        // Find the characteristic and initiate read - ObjC work before await
+        {
+            unsafe {
+                let characteristic = self.find_cb_characteristic(
+                    &peripheral,
+                    &target_service_upper,
+                    &target_char_upper,
+                )?;
+                peripheral.readValueForCharacteristic(&characteristic);
+            }
+        }
+
+        log::debug!(
+            "Initiated read of characteristic {} on {}",
+            characteristic_uuid,
+            self.identifier
         );
 
-        Err(BleError::NotSupported(
-            "CoreBluetooth characteristic read not yet implemented".to_string(),
-        ))
+        // Wait for the delegate callback with the value
+        let timeout = tokio::time::Duration::from_secs(10);
+        let target_char = target_char_upper.clone();
+        let result = tokio::time::timeout(timeout, async {
+            loop {
+                let mut event_rx = self.event_rx.write().await;
+                match tokio::time::timeout(tokio::time::Duration::from_millis(100), event_rx.recv())
+                    .await
+                {
+                    Ok(Some(PeripheralEvent::CharacteristicValueUpdated {
+                        characteristic_uuid: char_uuid,
+                        value,
+                        error,
+                        ..
+                    })) if char_uuid.to_uppercase() == target_char
+                        || char_uuid.to_uppercase().contains(&target_char) =>
+                    {
+                        if let Some(e) = error {
+                            return Err(BleError::GattError(format!("Read failed: {}", e)));
+                        }
+                        return Ok(value);
+                    }
+                    Ok(Some(other)) => {
+                        self.handle_event(other).await;
+                    }
+                    Ok(None) => {
+                        return Err(BleError::ConnectionFailed(
+                            "Event channel closed".to_string(),
+                        ));
+                    }
+                    Err(_) => continue,
+                }
+            }
+        })
+        .await;
+
+        match result {
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(BleError::Timeout),
+        }
+    }
+
+    /// Find a CBCharacteristic by service UUID and characteristic UUID
+    ///
+    /// # Safety
+    /// Caller must ensure peripheral is a valid CBPeripheral with discovered services.
+    unsafe fn find_cb_characteristic(
+        &self,
+        peripheral: &CBPeripheral,
+        service_uuid_upper: &str,
+        char_uuid_upper: &str,
+    ) -> Result<Retained<objc2_core_bluetooth::CBCharacteristic>> {
+        let services = peripheral
+            .services()
+            .ok_or_else(|| BleError::InvalidState("No services discovered".to_string()))?;
+
+        for i in 0..services.len() {
+            let service = &services[i];
+            let svc_uuid = service.UUID().UUIDString().to_string().to_uppercase();
+            if svc_uuid == service_uuid_upper || svc_uuid.contains(service_uuid_upper) {
+                if let Some(characteristics) = service.characteristics() {
+                    for j in 0..characteristics.len() {
+                        let characteristic = &characteristics[j];
+                        let c_uuid = characteristic
+                            .UUID()
+                            .UUIDString()
+                            .to_string()
+                            .to_uppercase();
+                        if c_uuid == char_uuid_upper || c_uuid.contains(char_uuid_upper) {
+                            return Ok(characteristic.retain());
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(BleError::CharacteristicNotFound(format!(
+            "{}:{}",
+            service_uuid_upper, char_uuid_upper
+        )))
     }
 
     /// Write a characteristic value
-    #[allow(dead_code)] // GATT client operation - not yet wired up
+    #[allow(dead_code)] // GATT client operation - called from adapter
     pub(super) async fn write_characteristic(
         &self,
         service_uuid: &str,
@@ -243,98 +500,240 @@ impl CoreBluetoothConnection {
         value: &[u8],
         with_response: bool,
     ) -> Result<()> {
-        // TODO: Call CBPeripheral.writeValue:forCharacteristic:type:
-        //
-        // Write type:
-        // - CBCharacteristicWriteWithResponse (0) if with_response
-        // - CBCharacteristicWriteWithoutResponse (1) if !with_response
-        //
-        // Example objc2 code:
-        // ```
-        // let data = NSData::from_vec(value.to_vec());
-        // let write_type = if with_response {
-        //     CBCharacteristicWriteType::WithResponse
-        // } else {
-        //     CBCharacteristicWriteType::WithoutResponse
-        // };
-        // peripheral.writeValue_forCharacteristic_type_(&data, &characteristic, write_type);
-        // ```
+        let peripheral = self.get_cb_peripheral()?;
+        let target_service_upper = service_uuid.to_uppercase();
+        let target_char_upper = characteristic_uuid.to_uppercase();
 
-        log::warn!(
-            "CoreBluetoothConnection::write_characteristic({}, {}, {} bytes, response={}) - Not yet implemented",
-            service_uuid,
-            characteristic_uuid,
+        // Find the characteristic and initiate write - ObjC work before await
+        {
+            unsafe {
+                let characteristic = self.find_cb_characteristic(
+                    &peripheral,
+                    &target_service_upper,
+                    &target_char_upper,
+                )?;
+
+                let ns_data = NSData::with_bytes(value);
+                // CBCharacteristicWriteType: 0 = WithResponse, 1 = WithoutResponse
+                let write_type: isize = if with_response { 0 } else { 1 };
+                let _: () = msg_send![
+                    &*peripheral,
+                    writeValue: &*ns_data
+                    forCharacteristic: &*characteristic
+                    type: write_type
+                ];
+            }
+        }
+
+        log::debug!(
+            "Initiated write of {} bytes to characteristic {} on {} (response={})",
             value.len(),
+            characteristic_uuid,
+            self.identifier,
             with_response
         );
 
-        Err(BleError::NotSupported(
-            "CoreBluetooth characteristic write not yet implemented".to_string(),
-        ))
+        // For write-without-response, return immediately
+        if !with_response {
+            return Ok(());
+        }
+
+        // Wait for the delegate callback confirming the write
+        let timeout = tokio::time::Duration::from_secs(10);
+        let target_char = target_char_upper.clone();
+        let result = tokio::time::timeout(timeout, async {
+            loop {
+                let mut event_rx = self.event_rx.write().await;
+                match tokio::time::timeout(tokio::time::Duration::from_millis(100), event_rx.recv())
+                    .await
+                {
+                    Ok(Some(PeripheralEvent::CharacteristicWritten {
+                        characteristic_uuid: char_uuid,
+                        error,
+                        ..
+                    })) if char_uuid.to_uppercase() == target_char
+                        || char_uuid.to_uppercase().contains(&target_char) =>
+                    {
+                        if let Some(e) = error {
+                            return Err(BleError::GattError(format!("Write failed: {}", e)));
+                        }
+                        return Ok(());
+                    }
+                    Ok(Some(other)) => {
+                        self.handle_event(other).await;
+                    }
+                    Ok(None) => {
+                        return Err(BleError::ConnectionFailed(
+                            "Event channel closed".to_string(),
+                        ));
+                    }
+                    Err(_) => continue,
+                }
+            }
+        })
+        .await;
+
+        match result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(BleError::Timeout),
+        }
     }
 
     /// Enable notifications for a characteristic
-    #[allow(dead_code)] // GATT client operation - not yet wired up
+    #[allow(dead_code)] // GATT client operation - called from adapter
     pub(super) async fn enable_notifications(
         &self,
         service_uuid: &str,
         characteristic_uuid: &str,
     ) -> Result<()> {
-        // TODO: Call CBPeripheral.setNotifyValue:forCharacteristic:
-        //
-        // Example objc2 code:
-        // ```
-        // peripheral.setNotifyValue_forCharacteristic_(true, &characteristic);
-        // ```
-
-        log::warn!(
-            "CoreBluetoothConnection::enable_notifications({}, {}) - Not yet implemented",
-            service_uuid,
-            characteristic_uuid
-        );
-
-        Err(BleError::NotSupported(
-            "CoreBluetooth notifications not yet implemented".to_string(),
-        ))
+        self.set_notify_value(service_uuid, characteristic_uuid, true)
+            .await
     }
 
     /// Disable notifications for a characteristic
-    #[allow(dead_code)] // GATT client operation - not yet wired up
+    #[allow(dead_code)] // GATT client operation - called from adapter
     pub(super) async fn disable_notifications(
         &self,
         service_uuid: &str,
         characteristic_uuid: &str,
     ) -> Result<()> {
-        // TODO: Call CBPeripheral.setNotifyValue:forCharacteristic: with false
-
-        log::warn!(
-            "CoreBluetoothConnection::disable_notifications({}, {}) - Not yet implemented",
-            service_uuid,
-            characteristic_uuid
-        );
-
-        Err(BleError::NotSupported(
-            "CoreBluetooth notification disable not yet implemented".to_string(),
-        ))
+        self.set_notify_value(service_uuid, characteristic_uuid, false)
+            .await
     }
 
-    /// Read RSSI
-    #[allow(dead_code)] // GATT client operation - not yet wired up
-    pub(super) async fn read_rssi(&self) -> Result<()> {
-        // TODO: Call CBPeripheral.readRSSI()
+    /// Set notification state for a characteristic
+    async fn set_notify_value(
+        &self,
+        service_uuid: &str,
+        characteristic_uuid: &str,
+        enabled: bool,
+    ) -> Result<()> {
+        let peripheral = self.get_cb_peripheral()?;
+        let target_service_upper = service_uuid.to_uppercase();
+        let target_char_upper = characteristic_uuid.to_uppercase();
 
-        log::warn!(
-            "CoreBluetoothConnection::read_rssi({}) - Not yet implemented",
+        // Find characteristic and set notify value - ObjC work before await
+        {
+            unsafe {
+                let characteristic = self.find_cb_characteristic(
+                    &peripheral,
+                    &target_service_upper,
+                    &target_char_upper,
+                )?;
+
+                let _: () = msg_send![
+                    &*peripheral,
+                    setNotifyValue: enabled
+                    forCharacteristic: &*characteristic
+                ];
+            }
+        }
+
+        log::debug!(
+            "Set notify={} for characteristic {} on {}",
+            enabled,
+            characteristic_uuid,
             self.identifier
         );
 
-        Err(BleError::NotSupported(
-            "CoreBluetooth RSSI read not yet implemented".to_string(),
-        ))
+        // Wait for the delegate callback confirming the notification state change
+        let timeout = tokio::time::Duration::from_secs(10);
+        let target_char = target_char_upper.clone();
+        let result = tokio::time::timeout(timeout, async {
+            loop {
+                let mut event_rx = self.event_rx.write().await;
+                match tokio::time::timeout(tokio::time::Duration::from_millis(100), event_rx.recv())
+                    .await
+                {
+                    Ok(Some(PeripheralEvent::NotificationStateChanged {
+                        characteristic_uuid: char_uuid,
+                        error,
+                        ..
+                    })) if char_uuid.to_uppercase() == target_char
+                        || char_uuid.to_uppercase().contains(&target_char) =>
+                    {
+                        if let Some(e) = error {
+                            return Err(BleError::GattError(format!(
+                                "Notification state change failed: {}",
+                                e
+                            )));
+                        }
+                        return Ok(());
+                    }
+                    Ok(Some(other)) => {
+                        self.handle_event(other).await;
+                    }
+                    Ok(None) => {
+                        return Err(BleError::ConnectionFailed(
+                            "Event channel closed".to_string(),
+                        ));
+                    }
+                    Err(_) => continue,
+                }
+            }
+        })
+        .await;
+
+        match result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(BleError::Timeout),
+        }
+    }
+
+    /// Read RSSI
+    #[allow(dead_code)] // GATT client operation - called from adapter
+    pub(super) async fn read_rssi(&self) -> Result<()> {
+        let peripheral = self.get_cb_peripheral()?;
+
+        // Call readRSSI - ObjC work before await
+        {
+            unsafe {
+                peripheral.readRSSI();
+            }
+        }
+
+        log::debug!("Initiated RSSI read on {}", self.identifier);
+
+        // Wait for the delegate callback with the RSSI value
+        let timeout = tokio::time::Duration::from_secs(5);
+        let result = tokio::time::timeout(timeout, async {
+            loop {
+                let mut event_rx = self.event_rx.write().await;
+                match tokio::time::timeout(tokio::time::Duration::from_millis(100), event_rx.recv())
+                    .await
+                {
+                    Ok(Some(PeripheralEvent::RssiRead { rssi, error, .. })) => {
+                        if let Some(e) = error {
+                            return Err(BleError::GattError(format!("RSSI read failed: {}", e)));
+                        }
+                        self.update_rssi(rssi).await;
+                        return Ok(());
+                    }
+                    Ok(Some(other)) => {
+                        self.handle_event(other).await;
+                    }
+                    Ok(None) => {
+                        return Err(BleError::ConnectionFailed(
+                            "Event channel closed".to_string(),
+                        ));
+                    }
+                    Err(_) => continue,
+                }
+            }
+        })
+        .await;
+
+        match result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(BleError::Timeout),
+        }
     }
 
     /// Process pending delegate events
-    #[allow(dead_code)] // Event processing - not yet wired up
+    #[allow(dead_code)] // Event processing - called from adapter poll loop
     pub(super) async fn process_events(&self) -> Result<()> {
         let mut event_rx = self.event_rx.write().await;
 
@@ -343,6 +742,70 @@ impl CoreBluetoothConnection {
                 PeripheralEvent::ServicesDiscovered { error, .. } => {
                     if error.is_none() {
                         self.mark_services_discovered().await;
+                    } else {
+                        log::warn!("Service discovery error: {:?}", error);
+                    }
+                }
+                PeripheralEvent::CharacteristicsDiscovered {
+                    service_uuid,
+                    error,
+                    ..
+                } => {
+                    if let Some(ref e) = error {
+                        log::warn!("Characteristic discovery error for {}: {}", service_uuid, e);
+                    } else {
+                        log::debug!("Characteristics discovered for service {}", service_uuid);
+                    }
+                }
+                PeripheralEvent::CharacteristicValueUpdated {
+                    characteristic_uuid,
+                    value,
+                    error,
+                    ..
+                } => {
+                    if let Some(ref e) = error {
+                        log::warn!(
+                            "Characteristic {} value update error: {}",
+                            characteristic_uuid,
+                            e
+                        );
+                    } else {
+                        log::debug!(
+                            "Characteristic {} value updated ({} bytes)",
+                            characteristic_uuid,
+                            value.len()
+                        );
+                    }
+                }
+                PeripheralEvent::CharacteristicWritten {
+                    characteristic_uuid,
+                    error,
+                    ..
+                } => {
+                    if let Some(ref e) = error {
+                        log::warn!("Characteristic {} write error: {}", characteristic_uuid, e);
+                    } else {
+                        log::debug!("Characteristic {} write confirmed", characteristic_uuid);
+                    }
+                }
+                PeripheralEvent::NotificationStateChanged {
+                    characteristic_uuid,
+                    enabled,
+                    error,
+                    ..
+                } => {
+                    if let Some(ref e) = error {
+                        log::warn!(
+                            "Notification state change error for {}: {}",
+                            characteristic_uuid,
+                            e
+                        );
+                    } else {
+                        log::debug!(
+                            "Notifications {} for {}",
+                            if enabled { "enabled" } else { "disabled" },
+                            characteristic_uuid
+                        );
                     }
                 }
                 PeripheralEvent::MtuUpdated { mtu, .. } => {
@@ -352,9 +815,6 @@ impl CoreBluetoothConnection {
                     if error.is_none() {
                         self.update_rssi(rssi).await;
                     }
-                }
-                _ => {
-                    // Other events handled by higher-level code
                 }
             }
         }

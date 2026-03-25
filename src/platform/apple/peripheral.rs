@@ -697,13 +697,61 @@ impl PeripheralManager {
                         subs.retain(|id| id != &central_identifier);
                     }
                 }
-                PeripheralManagerEvent::ReadRequest { .. } => {
-                    // TODO: Handle read requests
-                    log::debug!("Received read request (handling not implemented)");
+                PeripheralManagerEvent::ReadRequest {
+                    request_id: _,
+                    central_identifier,
+                    characteristic_uuid,
+                    offset,
+                } => {
+                    // Read requests are handled synchronously in the delegate callback
+                    // (peripheral_manager_did_receive_read_request) where the response
+                    // is sent immediately. This event is informational for the Rust layer.
+                    log::debug!(
+                        "Read request from {} for characteristic {} at offset {} (handled by delegate)",
+                        central_identifier,
+                        characteristic_uuid,
+                        offset,
+                    );
                 }
-                PeripheralManagerEvent::WriteRequest { .. } => {
-                    // TODO: Handle write requests
-                    log::debug!("Received write request (handling not implemented)");
+                PeripheralManagerEvent::WriteRequest {
+                    request_id: _,
+                    central_identifier,
+                    characteristic_uuid,
+                    value,
+                    offset,
+                    response_needed: _,
+                } => {
+                    // Write requests are acknowledged synchronously in the delegate callback
+                    // (peripheral_manager_did_receive_write_requests). The value is already
+                    // stored in the delegate's characteristic_values map.
+                    //
+                    // Update the service info to keep metadata in sync.
+                    let mut services = self.services.write().await;
+                    for (_svc_uuid, service_info) in services.iter_mut() {
+                        for char_info in service_info.characteristics.iter_mut() {
+                            if char_info.uuid == characteristic_uuid {
+                                if offset == 0 {
+                                    char_info.value = value.clone();
+                                } else {
+                                    if offset <= char_info.value.len() {
+                                        char_info.value.truncate(offset);
+                                        char_info.value.extend_from_slice(&value);
+                                    } else {
+                                        char_info.value.resize(offset, 0);
+                                        char_info.value.extend_from_slice(&value);
+                                    }
+                                }
+                                log::debug!(
+                                    "Write from {} to characteristic {} ({} bytes at offset {})",
+                                    central_identifier,
+                                    characteristic_uuid,
+                                    value.len(),
+                                    offset,
+                                );
+                                break;
+                            }
+                        }
+                    }
                 }
                 PeripheralManagerEvent::ReadyToUpdateSubscribers => {
                     log::trace!("Ready to send more notifications");
