@@ -1704,3 +1704,753 @@ pub fn normalize_weartak_name(name: &str) -> String {
 pub fn device_pattern_rotates_addresses(pattern: DevicePattern) -> bool {
     pattern.rotates_addresses()
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== Enum round-trip conversions ====================
+
+    #[test]
+    fn test_peripheral_type_round_trip() {
+        let variants = [
+            (PeripheralType::Unknown, InternalPeripheralType::Unknown),
+            (
+                PeripheralType::SoldierSensor,
+                InternalPeripheralType::SoldierSensor,
+            ),
+            (
+                PeripheralType::FixedSensor,
+                InternalPeripheralType::FixedSensor,
+            ),
+            (PeripheralType::Relay, InternalPeripheralType::Relay),
+        ];
+        for (uniffi_val, internal_val) in &variants {
+            let converted: InternalPeripheralType = (*uniffi_val).into();
+            assert_eq!(converted, *internal_val);
+            let back: PeripheralType = converted.into();
+            assert_eq!(back, *uniffi_val);
+        }
+    }
+
+    #[test]
+    fn test_event_type_round_trip() {
+        let variants = [
+            (EventType::None, InternalEventType::None),
+            (EventType::Ping, InternalEventType::Ping),
+            (EventType::NeedAssist, InternalEventType::NeedAssist),
+            (EventType::Emergency, InternalEventType::Emergency),
+            (EventType::Moving, InternalEventType::Moving),
+            (EventType::InPosition, InternalEventType::InPosition),
+            (EventType::Ack, InternalEventType::Ack),
+        ];
+        for (uniffi_val, internal_val) in &variants {
+            let converted: InternalEventType = (*uniffi_val).into();
+            assert_eq!(converted, *internal_val);
+            let back: EventType = converted.into();
+            assert_eq!(back, *uniffi_val);
+        }
+    }
+
+    #[test]
+    fn test_disconnect_reason_round_trip_observer() {
+        let variants = [
+            (
+                DisconnectReason::LocalRequest,
+                ObserverDisconnectReason::LocalRequest,
+            ),
+            (
+                DisconnectReason::RemoteRequest,
+                ObserverDisconnectReason::RemoteRequest,
+            ),
+            (DisconnectReason::Timeout, ObserverDisconnectReason::Timeout),
+            (
+                DisconnectReason::LinkLoss,
+                ObserverDisconnectReason::LinkLoss,
+            ),
+            (
+                DisconnectReason::ConnectionFailed,
+                ObserverDisconnectReason::ConnectionFailed,
+            ),
+            (DisconnectReason::Unknown, ObserverDisconnectReason::Unknown),
+        ];
+        for (uniffi_val, observer_val) in &variants {
+            let converted: ObserverDisconnectReason = (*uniffi_val).into();
+            assert_eq!(converted, *observer_val);
+            let back: DisconnectReason = converted.into();
+            assert_eq!(back, *uniffi_val);
+        }
+    }
+
+    #[test]
+    fn test_disconnect_reason_from_platform() {
+        let variants = [
+            (
+                PlatformDisconnectReason::LocalRequest,
+                DisconnectReason::LocalRequest,
+            ),
+            (
+                PlatformDisconnectReason::RemoteRequest,
+                DisconnectReason::RemoteRequest,
+            ),
+            (PlatformDisconnectReason::Timeout, DisconnectReason::Timeout),
+            (
+                PlatformDisconnectReason::LinkLoss,
+                DisconnectReason::LinkLoss,
+            ),
+            (
+                PlatformDisconnectReason::ConnectionFailed,
+                DisconnectReason::ConnectionFailed,
+            ),
+            (PlatformDisconnectReason::Unknown, DisconnectReason::Unknown),
+        ];
+        for (platform_val, expected) in &variants {
+            let converted: DisconnectReason = (*platform_val).into();
+            assert_eq!(converted, *expected);
+        }
+    }
+
+    #[test]
+    fn test_connection_state_round_trip() {
+        let variants = [
+            (
+                ConnectionState::Discovered,
+                InternalConnectionState::Discovered,
+            ),
+            (
+                ConnectionState::Connecting,
+                InternalConnectionState::Connecting,
+            ),
+            (
+                ConnectionState::Connected,
+                InternalConnectionState::Connected,
+            ),
+            (ConnectionState::Degraded, InternalConnectionState::Degraded),
+            (
+                ConnectionState::Disconnecting,
+                InternalConnectionState::Disconnecting,
+            ),
+            (
+                ConnectionState::Disconnected,
+                InternalConnectionState::Disconnected,
+            ),
+            (ConnectionState::Lost, InternalConnectionState::Lost),
+        ];
+        for (uniffi_val, internal_val) in &variants {
+            let converted: InternalConnectionState = (*uniffi_val).into();
+            assert_eq!(converted, *internal_val);
+            let back: ConnectionState = converted.into();
+            assert_eq!(back, *uniffi_val);
+        }
+    }
+
+    // ==================== event_type_from_u8 ====================
+
+    #[test]
+    fn test_event_type_from_u8_valid() {
+        assert_eq!(event_type_from_u8(0), Some(EventType::None));
+        assert_eq!(event_type_from_u8(1), Some(EventType::Ping));
+        assert_eq!(event_type_from_u8(2), Some(EventType::NeedAssist));
+        assert_eq!(event_type_from_u8(3), Some(EventType::Emergency));
+        assert_eq!(event_type_from_u8(4), Some(EventType::Moving));
+        assert_eq!(event_type_from_u8(5), Some(EventType::InPosition));
+        assert_eq!(event_type_from_u8(6), Some(EventType::Ack));
+    }
+
+    #[test]
+    fn test_event_type_from_u8_invalid() {
+        assert_eq!(event_type_from_u8(7), None);
+        assert_eq!(event_type_from_u8(255), None);
+    }
+
+    // ==================== PeatMesh constructors ====================
+
+    #[test]
+    fn test_hive_mesh_new() {
+        let mesh = PeatMesh::new(42, "ALPHA", "test-mesh");
+        assert_eq!(mesh.peer_count(), 0);
+        assert_eq!(mesh.connected_count(), 0);
+        assert!(!mesh.is_emergency_active());
+        assert!(!mesh.is_ack_active());
+    }
+
+    #[test]
+    fn test_hive_mesh_new_with_peripheral() {
+        let mesh = PeatMesh::new_with_peripheral(42, "BRAVO", "test-mesh", PeripheralType::Relay);
+        assert_eq!(mesh.peer_count(), 0);
+    }
+
+    #[test]
+    fn test_hive_mesh_from_genesis() {
+        let identity = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("test-network", &identity);
+        let mesh = PeatMesh::new_from_genesis("CHARLIE", &identity, &genesis);
+        assert!(mesh.has_identity());
+        assert!(mesh.is_encryption_enabled());
+    }
+
+    // ==================== Namespace functions ====================
+
+    #[test]
+    fn test_derive_node_id_from_mac_valid() {
+        let id = derive_node_id_from_mac("AA:BB:CC:DD:EE:FF");
+        assert_ne!(id, 0);
+    }
+
+    #[test]
+    fn test_derive_node_id_from_mac_invalid() {
+        assert_eq!(derive_node_id_from_mac("not-a-mac"), 0);
+        assert_eq!(derive_node_id_from_mac(""), 0);
+    }
+
+    #[test]
+    fn test_create_peat_mesh_with_encryption_valid() {
+        let secret = [0xABu8; 32];
+        let mesh = create_peat_mesh_with_encryption(1, "TEST", "mesh-1", &secret);
+        assert!(mesh.is_some());
+        assert!(mesh.unwrap().is_encryption_enabled());
+    }
+
+    #[test]
+    fn test_create_peat_mesh_with_encryption_wrong_length() {
+        assert!(create_peat_mesh_with_encryption(1, "TEST", "mesh-1", &[0u8; 16]).is_none());
+        assert!(create_peat_mesh_with_encryption(1, "TEST", "mesh-1", &[]).is_none());
+        assert!(create_peat_mesh_with_encryption(1, "TEST", "mesh-1", &[0u8; 64]).is_none());
+    }
+
+    // ==================== DeviceIdentity ====================
+
+    #[test]
+    fn test_device_identity_generate() {
+        let id = DeviceIdentity::generate();
+        assert_eq!(id.get_public_key().len(), 32);
+        assert_eq!(id.get_private_key().len(), 32);
+        assert_ne!(id.get_node_id(), 0);
+    }
+
+    #[test]
+    fn test_device_identity_deterministic_node_id() {
+        let id = DeviceIdentity::generate();
+        let node_id_1 = id.get_node_id();
+        let node_id_2 = id.get_node_id();
+        assert_eq!(node_id_1, node_id_2);
+    }
+
+    #[test]
+    fn test_device_identity_sign_and_attestation() {
+        let id = DeviceIdentity::generate();
+        let sig = id.sign(b"test message");
+        assert_eq!(sig.len(), 64);
+
+        let attestation = id.create_attestation(1000);
+        assert!(!attestation.is_empty());
+    }
+
+    #[test]
+    fn test_restore_device_identity_round_trip() {
+        let id = DeviceIdentity::generate();
+        let private_key = id.get_private_key();
+        let restored = restore_device_identity(&private_key);
+        assert!(restored.is_some());
+        let restored = restored.unwrap();
+        assert_eq!(restored.get_public_key(), id.get_public_key());
+        assert_eq!(restored.get_node_id(), id.get_node_id());
+    }
+
+    #[test]
+    fn test_restore_device_identity_invalid() {
+        assert!(restore_device_identity(&[]).is_none());
+        assert!(restore_device_identity(&[0u8; 16]).is_none());
+    }
+
+    // ==================== MeshGenesis ====================
+
+    #[test]
+    fn test_mesh_genesis_create() {
+        let identity = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("my-mesh", &identity);
+        assert!(!genesis.get_mesh_id().is_empty());
+        assert_eq!(genesis.get_encryption_secret().len(), 32);
+    }
+
+    #[test]
+    fn test_mesh_genesis_encode_decode_round_trip() {
+        let identity = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("round-trip-mesh", &identity);
+        let encoded = genesis.encode();
+        assert!(!encoded.is_empty());
+
+        let decoded = decode_mesh_genesis(&encoded);
+        assert!(decoded.is_some());
+        let decoded = decoded.unwrap();
+        assert_eq!(decoded.get_mesh_id(), genesis.get_mesh_id());
+        assert_eq!(
+            decoded.get_encryption_secret(),
+            genesis.get_encryption_secret()
+        );
+    }
+
+    #[test]
+    fn test_decode_mesh_genesis_invalid() {
+        assert!(decode_mesh_genesis(&[]).is_none());
+        assert!(decode_mesh_genesis(&[0xFF; 10]).is_none());
+    }
+
+    // ==================== IdentityAttestation ====================
+
+    #[test]
+    fn test_identity_attestation_round_trip() {
+        let identity = DeviceIdentity::generate();
+        let attestation_bytes = identity.create_attestation(5000);
+        let attestation = decode_identity_attestation(&attestation_bytes);
+        assert!(attestation.is_some());
+        let attestation = attestation.unwrap();
+        assert!(attestation.verify());
+        assert_eq!(attestation.get_node_id(), identity.get_node_id());
+        assert_eq!(attestation.get_public_key(), identity.get_public_key());
+    }
+
+    #[test]
+    fn test_decode_identity_attestation_invalid() {
+        assert!(decode_identity_attestation(&[]).is_none());
+        assert!(decode_identity_attestation(&[0xFF; 10]).is_none());
+    }
+
+    // ==================== HiveMesh identity operations ====================
+
+    #[test]
+    fn test_hive_mesh_identity_verify_peer() {
+        let id_a = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("id-test", &id_a);
+        let mesh_a = PeatMesh::new_from_genesis("ALPHA", &id_a, &genesis);
+
+        let id_b = DeviceIdentity::generate();
+        let attestation_bytes = id_b.create_attestation(1000);
+
+        let initial_count = mesh_a.known_identity_count();
+
+        // Verify peer identity via the mesh
+        assert!(mesh_a.verify_peer_identity(&attestation_bytes));
+        assert!(mesh_a.is_peer_identity_known(id_b.get_node_id()));
+        assert_eq!(mesh_a.known_identity_count(), initial_count + 1);
+    }
+
+    #[test]
+    fn test_hive_mesh_verify_peer_identity_invalid() {
+        let id = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("test", &id);
+        let mesh = PeatMesh::new_from_genesis("TEST", &id, &genesis);
+        assert!(!mesh.verify_peer_identity(&[]));
+        assert!(!mesh.verify_peer_identity(&[0xFF; 10]));
+    }
+
+    #[test]
+    fn test_hive_mesh_sign_and_verify() {
+        let id_a = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("sig-test", &id_a);
+        let mesh = PeatMesh::new_from_genesis("ALPHA", &id_a, &genesis);
+
+        let message = b"important data";
+        let signature = mesh.sign(message);
+        assert!(signature.is_some());
+        let signature = signature.unwrap();
+        assert_eq!(signature.len(), 64);
+    }
+
+    #[test]
+    fn test_hive_mesh_verify_peer_signature_wrong_length() {
+        let id = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("test", &id);
+        let mesh = PeatMesh::new_from_genesis("TEST", &id, &genesis);
+        // Wrong signature length should return false
+        assert!(!mesh.verify_peer_signature(42, b"msg", &[0u8; 32]));
+        assert!(!mesh.verify_peer_signature(42, b"msg", &[]));
+    }
+
+    // ==================== HiveMesh data operations ====================
+
+    #[test]
+    fn test_hive_mesh_build_document() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        let doc = mesh.build_document();
+        assert!(!doc.is_empty());
+    }
+
+    #[test]
+    fn test_hive_mesh_emergency_cycle() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        assert!(!mesh.is_emergency_active());
+
+        let data = mesh.send_emergency(1000);
+        assert!(!data.is_empty());
+        assert!(mesh.is_emergency_active());
+
+        let ack_data = mesh.send_ack(2000);
+        assert!(!ack_data.is_empty());
+        assert!(mesh.is_ack_active());
+    }
+
+    #[test]
+    fn test_hive_mesh_update_location() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        mesh.update_location(37.7749, -122.4194, Some(10.0));
+        mesh.clear_location();
+        // No panic = success
+    }
+
+    #[test]
+    fn test_hive_mesh_update_peripheral_state() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        mesh.update_peripheral_state(
+            "ALPHA",
+            85,
+            Some(72),
+            Some(37.7749),
+            Some(-122.4194),
+            Some(10.0),
+            Some(EventType::Moving),
+            1000,
+        );
+        // No panic = success
+    }
+
+    #[test]
+    fn test_hive_mesh_matches_mesh() {
+        let mesh = PeatMesh::new(1, "TEST", "my-mesh");
+        assert!(mesh.matches_mesh(Some("my-mesh".to_string())));
+        assert!(!mesh.matches_mesh(Some("other-mesh".to_string())));
+    }
+
+    #[test]
+    fn test_hive_mesh_peer_not_known() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        assert!(!mesh.is_peer_known(999));
+        assert!(mesh.get_peer_callsign(999).is_none());
+        assert!(mesh.get_peer_connection_state(999).is_none());
+    }
+
+    #[test]
+    fn test_hive_mesh_empty_peer_lists() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        assert!(mesh.get_connected_peers().is_empty());
+        assert!(mesh.get_degraded_peers().is_empty());
+        assert!(mesh.get_lost_peers().is_empty());
+        assert!(mesh.get_indirect_peers().is_empty());
+        assert!(mesh.get_connected_peer_identifiers().is_empty());
+    }
+
+    #[test]
+    fn test_hive_mesh_state_counts_initial() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        let counts = mesh.get_connection_state_counts();
+        assert_eq!(counts.discovered, 0);
+        assert_eq!(counts.connected, 0);
+        assert_eq!(counts.lost, 0);
+
+        let full = mesh.get_full_state_counts();
+        assert_eq!(full.direct.connected, 0);
+        assert_eq!(full.one_hop, 0);
+    }
+
+    #[test]
+    fn test_hive_mesh_tick_returns_none_initially() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        // First tick with no peers should return None
+        assert!(mesh.tick(1000).is_none());
+    }
+
+    #[test]
+    fn test_hive_mesh_delta_document() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        // Delta document for unknown peer still returns data (full state)
+        let delta = mesh.build_delta_document_for_peer(999, 1000);
+        assert!(delta.is_some());
+        // Full delta should always return something
+        let full = mesh.build_full_delta_document(1000);
+        assert!(!full.is_empty());
+    }
+
+    #[test]
+    fn test_hive_mesh_broadcast_bytes() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        let result = mesh.broadcast_bytes(b"test payload");
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_hive_mesh_canned_message_dedup() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        // First check should return true (not seen)
+        assert!(mesh.check_canned_message(42, 1000, 5000));
+        // Mark as seen
+        mesh.mark_canned_message_seen(42, 1000);
+        // Second check should return false (already seen)
+        assert!(!mesh.check_canned_message(42, 1000, 5000));
+    }
+
+    // ==================== ReconnectionManager ====================
+
+    #[test]
+    fn test_reconnection_manager_defaults() {
+        let mgr = ReconnectionManager::with_defaults();
+        assert_eq!(mgr.tracked_count(), 0);
+        assert!(mgr.check_interval_ms() > 0);
+    }
+
+    #[test]
+    fn test_reconnection_manager_track_and_status() {
+        let mgr = ReconnectionManager::new(ReconnectionConfig {
+            base_delay_ms: 100,
+            max_delay_ms: 1000,
+            max_attempts: 3,
+            check_interval_ms: 500,
+            use_flat_delay: false,
+            reset_on_exhaustion: false,
+        });
+
+        mgr.track_disconnection("AA:BB:CC:DD:EE:FF".to_string());
+        assert!(mgr.is_tracked("AA:BB:CC:DD:EE:FF"));
+        assert_eq!(mgr.tracked_count(), 1);
+
+        let status = mgr.get_status("AA:BB:CC:DD:EE:FF");
+        // Should be either Ready or Waiting
+        assert!(matches!(
+            status,
+            ReconnectionStatus::Ready | ReconnectionStatus::Waiting { .. }
+        ));
+
+        assert_eq!(mgr.get_status("unknown"), ReconnectionStatus::NotTracked);
+    }
+
+    #[test]
+    fn test_reconnection_manager_connection_success() {
+        let mgr = ReconnectionManager::with_defaults();
+        mgr.track_disconnection("peer-1".to_string());
+        assert_eq!(mgr.tracked_count(), 1);
+        mgr.on_connection_success("peer-1");
+        assert!(!mgr.is_tracked("peer-1"));
+    }
+
+    #[test]
+    fn test_reconnection_manager_clear() {
+        let mgr = ReconnectionManager::with_defaults();
+        mgr.track_disconnection("a".to_string());
+        mgr.track_disconnection("b".to_string());
+        assert_eq!(mgr.tracked_count(), 2);
+        mgr.clear();
+        assert_eq!(mgr.tracked_count(), 0);
+    }
+
+    // ==================== PeerLifetimeManager ====================
+
+    #[test]
+    fn test_peer_lifetime_manager_defaults() {
+        let mgr = PeerLifetimeManager::with_defaults();
+        assert_eq!(mgr.tracked_count(), 0);
+        assert!(mgr.cleanup_interval_ms() > 0);
+    }
+
+    #[test]
+    fn test_peer_lifetime_manager_track_peer() {
+        let mgr = PeerLifetimeManager::with_defaults();
+        mgr.on_peer_activity("peer-1", true);
+        assert!(mgr.is_tracked("peer-1"));
+        assert!(mgr.is_connected("peer-1"));
+        assert_eq!(mgr.tracked_count(), 1);
+
+        let stats = mgr.stats();
+        assert_eq!(stats.total_tracked, 1);
+        assert_eq!(stats.connected, 1);
+        assert_eq!(stats.disconnected, 0);
+    }
+
+    #[test]
+    fn test_peer_lifetime_manager_disconnect() {
+        let mgr = PeerLifetimeManager::with_defaults();
+        mgr.on_peer_activity("peer-1", true);
+        mgr.on_peer_disconnected("peer-1");
+        assert!(mgr.is_tracked("peer-1"));
+        assert!(!mgr.is_connected("peer-1"));
+    }
+
+    #[test]
+    fn test_peer_lifetime_manager_remove() {
+        let mgr = PeerLifetimeManager::with_defaults();
+        mgr.on_peer_activity("peer-1", true);
+        assert!(mgr.remove_peer("peer-1"));
+        assert!(!mgr.is_tracked("peer-1"));
+        assert!(!mgr.remove_peer("peer-1")); // already removed
+    }
+
+    #[test]
+    fn test_peer_lifetime_manager_clear() {
+        let mgr = PeerLifetimeManager::with_defaults();
+        mgr.on_peer_activity("a", true);
+        mgr.on_peer_activity("b", false);
+        mgr.clear();
+        assert_eq!(mgr.tracked_count(), 0);
+    }
+
+    // ==================== AddressRotationHandler ====================
+
+    #[test]
+    fn test_address_rotation_handler_register_and_lookup() {
+        let handler = AddressRotationHandler::new();
+        handler.register_device("WT-WEAROS-1234", "AA:BB:CC:DD:EE:FF", 42);
+        assert_eq!(handler.lookup_by_name("WT-WEAROS-1234"), Some(42));
+        assert_eq!(handler.lookup_by_address("AA:BB:CC:DD:EE:FF"), Some(42));
+        assert_eq!(
+            handler.get_address(42),
+            Some("AA:BB:CC:DD:EE:FF".to_string())
+        );
+        assert_eq!(handler.get_name(42), Some("WT-WEAROS-1234".to_string()));
+    }
+
+    #[test]
+    fn test_address_rotation_handler_unknown_lookups() {
+        let handler = AddressRotationHandler::new();
+        assert!(handler.lookup_by_name("unknown").is_none());
+        assert!(handler.lookup_by_address("00:00:00:00:00:00").is_none());
+        assert!(handler.get_address(999).is_none());
+        assert!(handler.get_name(999).is_none());
+    }
+
+    #[test]
+    fn test_address_rotation_handler_remove_and_clear() {
+        let handler = AddressRotationHandler::new();
+        handler.register_device("dev-1", "addr-1", 1);
+        handler.register_device("dev-2", "addr-2", 2);
+        assert_eq!(handler.device_count(), 2);
+
+        handler.remove_device(1);
+        assert!(handler.lookup_by_name("dev-1").is_none());
+
+        handler.clear();
+        assert_eq!(handler.device_count(), 0);
+    }
+
+    // ==================== Namespace helper functions ====================
+
+    #[test]
+    fn test_detect_device_pattern_weartak() {
+        assert_eq!(
+            detect_device_pattern("WT-WEAROS-1234"),
+            DevicePattern::WearTak
+        );
+    }
+
+    #[test]
+    fn test_is_weartak_device_fn() {
+        assert!(is_weartak_device("WT-WEAROS-1234"));
+        assert!(!is_weartak_device("SomeOtherDevice"));
+    }
+
+    #[test]
+    fn test_device_pattern_rotates() {
+        assert!(device_pattern_rotates_addresses(DevicePattern::WearTak));
+        assert!(device_pattern_rotates_addresses(DevicePattern::WearOs));
+        assert!(!device_pattern_rotates_addresses(DevicePattern::Peat));
+        assert!(!device_pattern_rotates_addresses(DevicePattern::Unknown));
+    }
+
+    // ==================== BLE callback handling ====================
+
+    #[test]
+    fn test_hive_mesh_on_ble_discovered() {
+        let mesh = PeatMesh::new(1, "TEST", "my-mesh");
+        // Name must be "PEAT_MESH-XXXXXXXX" format to parse node ID
+        let peer = mesh.on_ble_discovered(
+            "AA:BB:CC:DD:EE:FF",
+            Some("PEAT_MESH-00000002".to_string()),
+            -50,
+            Some("my-mesh".to_string()),
+            1000,
+        );
+        assert!(peer.is_some());
+        let peer = peer.unwrap();
+        assert_eq!(peer.identifier, "AA:BB:CC:DD:EE:FF");
+        assert_eq!(peer.rssi, -50);
+    }
+
+    #[test]
+    fn test_hive_mesh_on_ble_discovered_no_name() {
+        let mesh = PeatMesh::new(1, "TEST", "my-mesh");
+        // No name means node ID can't be parsed, so None returned
+        let peer = mesh.on_ble_discovered(
+            "AA:BB:CC:DD:EE:FF",
+            None,
+            -70,
+            Some("my-mesh".to_string()),
+            1000,
+        );
+        assert!(peer.is_none());
+    }
+
+    #[test]
+    fn test_hive_mesh_on_ble_discovered_wrong_mesh() {
+        let mesh = PeatMesh::new(1, "TEST", "my-mesh");
+        let peer = mesh.on_ble_discovered(
+            "AA:BB:CC:DD:EE:FF",
+            Some("PEAT_MESH-00000002".to_string()),
+            -50,
+            Some("other-mesh".to_string()),
+            1000,
+        );
+        assert!(peer.is_none());
+    }
+
+    #[test]
+    fn test_hive_mesh_on_ble_disconnected_unknown_peer() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        let result = mesh.on_ble_disconnected("unknown-addr", DisconnectReason::Timeout);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_hive_mesh_on_ble_data_received_invalid() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        // No peer registered for this identifier
+        let result = mesh.on_ble_data_received("unknown", &[0xFF; 10], 1000);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_hive_mesh_decrypt_only_no_encryption() {
+        let mesh = PeatMesh::new(1, "TEST", "mesh");
+        // Without encryption, decrypt_only should return None or the data
+        let result = mesh.decrypt_only(&[0x01, 0x02, 0x03]);
+        // Depends on implementation - just ensure no panic
+        let _ = result;
+    }
+
+    // ==================== Encrypted mesh data flow ====================
+
+    #[test]
+    fn test_encrypted_mesh_document_round_trip() {
+        let id_a = DeviceIdentity::generate();
+        let genesis = MeshGenesis::create("enc-test", &id_a);
+        let mesh_a = PeatMesh::new_from_genesis("ALPHA", &id_a, &genesis);
+
+        let id_b = DeviceIdentity::generate();
+        let secret = genesis.get_encryption_secret();
+        let mesh_b = create_peat_mesh_with_encryption(
+            id_b.get_node_id(),
+            "BRAVO",
+            &genesis.get_mesh_id(),
+            &secret,
+        )
+        .expect("should create encrypted mesh");
+
+        // Build document from A
+        let doc = mesh_a.build_document();
+        assert!(!doc.is_empty());
+
+        // B should be able to decrypt it
+        let decrypted = mesh_b.decrypt_only(&doc);
+        assert!(decrypted.is_some());
+    }
+}
